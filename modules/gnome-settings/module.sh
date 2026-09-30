@@ -9,6 +9,7 @@ _gs() {  # _gs CMD [extra args]
 module_add() {
   have dconf || die "dconf not found (GNOME required)"
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] would apply $(grep -c '=' "$P_file") keys from $P_file"; return 0; fi
+  step "applying GNOME settings"
   _gs apply
 }
 module_remove() { [[ $LS_DRY_RUN == 1 ]] && { log "[dry-run] would restore saved settings"; return 0; }; _gs remove; }

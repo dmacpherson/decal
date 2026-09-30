@@ -47,6 +47,7 @@ module_add() {
 import ast,sys; cur=ast.literal_eval(sys.argv[1] if sys.argv[1] != "@as []" else "[]"); drop=set(open(sys.argv[2]).read().split())
 print([x for x in cur if x not in drop])' "$dis" "$LS_USER_STATE/gnome-extensions.undisabled")"
   fi
+  step "applying extension settings"
   _settings apply
   (( new )) && info "new extensions activate after you log out and back in"
   return 0

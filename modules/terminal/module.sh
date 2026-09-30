@@ -172,6 +172,7 @@ module_add() {
   run mkdir -p "$LS_USER_STATE" "$CFG"
   if [[ $LS_DRY_RUN != 1 ]]; then echo "$P_remove_brew" > "$LS_USER_STATE/terminal.remove-brew"; fi   # remove honours it without the profile
   # 1. Homebrew tools for the enabled features (+ extra formulae)
+  step "installing Homebrew tools"
   bf=$(_gen_brewfile)
   if [[ -n $bf ]]; then
     have brew || die "Homebrew not found. Install it first: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
@@ -200,6 +201,7 @@ module_add() {
   # 6. terminal app: unconfigure the previous choice, install + configure this one
   old=$(cat "$LS_USER_STATE/terminal.current" 2>/dev/null || true)
   if [[ -n $old && $old != "$TERMINAL" ]]; then _load_adapter "$old"; term_unconfigure; _load_adapter "$TERMINAL"; fi
+  step "setting up the terminal app"
   _term_install
   term_configure
   [[ $LS_DRY_RUN == 1 ]] || echo "$TERMINAL" > "$LS_USER_STATE/terminal.current"

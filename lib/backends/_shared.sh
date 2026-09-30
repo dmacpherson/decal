@@ -11,6 +11,7 @@ pkg_install() {
   # backends that can list packages also record the dependencies this install pulled in
   local before="" after=""
   if declare -F _pkg_snapshot >/dev/null; then before=$(_pkg_snapshot | sort -u); fi
+  step "installing ${missing[*]}"
   _pkg_add "${missing[@]}"
   if [[ -n $before && $LS_DRY_RUN != 1 ]]; then
     after=$(_pkg_snapshot | sort -u)
@@ -84,6 +85,7 @@ initramfs_require() {
   if declare -F _initramfs_prior_record >/dev/null; then _initramfs_prior_record; fi   # remember the pre-tool setup once
   if [[ ! -e $m ]]; then : | swrite "$m"; initramfs_dirty; fi
   if [[ -e ${LS_RUNTMP:-/nonexistent}/initramfs-dirty ]] || { declare -F _initramfs_stale >/dev/null && _initramfs_stale; }; then
+    step "rebuilding the boot image (initramfs)"
     _initramfs_regen require "$1"; _initramfs_clean
   else log "initramfs already up to date"; fi
 }

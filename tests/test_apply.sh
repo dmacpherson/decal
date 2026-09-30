@@ -80,11 +80,14 @@ P4="$T_TMP/ttyprof"; mkdir -p "$P4"; printf '[p1]\nword = "tty"\n' > "$P4/profil
 out=$(tty_run "$S" --profile "$P4" add p1 2>&1); rc=$?
 assert_eq "$rc" "0" "tty run rc"
 assert_contains "$out" "✓ add p1" "tty: module done line"
-assert_not_contains "$(tr '\r' '\n' <<<"$out" | grep -vE '^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] ')" "p1 detail line" "tty: module chatter only in the spinner's step hint, never printed"
+assert_not_contains "$out" "p1 detail line" "tty: module chatter never on screen, not even as the spinner's hint"
+assert_contains "$out" "doing p1 things" "tty: the module's step name is the spinner's hint"
 assert_contains "$out" "p1 heads-up" "tty: warnings still shown"
 assert_contains "$(cat "$(readlink -f "$DECAL_USER_STATE/logs/last.log")")" "p1 detail line" "tty: chatter kept in the log"
 out=$(tty_run "$S" --verbose --profile "$P4" add p1 2>&1)
 assert_contains "$out" "p1 detail line" "--verbose shows everything"
+assert_contains "$out" "doing p1 things" "--verbose shows steps as plain lines"
+assert_not_contains "$(cat "$(readlink -f "$DECAL_USER_STATE/logs/last.log")")" "::step::" "no step markers in the log"
 printf '[p1]\nword = "boom"\n' > "$P4/profile.toml"
 out=$(tty_run "$S" --profile "$P4" add p1 2>&1); rc=$?
 assert_eq "$rc" "1" "tty failure rc"

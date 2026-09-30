@@ -11,6 +11,8 @@ else LS_SUDO="sudo"; fi
 
 log()  { printf '    %s\n' "$*" >&2; }
 info() { printf '\033[1;36m==>\033[0m %s\n' "$*" >&2; }
+# step TEXT : what a module is doing now (the spinner shows it; otherwise an ordinary detail line)
+step() { if [[ ${DECAL_FANCY:-} == 1 ]]; then printf '::step:: %s\n' "$*" >&2; else log "$*"; fi; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }

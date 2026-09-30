@@ -62,7 +62,7 @@ cp -a %{_sourcedir}/payload/. %{buildroot}$dest/
 %files
 $dest
 EOF
-  log "building $name in a $eng container"
+  step "building the $name package (container)"
   # the build is chatty: keep its output, show it only when it fails
   if ! "$eng" run --rm -v "$w:/root/rpmbuild:Z" registry.fedoraproject.org/fedora:latest \
        bash -c "dnf -qy install rpm-build && rpmbuild -bb /root/rpmbuild/SPECS/$name.spec" > "$w/build.log" 2>&1; then
@@ -85,6 +85,7 @@ files_install() {
   [[ -e $rpm ]] || _rpm_build "$name" "$hash" "$src" "$dest" "$rpmdir"
   req=$(_requested)
   for old in "$name" ${FILES_REPLACES:-}; do grep -qx "$old" <<<"$req" && args+=("--uninstall=$old"); done
+  step "staging a new system image with $name (rpm-ostree)"
   srun rpm-ostree install "${args[@]}" "$rpm"
   _staged
   printf '%s\n' "$name" | swrite "$LS_STATE/files/$owner.rpm"

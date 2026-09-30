@@ -29,6 +29,7 @@ _login_add() {  # IMG
   mons=${DECAL_MONITORS_JSON:-$(python3 monitors.py)}   # override: headless / tests
   log "building login background for layout $mons"
   # our own mount covers the stock path once installed: read the real file underneath it
+  step "building the login background"
   srun bash gdm-background stock-copy "$stock" "$tmp/stock.gresource"
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] build.sh $img $P_login_blur $P_login_brightness ..."; else
     bash build.sh "$img" "$P_login_blur" "$P_login_brightness" "$mons" "$tmp/stock.gresource" "$tmp/gnome-shell-theme.gresource"; fi
@@ -39,6 +40,7 @@ _login_add() {  # IMG
   # system-wide layout: mutter reads it for users without their own (GDM's dynamic greeter
   # users included); the user's ~/.config/monitors.xml still wins in their session
   if [[ -r $HOME/.config/monitors.xml ]]; then etc_write wallpaper /etc/xdg/monitors.xml < "$HOME/.config/monitors.xml"; fi
+  step "installing the login background"
   etc_write wallpaper "$HELPER" < gdm-background; srun chmod 0755 "$(sys_path "$HELPER")"
   have restorecon && srun restorecon -F "$(sys_path "$HELPER")"
   etc_write wallpaper "$UNIT" <<EOF
@@ -64,6 +66,7 @@ EOF
 }
 
 _desktop_add() {  # IMG
+  step "setting the desktop wallpaper"
   local img=$1 prev="$LS_USER_STATE/wallpaper.prev"
   run mkdir -p "$(dirname "$DESK_IMG")" "$LS_USER_STATE"
   if (( P_desktop_blur == 0 && P_desktop_brightness == 100 )); then run cp "$img" "$DESK_IMG"

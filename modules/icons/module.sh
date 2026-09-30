@@ -36,12 +36,14 @@ module_fetch() { _src >/dev/null; }
 
 module_add() {
   local src d n avail=()
+  step "downloading icon themes"
   src=$(_src)
   if [[ $LS_DRY_RUN == 1 ]]; then
     log "[dry-run] install icon themes from $P_source into $ICONS"
     run gsettings set org.gnome.desktop.interface icon-theme "$(_final)"; return 0
   fi
   mkdir -p "$ICONS" "$LS_USER_STATE"; touch "$REC"
+  step "installing icon themes"
   while IFS= read -r d; do
     n=$(_norm "$(basename "$d")"); avail+=("$n")
     _wanted "$n" || continue
@@ -61,6 +63,7 @@ module_add() {
       fargs=(--folders "$ICONS/$P_folders")
     fi
     if [[ $P_symbolic == adwaita ]]; then fargs+=(--no-symbolic); fi
+    step "building the combined icon theme"
     python3 "$MODULE_DIR/combine.py" "$ICONS/$P_theme" "$ICONS/$(_final)" "$(_final)" "${fargs[@]}"
     _ours "$(_final)" || _final >> "$REC"
   fi

@@ -41,11 +41,13 @@ _login_remove() {
 
 module_add() {
   local src d n avail=()
+  step "downloading cursor themes"
   src=$(_src)
   if [[ $LS_DRY_RUN == 1 ]]; then
     log "[dry-run] install cursor themes from $P_source into $ICONS; use $P_theme (size $P_size)"
   else
     mkdir -p "$ICONS" "$LS_USER_STATE"
+    step "installing cursor themes"
     while IFS= read -r d; do
       n=$(basename "$d"); avail+=("$n")
       if [[ -e $ICONS/$n ]] && ! _ours "$n"; then warn "$ICONS/$n already exists and isn't from decal: left as is"; continue; fi

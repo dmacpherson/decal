@@ -101,7 +101,7 @@ module_add() {
   srun flatpak remote-add --system --if-not-exists "$P_remote" "$P_remote_url"
   local missing=() id
   for id in "${P_flatpaks[@]}"; do _fp_present "$id" || missing+=("$id"); state_append "$MANAGED" "$id"; done
-  if (( ${#missing[@]} )); then srun flatpak install --system --noninteractive -y "$P_remote" "${missing[@]}"; fi
+  if (( ${#missing[@]} )); then step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y "$P_remote" "${missing[@]}"; fi
   if (( ${#P_packages[@]} )); then pkg_install apps "${P_packages[@]}"; fi
   _unwanted_add
   _defaults_add

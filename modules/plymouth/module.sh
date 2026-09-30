@@ -16,6 +16,7 @@ _themes_root() {
 module_fetch() { _themes_root >/dev/null; }
 
 module_add() {
+  step "downloading boot splash themes"
   local src; src="$(_themes_root)/$P_theme"
   [[ $LS_DRY_RUN == 1 || -d $src ]] || die "plymouth theme '$P_theme' not found in $P_source${P_path:+ ($P_path)}"
   # mutable systems: new packages or theme files mean a rebuilt initramfs (on Fedora Atomic any

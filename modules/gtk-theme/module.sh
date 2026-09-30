@@ -43,12 +43,14 @@ module_fetch() { _src >/dev/null; }
 
 module_add() {
   local src d n avail=()
+  step "downloading GTK themes"
   src=$(_src)
   if [[ $LS_DRY_RUN == 1 ]]; then
     log "[dry-run] install GTK themes from $P_source into $THEMES (libadwaita: $P_libadwaita)"
     run gsettings set org.gnome.desktop.interface gtk-theme "$P_theme"; return 0
   fi
   mkdir -p "$THEMES" "$LS_USER_STATE"
+  step "installing GTK themes"
   while IFS= read -r d; do
     n=$(_norm "$(basename "$d")"); avail+=("$n")
     _wanted "$n" || continue

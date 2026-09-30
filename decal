@@ -128,7 +128,7 @@ do_modules() {
   [[ -z $keeper ]] || kill "$keeper" 2>/dev/null
   return 0
 }
-# run_fancy ACTION NAME : run a module showing one spinner line (with the step it's on) on the terminal;
+# run_fancy ACTION NAME : run a module showing one spinner line (with the step it's on, see step()) on the terminal;
 # its notes/warnings/errors are printed, everything else goes to $DECAL_LOG; on failure its last lines are shown
 run_fancy() {
   local action=$1 m=$2 start=$SECONDS frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 line plain last="" rc cols out="$LS_RUNTMP/module.out"
@@ -140,7 +140,8 @@ run_fancy() {
         line=${line//$'\r'/}; plain=$line
         while [[ $plain =~ $'\e'\[[0-9\;]*m ]]; do plain=${plain/"${BASH_REMATCH[0]}"/}; done
         if [[ $plain =~ ^(==\>|warning:|error:) ]]; then printf '\r\033[K' > /dev/tty; printf '%s\n' "$line"
-        else printf '%s\n' "$plain" | tee -a "$out" >> "$DECAL_LOG"; if [[ -n ${plain// /} ]]; then last=$plain; fi; fi
+        elif [[ $plain == '::step:: '* ]]; then last=${plain#::step:: }; printf '    %s\n' "$last" | tee -a "$out" >> "$DECAL_LOG"
+        else printf '%s\n' "$plain" | tee -a "$out" >> "$DECAL_LOG"; fi
       elif (( $? <= 128 )); then break; fi
       printf '\r\033[K\033[36m%s\033[0m %s %s \033[2m%ss  %s\033[0m' "${frames:i++%10:1}" "$action" "$m" \
         "$((SECONDS - start))" "${last:0:$((cols > 40 ? cols - 30 - ${#m} : 10))}" > /dev/tty
