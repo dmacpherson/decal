@@ -62,6 +62,12 @@ assert_nofile "$LS_TEST_LOG.root" "dry-run: nothing touched"
 # a real run asks sudo once, up front, for a root module
 "$S" add ccc-root >/dev/null 2>&1
 assert_contains "$(calls)" "sudo -v" "sudo -v up front"
+# a tool that ends the sudo session mid-run (brew does): decal asks again before the next module, on its own line
+stub sudo 'case $1 in -n) exit 1;; esac'; : > "$STUBS/calls"
+out=$("$S" add aaa-ok ccc-root 2>&1)
+assert_eq "$(grep -c '^sudo -v' "$STUBS/calls")" "3" "sudo re-checked before each module of a run that needed it"
+assert_contains "$out" "sudo needs your password again" "says why it asks again"
+stub sudo
 # remove never asks up front: sudo only prompts if a module actually runs a privileged step
 : > "$STUBS/calls"; "$S" remove ccc-root >/dev/null 2>&1
 assert_not_contains "$(calls)" "sudo -v" "remove does not prompt up front"

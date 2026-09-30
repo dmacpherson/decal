@@ -1,5 +1,8 @@
 # shellcheck shell=bash disable=SC2034,SC2154  # sourced: vars read by the runner; helpers/vars from lib/ and the profile
 MODULE_DESC="Terminal app (default Ptyxis) set as default + bash prompt/tools, per your profile's [terminal.features]"
+# every brew command runs "sudo --reset-timestamp" unless told it can't use sudo, which would end
+# decal's sudo session mid-run; Homebrew never needs sudo for formulae on Linux
+export HOMEBREW_NO_SUDO=1
 MODULE_NEEDS_ROOT=1   # installing a non-preinstalled terminal needs sudo
 MODULE_DIR="${MODULE_DIR:-$PWD}"
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}/decal/terminal"

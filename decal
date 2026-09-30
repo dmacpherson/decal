@@ -99,11 +99,11 @@ run_module() {
 }
 # do_modules ACTION NAME... : run in order (remove: caller passes reverse order); stop at first failure
 do_modules() {
-  local action=$1 m rc; shift
+  local action=$1 m rc need_sudo=0; shift
   (( $# )) || return 0
   if [[ $action == add && ${LS_DRY_RUN:-0} != 1 && -n $LS_SUDO ]]; then
     for m in "$@"; do
-      if [[ $(module_field "$m" MODULE_NEEDS_ROOT) == 1 ]]; then "$LS_SUDO" -v || die "sudo needed"; break; fi
+      if [[ $(module_field "$m" MODULE_NEEDS_ROOT) == 1 ]]; then "$LS_SUDO" -v || die "sudo needed"; need_sudo=1; break; fi
     done
   fi
   local keeper=""
@@ -112,6 +112,10 @@ do_modules() {
     ( while sleep 60; do "$LS_SUDO" -n -v 2>/dev/null || exit 0; done ) & keeper=$!
   fi
   for m in "$@"; do
+    # something may have ended the sudo session (brew does): ask here, not behind a module's spinner
+    if (( need_sudo )) && ! "$LS_SUDO" -n true 2>/dev/null; then
+      info "sudo needs your password again"; "$LS_SUDO" -v || die "sudo needed"
+    fi
     if [[ ${DECAL_FANCY:-} == 1 && -n ${DECAL_LOG:-} ]]; then
       set +e; run_fancy "$action" "$m"; rc=$?; set -e
     else
@@ -128,7 +132,7 @@ do_modules() {
 # its notes/warnings/errors are printed, everything else goes to $DECAL_LOG; on failure its last lines are shown
 run_fancy() {
   local action=$1 m=$2 start=$SECONDS frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 line plain last="" rc cols out="$LS_RUNTMP/module.out"
-  cols=$(tput cols 2>/dev/null || echo 80); : > "$out"
+  cols=$(tput cols 2>/dev/null < /dev/tty || echo 80); : > "$out"
   printf '==> %s %s\n' "$action" "$m" >> "$DECAL_LOG"
   { run_module "$action" "$m" 2>&1; echo "$?" > "$LS_RUNTMP/rc"; } | {
     while :; do

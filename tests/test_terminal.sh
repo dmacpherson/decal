@@ -3,7 +3,7 @@ source "$(dirname "$0")/lib.sh"
 t_setup; fixture_profile
 export DECAL_PLATFORM=fedora HOME="$T_TMP/home" XDG_CONFIG_HOME="$T_TMP/home/.config"; mkdir -p "$HOME/.bashrc.d" "$XDG_CONFIG_HOME"
 printf 'if [ -d ~/.bashrc.d ]; then for rc in ~/.bashrc.d/*; do . "$rc"; done; fi\n' > "$HOME/.bashrc"
-stub brew 'case $1 in list) exit 0;; esac; exit 0'; stub fc-cache; stub ptyxis; stub systemctl; stub curl 'exit 7'   # tests never touch the network
+stub brew 'echo "brew-env NO_SUDO=${HOMEBREW_NO_SUDO:-}" >> "$STUBS/calls"; case $1 in list) exit 0;; esac; exit 0'; stub fc-cache; stub ptyxis; stub systemctl; stub curl 'exit 7'   # tests never touch the network
 stub gsettings 'case $1 in get) case $3 in default-profile-uuid) echo "'"'"'abc'"'"'";; palette) echo "'"'"'gnome'"'"'";; *) echo "'"'"'x'"'"'";; esac;; list-keys) exit 0;; esac'
 mod() { mod_run terminal "$@"; }
 # carapace must use its ble.sh integration when ble.sh is loaded (plain "bash" breaks with "read: `': not a valid identifier")
@@ -23,6 +23,9 @@ mod module_add 2>/dev/null; assert_eq "$?" "0" "re-add succeeds"
 assert_file "$HOME/.bashrc.d/50-decal-terminal.sh" "hook"
 assert_file "$XDG_CONFIG_HOME/decal/terminal/starship.toml" "config"
 assert_contains "$(calls)" "brew bundle --file" "brew bundle"
+assert_not_contains "$(calls)" "brew-env NO_SUDO=
+" "brew never runs without HOMEBREW_NO_SUDO (it would end decal's sudo session)"
+assert_contains "$(calls)" "brew-env NO_SUDO=1" "brew runs with HOMEBREW_NO_SUDO=1"
 assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis cursor-shape underline" "cursor"
 assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/abc/ palette decal-cyberpunk" "palette"
 assert_eq "$(head -1 "$XDG_CONFIG_HOME/xdg-terminals.list")" "org.gnome.Ptyxis.desktop" "default terminal"
