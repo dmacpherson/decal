@@ -2,6 +2,8 @@
   "source": {"type": "source"},
   "path": {"type": "string", "default": ""},
   "ref": {"type": "string", "default": ""},
+  "asset": {"type": "string-or-strings", "default": []},
+  "version": {"type": "string", "default": "latest"},
   "theme": {"type": "string"},
   "install": {"type": "install", "default": "all"},
   "libadwaita": {"type": "bool", "default": false}

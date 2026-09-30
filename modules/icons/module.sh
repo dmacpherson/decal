@@ -17,7 +17,13 @@ _themes_in() {  # icon themes (index.theme), skipping cursor-only ones
 }
 _wanted() { if [[ ${P_install[0]:-all} == all ]]; then return 0; fi; printf '%s\n' "${P_install[@]}" | grep -qxF "$1"; }
 _ours() { grep -qxF "$1" "$REC" 2>/dev/null; }
-_final() { if [[ -n $P_folders ]]; then echo "$P_theme+$P_folders"; else echo "$P_theme"; fi; }
+# the icon theme to use: generated when another theme's folders go on top, or when GNOME's own UI symbols
+# replace the theme's (KDE-style symbolic icons render badly in GNOME)
+_final() {
+  if [[ -n $P_folders ]]; then echo "$P_theme+$P_folders"
+  elif [[ $P_symbolic == adwaita ]]; then echo "$P_theme+adwaita-ui"
+  else echo "$P_theme"; fi
+}
 _warn_inherits() {
   local p d found dirs=("$ICONS" "$(sys_path /usr/local/share/icons)" "$(sys_path /usr/share/icons)") x
   IFS=: read -ra x <<<"${XDG_DATA_DIRS:-}"; for d in "${x[@]}"; do [[ -n $d ]] && dirs+=("$d/icons"); done
@@ -48,9 +54,14 @@ module_add() {
   while IFS= read -r n; do
     if [[ $n == *+* && $n != "$(_final)" ]]; then rm -rf "${ICONS:?}/$n"; grep -vxF "$n" "$REC" > "$REC.t" || true; mv "$REC.t" "$REC"; fi
   done < <(cat "$REC")
-  if [[ -n $P_folders ]]; then
-    [[ -d $ICONS/$P_folders ]] || die "folders theme '$P_folders' not found (available: ${avail[*]:-none})"
-    python3 "$MODULE_DIR/combine.py" "$ICONS/$P_theme" "$ICONS/$P_folders" "$ICONS/$(_final)" "$(_final)"
+  if [[ $(_final) != "$P_theme" ]]; then
+    local fargs=()
+    if [[ -n $P_folders ]]; then
+      [[ -d $ICONS/$P_folders ]] || die "folders theme '$P_folders' not found (available: ${avail[*]:-none})"
+      fargs=(--folders "$ICONS/$P_folders")
+    fi
+    if [[ $P_symbolic == adwaita ]]; then fargs+=(--no-symbolic); fi
+    python3 "$MODULE_DIR/combine.py" "$ICONS/$P_theme" "$ICONS/$(_final)" "$(_final)" "${fargs[@]}"
     _ours "$(_final)" || _final >> "$REC"
   fi
   if have gtk-update-icon-cache; then gtk-update-icon-cache -qf "$ICONS/$(_final)" >/dev/null 2>&1 || true; fi

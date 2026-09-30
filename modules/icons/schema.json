@@ -4,5 +4,6 @@
   "ref": {"type": "string", "default": ""},
   "theme": {"type": "string"},
   "folders": {"type": "string", "default": ""},
+  "symbolic": {"type": "enum", "values": ["adwaita", "theme"], "default": "adwaita"},
   "install": {"type": "install", "default": "all"}
 }, "required": ["source", "theme"]}

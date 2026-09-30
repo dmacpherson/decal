@@ -8,7 +8,10 @@ G4REC="$LS_USER_STATE/gtk-theme.gtk4"
 G4BK="$LS_USER_STATE/gtk4-backup"
 
 _src() {
-  local a=(--path "$P_path"); if [[ -n $P_ref ]]; then a+=(--ref "$P_ref"); fi
+  local a=() x
+  if [[ -n $P_path ]]; then a+=(--path "$P_path"); fi
+  if [[ -n $P_ref ]]; then a+=(--ref "$P_ref"); fi
+  if (( ${#P_asset[@]} )); then for x in "${P_asset[@]}"; do a+=(--asset "$x"); done; a+=(--version "$P_version"); fi
   ls_fetch "$P_source" "${a[@]}" || die "could not fetch GTK themes from $P_source"
 }
 _norm() { printf '%s' "${1// /-}"; }
@@ -54,6 +57,10 @@ module_add() {
     _ours "$n" || echo "$n" >> "$REC"
   done < <(_themes_in "$src")
   [[ -d $THEMES/$P_theme ]] || die "GTK theme '$P_theme' not found (available: ${avail[*]:-none})"
+  # themes installed from an earlier source that this one doesn't have any more
+  local keep=""; while IFS= read -r n; do
+    if [[ -n $n ]] && ! printf '%s\n' "${avail[@]}" | grep -qxF "$n"; then rm -rf "${THEMES:?}/$n"; else keep+="$n"$'\n'; fi
+  done < "$REC"; printf '%s' "$keep" > "$REC"
   if [[ ! -e $PREV ]]; then echo "gtk-theme=$(gsettings get org.gnome.desktop.interface gtk-theme)" > "$PREV"; fi
   run gsettings set org.gnome.desktop.interface gtk-theme "$P_theme"
   if [[ $P_libadwaita == true ]]; then _gtk4_unlink; _gtk4_link; else _gtk4_unlink; fi

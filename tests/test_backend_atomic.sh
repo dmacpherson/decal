@@ -15,14 +15,26 @@ assert_eq "$(_requested | sort | tr '\n' ' ')" "htop plymouth-theme-angular " "r
 assert_eq "$(_pending_root)" "" "no pending when deployment 0 is booted"
 
 # files_install builds via container and layers, replacing the manual package in ONE transaction
-stub rpm-ostree; stub podman 'mkdir -p "$DECAL_RPM_DIR"; touch "$DECAL_RPM_DIR/$(cat "$STUBS/want")"'
+stub rpm-ostree; stub podman 'echo "+ CFLAGS=-O2 noise"; echo "[3/65] Installing noise" >&2; mkdir -p "$DECAL_RPM_DIR"; touch "$DECAL_RPM_DIR/$(cat "$STUBS/want")"'
 src="$T_TMP/src"; mkdir -p "$src"; echo x > "$src/f"
 hash=$(_tree_hash "$src"); echo "decal-ply-1.0-$hash.noarch.rpm" > "$STUBS/want"
-FILES_REPLACES="plymouth-theme-angular" files_install ply "$src" /usr/share/plymouth/themes/angular
+out=$(FILES_REPLACES="plymouth-theme-angular" files_install ply "$src" /usr/share/plymouth/themes/angular 2>&1)
+assert_not_contains "$out" "noise" "the container build is quiet when it works"
 assert_contains "$(calls)" "podman run" "rpm built in container"
 assert_contains "$(calls)" "rpm-ostree install --uninstall=plymouth-theme-angular $T_TMP/rpms/decal-ply-1.0-$hash.noarch.rpm" "single transaction swap"
 assert_file "$LS_RUNTMP/reboot" "reboot flagged"
 assert_eq "$(cat "$DECAL_STATE/files/ply.rpm")" "decal-ply" "state records rpm name"
+# declared dependencies go into the RPM (rpm-ostree then keeps them) and into its hash (so it's rebuilt)
+stub podman 'for a; do case $a in *:/root/rpmbuild:Z) cp "${a%%:*}"/SPECS/*.spec "$STUBS/spec";; esac; done; mkdir -p "$DECAL_RPM_DIR"; touch "$DECAL_RPM_DIR/$(cat "$STUBS/want")"'
+h2=$(printf '%s %s' "$hash" "plymouth-plugin-script" | sha256sum | cut -c1-12); echo "decal-req-1.0-$h2.noarch.rpm" > "$STUBS/want"
+( FILES_REQUIRES="plymouth-plugin-script" files_install req "$src" /usr/share/plymouth/themes/x ) >/dev/null 2>&1
+assert_contains "$(cat "$STUBS/spec" 2>/dev/null)" "Requires:  plymouth-plugin-script" "spec requires the plugin"
+assert_contains "$(calls)" "decal-req-1.0-$h2.noarch.rpm" "requirements change the RPM hash"
+# a failed build shows the build's own error
+stub podman 'echo "error: Bad spec line 7"; exit 1'
+out=$( (_rpm_build decal-bad 0000 "$src" /usr/share/x "$T_TMP/rpms-bad") 2>&1 ); assert_eq "$?" "1" "failed build rc"
+assert_contains "$out" "Bad spec line 7" "failed build shows why"
+stub podman 'mkdir -p "$DECAL_RPM_DIR"; touch "$DECAL_RPM_DIR/$(cat "$STUBS/want")"'
 
 # already layered with same hash -> no-op
 cat > "$JSON" <<EOF
@@ -49,7 +61,7 @@ assert_contains "$(calls)" "rpm-ostree initramfs --disable" "disable when last"
 # and the RPM build must not create directories
 : > "$STUBS/calls"; rm -rf "$DECAL_STATE/initramfs" "$DECAL_RPM_DIR"
 out=$(LS_DRY_RUN=1 initramfs_require ply 2>&1); assert_contains "$out" "rpm-ostree initramfs --enable" "dry-run require shows enable"
-assert_not_contains "$out" "--disable" "dry-run require never disables"
+assert_contains "$(grep "rpm-ostree initramfs" <<<"$out" | tail -1)" "--enable" "dry-run require ends enabled"
 src2="$T_TMP/src2"; mkdir -p "$src2"; echo y > "$src2/g"
 LS_DRY_RUN=1 files_install dry "$src2" /usr/share/x 2>/dev/null; assert_nofile "$DECAL_RPM_DIR" "dry-run creates no rpm dir"
 # user already had regeneration on with extra dracut args (e.g. TPM unlock): keep args, never disable on release

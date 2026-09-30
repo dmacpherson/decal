@@ -27,7 +27,12 @@ module_add() {
   fi
   printf '[Daemon]\nTheme=%s\n' "$P_theme" | etc_write plymouth "$CONF"
   if [[ $LS_DRY_RUN == 1 && ! -d $src ]]; then log "[dry-run] install plymouth theme $P_theme from $P_source"
-  else FILES_REPLACES="plymouth-theme-$P_theme" files_install plymouth "$src" "/usr/share/plymouth/themes/$P_theme"; fi
+  else
+    # script themes need the script plugin; declaring it keeps it installed when a package that
+    # pulled it in (e.g. a hand-installed theme RPM) is replaced
+    local req=""; if grep -qsx 'ModuleName=script' "$src/$P_theme.plymouth"; then req=$(_pkg_name plymouth-script-plugin); fi
+    FILES_REPLACES="plymouth-theme-$P_theme" FILES_REQUIRES="$req" files_install plymouth "$src" "/usr/share/plymouth/themes/$P_theme"
+  fi
   if [[ $PLATFORM == debian ]] && have update-alternatives && [[ $LS_DRY_RUN != 1 ]] \
      && [[ "$(plymouth-set-default-theme 2>/dev/null)" != "$P_theme" ]]; then
     if [[ -e $ALT_REC && $(cat "$ALT_REC") != "$(_alt_path)" ]]; then _alt_remove; fi

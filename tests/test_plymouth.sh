@@ -7,7 +7,7 @@ printf '[Daemon]\nTheme=angular\n' > "$DECAL_ROOT/etc/plymouth/plymouthd.conf"  
 printf '# Administrator customizations go in this file\n#[Daemon]\n#Theme=fade-in\n' > "$DECAL_ROOT/usr/etc/plymouth/plymouthd.conf"
 mod_run_pre() {
   pkg_install() { echo "pkg_install $*" >> "$STUBS/calls"; }; pkg_remove() { echo "pkg_remove $*" >> "$STUBS/calls"; }
-  files_install() { echo "files_install $* REPLACES=${FILES_REPLACES:-}" >> "$STUBS/calls"; }
+  files_install() { echo "files_install $* REPLACES=${FILES_REPLACES:-} REQUIRES=${FILES_REQUIRES:-}" >> "$STUBS/calls"; }
   files_remove() { echo "files_remove $*" >> "$STUBS/calls"; }; files_installed() { return 0; }
 }
 run_mod() { mod_run plymouth "module_$1"; }
@@ -16,7 +16,7 @@ mkdir -p "$DECAL_ROOT/usr/share/plymouth/themes/angular"
 assert_eq "$( ( mod_run_pre() { files_installed() { return 1; }; }; mod_run plymouth module_status ) 2>/dev/null)" "not-installed (theme present but unmanaged; run add to adopt)" "unmanaged hand install"
 run_mod add 2>/dev/null
 assert_contains "$(calls)" "pkg_install plymouth plymouth plymouth-script-plugin" "packages"
-assert_contains "$(calls)" "files_install plymouth $PROFILE_DIR/demo-plymouth/angular /usr/share/plymouth/themes/angular REPLACES=plymouth-theme-angular" "files from the fetched source + adoption"
+assert_contains "$(calls)" "files_install plymouth $PROFILE_DIR/demo-plymouth/angular /usr/share/plymouth/themes/angular REPLACES=plymouth-theme-angular REQUIRES=plymouth-plugin-script" "files from the fetched source + adoption + script plugin kept"
 assert_eq "$(cat "$DECAL_ROOT/etc/plymouth/plymouthd.conf")" $'[Daemon]\nTheme=angular' "conf written"
 assert_eq "$(head -1 "$DECAL_STATE/initramfs.prior")" "0" "adopting the hand install records regeneration as previously off"
 stub rpm 'exit 1'; assert_eq "$(run_mod status 2>/dev/null)" "installed (reboot pending)" "status before reboot"

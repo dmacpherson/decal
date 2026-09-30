@@ -44,6 +44,7 @@ Release:   $hash
 Summary:   decal payload for $dest
 License:   See payload
 BuildArch: noarch
+$(for r in ${FILES_REQUIRES:-}; do printf 'Requires:  %s\n' "$r"; done)
 %description
 Files installed by decal into $dest.
 %install
@@ -52,8 +53,12 @@ cp -a %{_sourcedir}/payload/. %{buildroot}$dest/
 %files
 $dest
 EOF
-  run "$eng" run --rm -v "$w:/root/rpmbuild:Z" registry.fedoraproject.org/fedora:latest \
-    bash -c "dnf -qy install rpm-build >/dev/null && rpmbuild -bb /root/rpmbuild/SPECS/$name.spec >/dev/null"
+  log "building $name in a $eng container"
+  # the build is chatty: keep its output, show it only when it fails
+  if ! "$eng" run --rm -v "$w:/root/rpmbuild:Z" registry.fedoraproject.org/fedora:latest \
+       bash -c "dnf -qy install rpm-build && rpmbuild -bb /root/rpmbuild/SPECS/$name.spec" > "$w/build.log" 2>&1; then
+    tail -n 20 "$w/build.log" >&2; rm -rf "$w"; die "RPM build failed for $name (container output above)"
+  fi
   cp "$w"/RPMS/noarch/"$name"-1.0-"$hash".noarch.rpm "$out/" 2>/dev/null || [[ -e $out/$name-1.0-$hash.noarch.rpm ]] || die "RPM build failed"
   rm -rf "$w"
 }
@@ -61,6 +66,8 @@ EOF
 files_install() {
   local owner=$1 src=$2 dest=$3 name="decal-$1" hash rpmdir rpm args=() old req
   hash=$(_tree_hash "$src")
+  # declared dependencies (FILES_REQUIRES) are part of the package: a change means a new build
+  if [[ -n ${FILES_REQUIRES:-} ]]; then hash=$(printf '%s %s' "$hash" "$FILES_REQUIRES" | sha256sum | cut -c1-12); fi
   rpmdir="${DECAL_RPM_DIR:-$HOME/.local/share/decal/rpms}"
   rpm="$rpmdir/$name-1.0-$hash.noarch.rpm"
   if grep -qx "$name-1.0-$hash.noarch" <<<"$(_requested_nevra)"; then
@@ -104,7 +111,9 @@ _initramfs_rebuild() {   # ACTION(require|release) OWNER — intent is passed so
   while IFS= read -r a; do [[ -n $a ]] && args+=("--arg=$a"); done < <(_prior_lines | tail -n +2)
   [[ -d $LS_STATE/initramfs ]] && n=$(find "$LS_STATE/initramfs" -type f ! -name "$owner" | wc -l)
   if [[ $action == require ]] || (( n > 0 )); then
-    srun rpm-ostree initramfs --enable "${args[@]}" || { srun rpm-ostree initramfs --disable && srun rpm-ostree initramfs --enable "${args[@]}"; }
+    # --enable refuses when already enabled: then disable + enable, which regenerates with the current /etc
+    if _initramfs_enabled; then srun rpm-ostree initramfs --disable; fi
+    srun rpm-ostree initramfs --enable "${args[@]}"
   else
     # last user gone: back to how it was before this tool
     if [[ $(_prior_lines | head -1) == 1 ]]; then srun rpm-ostree initramfs --enable "${args[@]}"
