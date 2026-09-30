@@ -18,6 +18,13 @@ module_fetch() { _themes_root >/dev/null; }
 module_add() {
   local src; src="$(_themes_root)/$P_theme"
   [[ $LS_DRY_RUN == 1 || -d $src ]] || die "plymouth theme '$P_theme' not found in $P_source${P_path:+ ($P_path)}"
+  # mutable systems: new packages or theme files mean a rebuilt initramfs (on Fedora Atomic any
+  # change stages a new deployment, which rebuilds it anyway)
+  local p dest; dest=$(sys_path "/usr/share/plymouth/themes/$P_theme")
+  if [[ $PLATFORM != fedora-atomic ]]; then
+    for p in plymouth plymouth-script-plugin; do p=$(_pkg_name "$p"); if [[ -n $p ]] && ! _pkg_present "$p"; then initramfs_dirty; fi; done
+    if [[ -d $src ]] && ! diff -rq "$src" "$dest" >/dev/null 2>&1; then initramfs_dirty; fi
+  fi
   pkg_install plymouth plymouth plymouth-script-plugin
   # Adopt a hand-made install: remember the pristine config, not the hand-edited one.
   if [[ -r $(sys_path /usr/etc/plymouth/plymouthd.conf) ]] && grep -qx "Theme=$P_theme" "$(sys_path "$CONF")" 2>/dev/null; then
@@ -25,6 +32,7 @@ module_add() {
     # the hand install also switched on local initramfs regeneration; stock had it off
     if [[ $PLATFORM == fedora-atomic ]]; then initramfs_seed_prior disabled; fi
   fi
+  if [[ "$(cat "$(sys_path "$CONF")" 2>/dev/null)" != "$(printf '[Daemon]\nTheme=%s' "$P_theme")" ]]; then initramfs_dirty; fi
   printf '[Daemon]\nTheme=%s\n' "$P_theme" | etc_write plymouth "$CONF"
   if [[ $LS_DRY_RUN == 1 && ! -d $src ]]; then log "[dry-run] install plymouth theme $P_theme from $P_source"
   else
@@ -37,7 +45,7 @@ module_add() {
      && [[ "$(plymouth-set-default-theme 2>/dev/null)" != "$P_theme" ]]; then
     if [[ -e $ALT_REC && $(cat "$ALT_REC") != "$(_alt_path)" ]]; then _alt_remove; fi
     srun update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth "$(_alt_path)" 200
-    srun update-alternatives --set default.plymouth "$(_alt_path)"
+    srun update-alternatives --set default.plymouth "$(_alt_path)"; initramfs_dirty
     _alt_path | swrite "$ALT_REC"
   fi
   initramfs_require plymouth

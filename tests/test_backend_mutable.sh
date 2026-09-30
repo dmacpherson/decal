@@ -41,6 +41,8 @@ assert_file "$DECAL_ROOT/usr/share/demo/new/a.txt" "new destination installed"; 
 # initramfs refcount + skip env + reboot flag
 : > "$STUBS/calls"
 initramfs_require ply; assert_contains "$(calls)" "dracut -f --regenerate-all" "rebuild on require"
+: > "$STUBS/calls"; initramfs_require ply; assert_eq "$(calls)" "" "require again with nothing changed: no rebuild"
+: > "$STUBS/calls"; initramfs_dirty; initramfs_require ply; assert_contains "$(calls)" "dracut -f --regenerate-all" "rebuild after a change"
 assert_file "$LS_RUNTMP/reboot" "reboot flagged"
 : > "$STUBS/calls"; DECAL_SKIP_INITRAMFS=1 initramfs_release ply
 assert_eq "$(calls)" "" "skip env"; assert_nofile "$DECAL_STATE/initramfs/ply" "marker gone"

@@ -26,8 +26,17 @@ _pkg_present() {   # check the pending deployment if there is one
   local r; r=$(_pending_root)
   if [[ -n $r && -d $r/usr/share/rpm ]]; then rpm -q --quiet --dbpath "$r/usr/share/rpm" "$1"; else rpm -q --quiet "$1"; fi
 }
-_pkg_add() { srun rpm-ostree install --allow-inactive "$@"; need_reboot; }
-_pkg_del() { srun rpm-ostree uninstall "$@"; need_reboot; }
+# a staged deployment: reboot needed, and (while regeneration is on) its initramfs was rebuilt from the current /etc
+_staged() { need_reboot; if [[ $LS_DRY_RUN != 1 ]] && _initramfs_enabled; then _initramfs_clean; fi; }
+# regeneration off, or with other dracut args than wanted: needs an rpm-ostree initramfs call
+_initramfs_stale() {
+  _initramfs_enabled || return 0
+  local want have; want=$(_prior_lines | tail -n +2 | paste -sd' ')
+  have=$(_ostree_json | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["deployments"][0].get("initramfs-args", [])))')
+  [[ $want != "$have" ]]
+}
+_pkg_add() { srun rpm-ostree install --allow-inactive "$@"; _staged; }
+_pkg_del() { srun rpm-ostree uninstall "$@"; _staged; }
 
 _tree_hash() { (cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | cut -c1-12; }
 _container_engine() { if have podman; then echo podman; elif have docker; then echo docker; else die "podman or docker is required to build RPMs on Fedora Atomic"; fi; }
@@ -59,7 +68,7 @@ EOF
        bash -c "dnf -qy install rpm-build && rpmbuild -bb /root/rpmbuild/SPECS/$name.spec" > "$w/build.log" 2>&1; then
     tail -n 20 "$w/build.log" >&2; rm -rf "$w"; die "RPM build failed for $name (container output above)"
   fi
-  cp "$w"/RPMS/noarch/"$name"-1.0-"$hash".noarch.rpm "$out/" 2>/dev/null || [[ -e $out/$name-1.0-$hash.noarch.rpm ]] || die "RPM build failed"
+  cp "$w"/RPMS/noarch/"$name"-1.0-"$hash".noarch.rpm "$out/" 2>/dev/null || [[ -e $out/$name-1.0-$hash.noarch.rpm ]] || { rm -rf "$w"; die "RPM build failed: no $name RPM produced"; }
   rm -rf "$w"
 }
 
@@ -77,14 +86,14 @@ files_install() {
   req=$(_requested)
   for old in "$name" ${FILES_REPLACES:-}; do grep -qx "$old" <<<"$req" && args+=("--uninstall=$old"); done
   srun rpm-ostree install "${args[@]}" "$rpm"
-  need_reboot
+  _staged
   printf '%s\n' "$name" | swrite "$LS_STATE/files/$owner.rpm"
 }
 files_remove() {
   local f="$LS_STATE/files/$1.rpm" name
   [[ -r $f ]] || return 0
   name=$(cat "$f")
-  if grep -qx "$name" <<<"$(_requested)"; then srun rpm-ostree uninstall "$name"; need_reboot; fi
+  if grep -qx "$name" <<<"$(_requested)"; then srun rpm-ostree uninstall "$name"; _staged; fi
   srun rm -f "$f"
 }
 files_installed() { [[ -r $LS_STATE/files/$1.rpm ]] && grep -qx "decal-$1" <<<"$(_requested)"; }
@@ -127,14 +136,14 @@ _pkg_del_check() { return 0; }   # rpm-ostree refuses by itself if something dep
 _pkg_uninstall_names() {
   local req n base=() layered=(); req=$(_requested)
   for n in "$@"; do if grep -qx "$n" <<<"$req"; then layered+=("$n"); else base+=("$n"); fi; done
-  if (( ${#base[@]} )); then srun rpm-ostree override remove "${base[@]}" >&2 || return 1; need_reboot; fi
-  if (( ${#layered[@]} )); then srun rpm-ostree uninstall "${layered[@]}" >&2 || return 1; need_reboot; fi
+  if (( ${#base[@]} )); then srun rpm-ostree override remove "${base[@]}" >&2 || return 1; _staged; fi
+  if (( ${#layered[@]} )); then srun rpm-ostree uninstall "${layered[@]}" >&2 || return 1; _staged; fi
   for n in "${base[@]}"; do echo "base:$n"; done
   for n in "${layered[@]}"; do echo "layer:$n"; done
 }
 _pkg_restore_names() {
   local t base=() layered=()
   for t in "$@"; do case $t in base:*) base+=("${t#base:}") ;; layer:*) layered+=("${t#layer:}") ;; *) layered+=("$t") ;; esac; done
-  if (( ${#base[@]} )); then srun rpm-ostree override reset "${base[@]}"; need_reboot; fi
-  if (( ${#layered[@]} )); then srun rpm-ostree install --allow-inactive "${layered[@]}"; need_reboot; fi
+  if (( ${#base[@]} )); then srun rpm-ostree override reset "${base[@]}"; _staged; fi
+  if (( ${#layered[@]} )); then srun rpm-ostree install --allow-inactive "${layered[@]}"; _staged; fi
 }

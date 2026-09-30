@@ -14,6 +14,8 @@ assert_nofile()   { T_COUNT=$((T_COUNT+1)); [[ ! -e "$1" ]] || _t_fail "${2:-ass
 # Fresh sandbox: fake root, state dirs, stub bin dir first on PATH, no sudo.
 t_setup() {
   T_TMP="$(mktemp -d "${TMPDIR:-/tmp}/lstest.XXXXXX")"
+  trap 'rm -rf "$T_TMP"' EXIT   # also when a test stops early
+  export TMPDIR="$T_TMP"        # every temp file the code under test makes goes with it
   export DECAL_ROOT="$T_TMP/root" DECAL_STATE="$T_TMP/state"
   export DECAL_USER_STATE="$T_TMP/ustate" DECAL_SUDO=""
   export STUBS="$T_TMP/stubs"; mkdir -p "$STUBS" "$DECAL_ROOT"

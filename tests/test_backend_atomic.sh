@@ -34,6 +34,11 @@ assert_contains "$(calls)" "decal-req-1.0-$h2.noarch.rpm" "requirements change t
 stub podman 'echo "error: Bad spec line 7"; exit 1'
 out=$( (_rpm_build decal-bad 0000 "$src" /usr/share/x "$T_TMP/rpms-bad") 2>&1 ); assert_eq "$?" "1" "failed build rc"
 assert_contains "$out" "Bad spec line 7" "failed build shows why"
+n0=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'tmp.*' -user "$(id -u)" -newer "$T_TMP" 2>/dev/null | wc -l)
+( _rpm_build decal-bad 0000 "$src" /usr/share/x "$T_TMP/rpms-bad" ) >/dev/null 2>&1
+stub podman 'exit 0'; ( _rpm_build decal-norpm 0000 "$src" /usr/share/x "$T_TMP/rpms-bad" ) >/dev/null 2>&1
+stub podman 'echo "error: Bad spec line 7"; exit 1'
+assert_eq "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'tmp.*' -user "$(id -u)" -newer "$T_TMP" 2>/dev/null | wc -l)" "$n0" "failed builds leave no temp dir"
 stub podman 'mkdir -p "$DECAL_RPM_DIR"; touch "$DECAL_RPM_DIR/$(cat "$STUBS/want")"'
 
 # already layered with same hash -> no-op
@@ -75,6 +80,16 @@ assert_contains "$(calls)" "rpm-ostree initramfs --enable --arg=--force-add --ar
 : > "$STUBS/calls"; initramfs_release tpmuser
 assert_not_contains "$(calls)" "--disable" "release never disables regeneration the user had on"
 assert_contains "$(calls)" "rpm-ostree initramfs --enable --arg=--force-add --arg=tpm2-tss" "release regenerates with the user's args"
+# already enabled with the same args: rebuild only when something changed that no staged deployment covered
+: > "$STUBS/calls"; initramfs_require tpmuser; rm -f "$LS_RUNTMP/initramfs-dirty"; : > "$STUBS/calls"
+initramfs_require tpmuser
+assert_not_contains "$(calls)" "rpm-ostree initramfs" "nothing changed: no rebuild"
+: > "$STUBS/calls"; initramfs_dirty; initramfs_require tpmuser
+assert_contains "$(calls)" "rpm-ostree initramfs --enable --arg=--force-add --arg=tpm2-tss" "changed: rebuilt"
+assert_nofile "$LS_RUNTMP/initramfs-dirty" "rebuild clears the change"
+: > "$STUBS/calls"; initramfs_dirty; _pkg_add htop; initramfs_require tpmuser
+assert_not_contains "$(calls)" "rpm-ostree initramfs" "a deployment staged after the change already rebuilt it"
+initramfs_release tpmuser >/dev/null 2>&1
 # atomic: base-image package -> override remove; layered -> uninstall; restore puts each back its own way
 cat > "$JSON" <<'EOF2'
 {"deployments":[{"booted":true,"osname":"default","checksum":"abc","serial":0,"requested-packages":["htop"]}]}

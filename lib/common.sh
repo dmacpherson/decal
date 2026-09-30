@@ -68,7 +68,7 @@ terminal_cmd() {
 ls_fetch() {
   if [[ $LS_DRY_RUN == 1 ]]; then
     log "[dry-run] fetch $*"
-    local d; d=$(mktemp -d "${TMPDIR:-/tmp}/ls-dry-fetch.XXXXXX"); echo "$d"; return 0
+    local d; d=$(mktemp -d "${LS_RUNTMP:-${TMPDIR:-/tmp}}/dry-fetch.XXXXXX"); echo "$d"; return 0   # removed with the run
   fi
   python3 "$LS_REPO/lib/fetch.py" "$@" --profile "${PROFILE_DIR:-.}"
 }

@@ -36,4 +36,20 @@ import re,sys; p=sys.argv[1]; s=open(p).read(); s=re.sub(r"(?ms)^\[plymouth\]\n.
 EOF
 : > "$STUBS/calls"; DECAL_PLATFORM=debian run_mod remove >/dev/null 2>&1
 assert_contains "$(calls)" "update-alternatives --remove default.plymouth /usr/share/plymouth/themes/second/second.plymouth" "debian: recorded alternative removed without the section"
+# the initramfs is only rebuilt when something in it changed
+export LS_RUNTMP="$T_TMP/rt"; mkdir -p "$LS_RUNTMP"
+sed -i 's/^theme = "[a-z]*"$/theme = "angular"/' "$PROFILE_DIR/profile.toml"; grep -q '^\[plymouth\]' "$PROFILE_DIR/profile.toml" || printf '[plymouth]\nsource = "demo-plymouth"\npath = ""\ntheme = "angular"\n' >> "$PROFILE_DIR/profile.toml"
+dirty_run() { rm -f "$LS_RUNTMP/initramfs-dirty"; : > "$STUBS/calls"
+  ( mod_run_pre() { pkg_install() { :; }; files_install() { :; }; files_installed() { return 0; }
+      initramfs_require() { echo "require dirty=$([[ -e $LS_RUNTMP/initramfs-dirty ]] && echo 1 || echo 0)" >> "$STUBS/calls"; }; }
+    DECAL_PLATFORM=$1 mod_run plymouth module_add ) >/dev/null 2>&1; grep -o 'dirty=[01]' "$STUBS/calls"; }
+printf '[Daemon]\nTheme=angular\n' > "$DECAL_ROOT/etc/plymouth/plymouthd.conf"
+assert_eq "$(dirty_run fedora-atomic)" "dirty=0" "atomic, config unchanged: no rebuild"
+printf '[Daemon]\nTheme=spinner\n' > "$DECAL_ROOT/etc/plymouth/plymouthd.conf"
+assert_eq "$(dirty_run fedora-atomic)" "dirty=1" "config changed: rebuild"
+stub rpm 'exit 0'   # mutable: packages present
+cp -r "$PROFILE_DIR/demo-plymouth/angular" "$DECAL_ROOT/usr/share/plymouth/themes/"
+assert_eq "$(dirty_run fedora)" "dirty=0" "mutable, same files and config: no rebuild"
+echo changed >> "$PROFILE_DIR/demo-plymouth/angular/angular.script"
+assert_eq "$(dirty_run fedora)" "dirty=1" "mutable, theme files changed: rebuild"
 t_done

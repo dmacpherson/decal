@@ -74,10 +74,18 @@ _initramfs_regen() {
   if [[ ${DECAL_SKIP_INITRAMFS:-0} == 1 ]]; then log "initramfs rebuild skipped (DECAL_SKIP_INITRAMFS=1)"; return 0; fi
   _initramfs_rebuild "$@"; need_reboot
 }
+# initramfs_dirty : something the initramfs holds changed this run (config, theme files, packages)
+initramfs_dirty() { if [[ -n ${LS_RUNTMP:-} ]]; then : > "$LS_RUNTMP/initramfs-dirty"; fi; return 0; }
+_initramfs_clean() { if [[ -n ${LS_RUNTMP:-} ]]; then rm -f "$LS_RUNTMP/initramfs-dirty"; fi; return 0; }
+# initramfs_require OWNER : make sure the initramfs is (re)built for OWNER; rebuilds only when needed:
+# a new owner, a change marked with initramfs_dirty, or a backend that isn't set up (_initramfs_stale)
 initramfs_require() {
   local m="$LS_STATE/initramfs/$1"
   if declare -F _initramfs_prior_record >/dev/null; then _initramfs_prior_record; fi   # remember the pre-tool setup once
-  [[ -e $m ]] || : | swrite "$m"; _initramfs_regen require "$1"
+  if [[ ! -e $m ]]; then : | swrite "$m"; initramfs_dirty; fi
+  if [[ -e ${LS_RUNTMP:-/nonexistent}/initramfs-dirty ]] || { declare -F _initramfs_stale >/dev/null && _initramfs_stale; }; then
+    _initramfs_regen require "$1"; _initramfs_clean
+  else log "initramfs already up to date"; fi
 }
 # initramfs_seed_prior enabled|disabled : declare what the setup was before this tool (e.g. when adopting a hand install)
 initramfs_seed_prior() { if declare -F _initramfs_seed_prior >/dev/null; then _initramfs_seed_prior "$1"; fi; return 0; }

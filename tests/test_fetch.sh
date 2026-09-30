@@ -58,4 +58,7 @@ err=$(F "themes/none" --profile "$T_TMP/prof" 2>&1); assert_contains "$err" "not
 # ls_fetch dry-run downloads nothing
 source "$REPO/lib/common.sh"; LS_REPO="$REPO"; export PROFILE_DIR="$T_TMP/prof"
 out=$(LS_DRY_RUN=1 ls_fetch "git+file://$T_TMP/repo" 2>/dev/null); assert_eq "$(ls -A "$out")" "" "dry-run returns an empty dir"
+export LS_RUNTMP="$T_TMP/rt"; mkdir -p "$LS_RUNTMP"
+out=$(LS_DRY_RUN=1 ls_fetch "git+file://$T_TMP/repo" 2>/dev/null)
+assert_eq "$(dirname "$out")" "$LS_RUNTMP" "dry-run placeholder lives in the run's temp dir (removed with it)"
 t_done
