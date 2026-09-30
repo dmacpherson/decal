@@ -70,4 +70,21 @@ assert_eq "$(ls -d "$DECAL_PROFILE_HOME".old* | wc -l)" "$((n0 + 1))" "each repl
 # check refuses a folder without profile.toml
 out=$(python3 "$REPO/lib/profile.py" check --profile "$T_TMP/empty" --modules "$DECAL_MODULES_DIR" 2>&1); assert_eq "$?" "2" "check: missing profile.toml fails"
 assert_contains "$out" "no profile.toml" "check: missing profile.toml message"
+# in a terminal: one line per module with a spinner; details only in the log; notes/warnings still shown
+# run in a pseudo-terminal; strip colours and the spinner's line rewrites (\r, erase-line) for matching
+tty_run() { python3 -c 'import pty,sys; sys.exit(pty.spawn(sys.argv[1:]) >> 8)' "$@" | sed 's/\x1b\[[0-9;]*[mK]//g; s/\r$//'; return "${PIPESTATUS[0]}"; }
+P4="$T_TMP/ttyprof"; mkdir -p "$P4"; printf '[p1]\nword = "tty"\n' > "$P4/profile.toml"
+out=$(tty_run "$S" --profile "$P4" add p1 2>&1); rc=$?
+assert_eq "$rc" "0" "tty run rc"
+assert_contains "$out" "✓ add p1" "tty: module done line"
+assert_not_contains "$(tr '\r' '\n' <<<"$out" | grep -vE '^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] ')" "p1 detail line" "tty: module chatter only in the spinner's step hint, never printed"
+assert_contains "$out" "p1 heads-up" "tty: warnings still shown"
+assert_contains "$(cat "$(readlink -f "$DECAL_USER_STATE/logs/last.log")")" "p1 detail line" "tty: chatter kept in the log"
+out=$(tty_run "$S" --verbose --profile "$P4" add p1 2>&1)
+assert_contains "$out" "p1 detail line" "--verbose shows everything"
+printf '[p1]\nword = "boom"\n' > "$P4/profile.toml"
+out=$(tty_run "$S" --profile "$P4" add p1 2>&1); rc=$?
+assert_eq "$rc" "1" "tty failure rc"
+assert_contains "$out" "✗ add p1" "tty: failed module marked"
+assert_contains "$out" "boom detail" "tty: a failed module's last lines are shown"
 t_done

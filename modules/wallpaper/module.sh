@@ -27,7 +27,7 @@ _login_add() {  # IMG
   [[ -f $stock ]] || { warn "GNOME Shell theme not found at $stock: login background skipped"; return 0; }
   tmp=$(mktemp -d)
   mons=${DECAL_MONITORS_JSON:-$(python3 monitors.py)}   # override: headless / tests
-  info "building login background for layout $mons"
+  log "building login background for layout $mons"
   # our own mount covers the stock path once installed: read the real file underneath it
   srun bash gdm-background stock-copy "$stock" "$tmp/stock.gresource"
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] build.sh $img $P_login_blur $P_login_brightness ..."; else

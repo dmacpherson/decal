@@ -14,12 +14,15 @@ again, undoing exactly what it did.
 ./decal add cursor icons            # apply some modules from the active profile
 ./decal remove wallpaper            # undo exactly what add did
 ./decal --dry-run apply <profile>   # show what would happen
+./decal --verbose apply <profile>   # show every command's output (normally only in the log)
 ./decal export backup.tar.gz        # pack the active profile
 ./decal fetch                       # pre-download themes, fonts, ...
 ./decal capture gnome-settings      # print your current settings to copy into the profile
 ```
 
-Run it as your normal user; it asks for sudo once when needed. The active
+Run it as your normal user; it asks for sudo once when needed. In a terminal each
+module shows one progress line; the full output of every `add`, `remove` and
+`apply` is kept in `~/.local/state/decal/logs/` (`last.log` is the newest). The active
 profile lives at `~/.config/decal/profile`. Start from
 [`examples/profile/profile.toml`](examples/profile/profile.toml): every key is
 listed there, and typos are rejected before anything changes.

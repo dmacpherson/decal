@@ -10,7 +10,7 @@ source "$LS_REPO/lib/common.sh"
 
 usage() {
   cat >&2 <<'EOF'
-usage: ./decal [--dry-run] [--profile DIR] <command> [module...]
+usage: ./decal [--dry-run] [--verbose] [--profile DIR] <command> [module...]
   list                       modules and descriptions
   status [module...]         installed / partial / not-installed / stale / not in profile
   add    <module...|all>     apply (idempotent); all = every module in your profile
@@ -29,6 +29,7 @@ args=(); OPT_PROFILE=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --dry-run) export LS_DRY_RUN=1 ;;
+    -v|--verbose) export DECAL_VERBOSE=1 ;;
     --profile) OPT_PROFILE=${2:?--profile needs a directory}; shift ;;
     -h|--help) usage ;;
     *) args+=("$1") ;;
@@ -46,8 +47,10 @@ if [[ $cmd == @(add|remove|apply) && -z ${DECAL_LOGGING:-} ]]; then
   logf="$logdir/decal-$(date +%Y%m%d-%H%M%S)-$$.log"
   ln -sfn "$(basename "$logf")" "$logdir/last.log"
   { printf 'decal %s  (%s)\n' "${ORIG_ARGS[*]}" "$(date)"; } > "$logf"
+  # in a terminal: a spinner line per module, the details only in the log (--verbose shows everything)
+  if [[ -t 2 && -z ${DECAL_VERBOSE:-} ]]; then export DECAL_FANCY=1; fi
   set +e
-  DECAL_LOGGING=1 "$LS_REPO/decal" "${ORIG_ARGS[@]}" 2>&1 \
+  DECAL_LOG="$logf" DECAL_LOGGING=1 "$LS_REPO/decal" "${ORIG_ARGS[@]}" 2>&1 \
     | awk -v f="$logf" '{ print; fflush(); l = $0; gsub(/\033\[[0-9;]*m/, "", l); print l >> f; fflush(f) }'
   rc=${PIPESTATUS[0]}
   # shellcheck disable=SC2012  # our own names: decal-<date>-<pid>.log
@@ -103,12 +106,47 @@ do_modules() {
       if [[ $(module_field "$m" MODULE_NEEDS_ROOT) == 1 ]]; then "$LS_SUDO" -v || die "sudo needed"; break; fi
     done
   fi
+  local keeper=""
+  if [[ ${DECAL_FANCY:-} == 1 && -n $LS_SUDO ]] && "$LS_SUDO" -n true 2>/dev/null; then
+    # keep sudo's timestamp fresh: a password prompt would be hidden behind the spinner
+    ( while sleep 60; do "$LS_SUDO" -n -v 2>/dev/null || exit 0; done ) & keeper=$!
+  fi
   for m in "$@"; do
-    info "$action $m"
-    # not "run_module ... || die": that context disables set -e inside the subshell
-    set +e; run_module "$action" "$m"; rc=$?; set -e
-    (( rc == 0 )) || die "$action $m failed (stopped; later modules not run)"
+    if [[ ${DECAL_FANCY:-} == 1 && -n ${DECAL_LOG:-} ]]; then
+      set +e; run_fancy "$action" "$m"; rc=$?; set -e
+    else
+      info "$action $m"
+      # not "run_module ... || die": that context disables set -e inside the subshell
+      set +e; run_module "$action" "$m"; rc=$?; set -e
+    fi
+    if (( rc != 0 )); then [[ -z $keeper ]] || kill "$keeper" 2>/dev/null; die "$action $m failed (stopped; later modules not run)"; fi
   done
+  [[ -z $keeper ]] || kill "$keeper" 2>/dev/null
+  return 0
+}
+# run_fancy ACTION NAME : run a module showing one spinner line (with the step it's on) on the terminal;
+# its notes/warnings/errors are printed, everything else goes to $DECAL_LOG; on failure its last lines are shown
+run_fancy() {
+  local action=$1 m=$2 start=$SECONDS frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 line plain last="" rc cols out="$LS_RUNTMP/module.out"
+  cols=$(tput cols 2>/dev/null || echo 80); : > "$out"
+  printf '==> %s %s\n' "$action" "$m" >> "$DECAL_LOG"
+  { run_module "$action" "$m" 2>&1; echo "$?" > "$LS_RUNTMP/rc"; } | {
+    while :; do
+      if IFS= read -r -t 0.1 line; then
+        line=${line//$'\r'/}; plain=$line
+        while [[ $plain =~ $'\e'\[[0-9\;]*m ]]; do plain=${plain/"${BASH_REMATCH[0]}"/}; done
+        if [[ $plain =~ ^(==\>|warning:|error:) ]]; then printf '\r\033[K' > /dev/tty; printf '%s\n' "$line"
+        else printf '%s\n' "$plain" | tee -a "$out" >> "$DECAL_LOG"; if [[ -n ${plain// /} ]]; then last=$plain; fi; fi
+      elif (( $? <= 128 )); then break; fi
+      printf '\r\033[K\033[36m%s\033[0m %s %s \033[2m%ss  %s\033[0m' "${frames:i++%10:1}" "$action" "$m" \
+        "$((SECONDS - start))" "${last:0:$((cols > 40 ? cols - 30 - ${#m} : 10))}" > /dev/tty
+    done
+  }
+  rc=$(cat "$LS_RUNTMP/rc" 2>/dev/null || echo 1)
+  printf '\r\033[K' > /dev/tty
+  if (( rc == 0 )); then printf '\033[32m✓\033[0m %s %s \033[2m%ss\033[0m\n' "$action" "$m" "$((SECONDS - start))"
+  else printf '\033[31m✗\033[0m %s %s\n' "$action" "$m"; tail -n 15 "$out" | sed 's/^/    /'; fi
+  return "$rc"
 }
 find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single sub-folder)
   if [[ -f $1/profile.toml ]]; then echo "$1"; return 0; fi
