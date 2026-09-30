@@ -88,6 +88,8 @@ files_install() {
   srun rpm-ostree install "${args[@]}" "$rpm"
   _staged
   printf '%s\n' "$name" | swrite "$LS_STATE/files/$owner.rpm"
+  # rpm-ostree keeps its own copy: older builds of this package are just clutter
+  if [[ $LS_DRY_RUN != 1 ]]; then find "$rpmdir" -maxdepth 1 -name "$name-1.0-*.noarch.rpm" ! -name "${rpm##*/}" -delete 2>/dev/null || true; fi
 }
 files_remove() {
   local f="$LS_STATE/files/$1.rpm" name

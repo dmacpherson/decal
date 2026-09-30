@@ -77,4 +77,7 @@ assert_contains "$(cat "$logf" 2>/dev/null)" "==> add aaa-ok" "log has the run's
 assert_not_contains "$(cat "$logf" 2>/dev/null)" $'\033[' "log has no colour codes"
 assert_contains "$out" "log: $logf" "run says where its log is"
 assert_eq "$(readlink -f "$DECAL_USER_STATE/logs/last.log")" "$(readlink -f "$logf")" "last.log points at the newest run"
+# temp files a module makes (and forgets) go with the run's own temp dir
+mkdir -p "$T_TMP/outer"; TMPDIR="$T_TMP/outer" "$S" add aaa-ok >/dev/null 2>&1
+assert_eq "$(ls -A "$T_TMP/outer")" "" "module temp files cleaned up with the run"
 t_done

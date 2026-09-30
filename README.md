@@ -43,9 +43,11 @@ listed there, and typos are rejected before anything changes.
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an
 `https://` URL, or a path inside your profile. Downloads are cached in
-`~/.cache/decal/sources`.
+`~/.cache/decal/sources`. Each successful `apply` or `fetch` keeps one version per source and drops what
+hasn't been used for 30 days.
 
 Adding a module: `modules/<name>/module.sh` (`MODULE_DESC`, `module_add`,
 `module_remove`, `module_status`, optionally `module_capture`/`module_fetch`,
 `MODULE_NEEDS_ROOT=1`) plus `schema.json` for its profile keys. Tests:
-`bash tests/run.sh`; distro e2e: `bash tests/containers/run.sh`.
+`bash tests/run.sh`; distro e2e: `bash tests/containers/run.sh` (removes the images it
+pulled; `--keep-images` keeps them). Neither leaves files behind.

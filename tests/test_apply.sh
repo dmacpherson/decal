@@ -17,6 +17,9 @@ assert_not_contains "$(cat "$LS_TEST_LOG")" "remove" "apply never removes"
 out=$("$S" --sync apply "$P" 2>&1); assert_eq "$?" "1" "no --sync option"
 # status shows not in profile
 assert_contains "$("$S" status p2 2>&1)" "not in profile" "status: not in profile"
+# a successful apply tidies the download cache
+export DECAL_CACHE="$T_TMP/cache"; mkdir -p "$DECAL_CACHE/rel-9999.tmp"
+"$S" apply "$P" >/dev/null 2>&1; assert_nofile "$DECAL_CACHE/rel-9999.tmp" "apply prunes the cache"
 # tarball with one top-level folder; replaces the symlink with a real dir
 mkdir -p "$T_TMP/t/prof"; printf '[p2]\nword = "two"\n' > "$T_TMP/t/prof/profile.toml"; tar -czf "$T_TMP/p.tar.gz" -C "$T_TMP/t" prof
 : > "$LS_TEST_LOG"; "$S" apply "$T_TMP/p.tar.gz" >/dev/null 2>&1

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """fetch.py SOURCE [...] : materialize a decal source into the cache and print its local path."""
-import argparse, fnmatch, hashlib, os, re, shutil, subprocess, sys, tarfile, tempfile, urllib.parse, urllib.request, zipfile
+import argparse, fnmatch, hashlib, os, re, shutil, subprocess, sys, tarfile, tempfile, time, urllib.parse, urllib.request, zipfile
 
 
 class FetchError(Exception):
@@ -53,6 +53,42 @@ def cached(out, err):
     return out
 
 
+KEEP_DAYS = 30
+
+
+def mark(d, ident):
+    """Remember which source a cache entry belongs to (versions of one source share it) and that it was just used."""
+    f = os.path.join(d, ".decal-source")
+    if not os.path.exists(f):
+        with open(f, "w") as fh:
+            fh.write(ident + "\n")
+    os.utime(d)
+    return d
+
+
+def prune(cache):
+    """Keep one version per source (the last used); drop what's unused for KEEP_DAYS and half-finished downloads."""
+    now, newest, entries = time.time(), {}, []
+    for n in os.listdir(cache):
+        p = os.path.join(cache, n)
+        if n.endswith(".tmp"):
+            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.unlink(p)
+            continue
+        age = now - os.path.getmtime(p)
+        if age > KEEP_DAYS * 86400:
+            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.unlink(p)
+            continue
+        f = os.path.join(p, ".decal-source")
+        if os.path.isdir(p) and os.path.isfile(f):
+            ident = open(f).read().strip()
+            entries.append((ident, p))
+            if ident not in newest or os.path.getmtime(p) > os.path.getmtime(newest[ident]):
+                newest[ident] = p
+    for ident, p in entries:
+        if newest[ident] != p:
+            shutil.rmtree(p, ignore_errors=True)
+
+
 def swap_in(tmp, final):
     shutil.rmtree(final, ignore_errors=True)
     os.rename(tmp, final)
@@ -62,14 +98,19 @@ def fetch_git(src, path, ref, cache):
     url = src[len("git+"):]
     d = os.path.join(cache, "git-" + key(url, path, ref))
     out = os.path.join(d, path) if path else d
+    ident = f"git {url} {path}"
     if ref and os.path.isdir(os.path.join(d, ".git")) and os.path.exists(out):
+        mark(d, ident)
         return out
     try:
-        return _git_refresh(url, d, out, path, ref)
+        out = _git_refresh(url, d, out, path, ref)
     except FetchError as e:
         if os.path.isdir(os.path.join(d, ".git")) and os.path.exists(out):
+            mark(d, ident)
             return cached(out, e)
         raise
+    mark(d, ident)
+    return out
 
 
 def _git_refresh(url, d, out, path, ref):
@@ -100,6 +141,7 @@ def fetch_release(src, assets, version, cache):
     repo = src.split(":", 1)[1]
     if not assets:
         raise FetchError(f"{src}: no --asset pattern given")
+    ident = f"rel {repo} {' '.join(assets)}"
     tag = version
     last = os.path.join(cache, "rel-latest-" + key(repo, *assets))   # the tag "latest" last resolved to
     if not tag or tag == "latest":
@@ -109,7 +151,7 @@ def fetch_release(src, assets, version, cache):
             prev = open(last).read().strip() if os.path.isfile(last) else ""
             pd = os.path.join(cache, "rel-" + key(repo, prev, *assets))
             if prev and os.path.isfile(os.path.join(pd, ".complete")):
-                return cached(pd, e)
+                return cached(mark(pd, ident), e)
             raise
         m = re.search(r"/releases/tag/([^/?#]+)", final)
         if not m:
@@ -119,7 +161,7 @@ def fetch_release(src, assets, version, cache):
             f.write(tag)
     d = os.path.join(cache, "rel-" + key(repo, tag, *assets))
     if os.path.isfile(os.path.join(d, ".complete")):
-        return d
+        return mark(d, ident)
     _, page = http_get(f"{GITHUB}/{repo}/releases/expanded_assets/{tag}")
     pat = rf'/{re.escape(repo)}/releases/download/{re.escape(tag)}/([^"?#<\s]+)'
     names = sorted({urllib.parse.unquote(n) for n in re.findall(pat, page.decode(errors="replace"))})
@@ -143,7 +185,7 @@ def fetch_release(src, assets, version, cache):
                     os.unlink(f.name)
     open(os.path.join(tmp, ".complete"), "w").close()
     swap_in(tmp, d)
-    return d
+    return mark(d, ident)
 
 
 def fetch_url(url, cache):
@@ -161,7 +203,8 @@ def fetch_url(url, cache):
             os.unlink(p)
         open(os.path.join(tmp, ".complete"), "w").close()
         swap_in(tmp, d)
-    items = [x for x in os.listdir(d) if x != ".complete"]
+    mark(d, f"url {url}")
+    items = [x for x in os.listdir(d) if x not in (".complete", ".decal-source")]
     if len(items) == 1 and os.path.isfile(os.path.join(d, items[0])):
         return os.path.join(d, items[0])
     return d
@@ -169,13 +212,19 @@ def fetch_url(url, cache):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("source")
+    ap.add_argument("source", nargs="?")
+    ap.add_argument("--prune", action="store_true", help="tidy the cache (see prune()) and exit")
     ap.add_argument("--path", default="")
     ap.add_argument("--ref", default="")
     ap.add_argument("--asset", action="append", default=[])
     ap.add_argument("--version", default="")
     ap.add_argument("--profile", default=".")
     a = ap.parse_args()
+    if a.prune:
+        prune(cache_dir())
+        return
+    if not a.source:
+        ap.error("a source is needed")
     try:
         src, cache = a.source, cache_dir()
         if src.startswith("git+"):

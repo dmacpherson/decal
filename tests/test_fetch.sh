@@ -50,6 +50,19 @@ assert_file "$out/Theme-A/index.theme" "latest release offline: last cached rele
 assert_contains "$(cat "$T_TMP/err")" "using the cached copy" "latest release offline: says so"
 err=$(F "github-release:o/r" --asset "x-*" 2>&1); assert_contains "$err" "download failed" "offline + latest + nothing cached -> clear failure"
 
+# prune: one version per source (the last used), nothing unused for 30 days, no half-finished downloads
+C="$DECAL_CACHE"; ls "$C" > "$T_TMP/before"
+old=$(F "github-release:o/r" --asset "pack-dark-*.tar.gz" --asset "pack-light-*.tar.gz" --version v1 2>/dev/null)
+mkdir -p "$C/rel-0000000000000000"; cp "$old/.decal-source" "$C/rel-0000000000000000/" 2>/dev/null; touch -d '2 days ago' "$C/rel-0000000000000000"
+mkdir -p "$C/git-1111111111111111"; echo "git+file:///nowhere path" > "$C/git-1111111111111111/.decal-source"; touch -d '40 days ago' "$C/git-1111111111111111"
+mkdir -p "$C/rel-2222222222222222.tmp"
+python3 "$REPO/lib/fetch.py" --prune
+assert_file "$old/Theme-A/index.theme" "last used version kept"
+assert_nofile "$C/rel-0000000000000000" "older version of the same source removed"
+assert_nofile "$C/git-1111111111111111" "unused for 30+ days removed"
+assert_nofile "$C/rel-2222222222222222.tmp" "half-finished download removed"
+assert_file "$(F "git+file://$T_TMP/repo" --path "Icons A" 2>/dev/null)/Theme-One/index.theme" "recently used git source kept"
+
 # profile path
 mkdir -p "$T_TMP/prof/themes/mine"; out=$(F "themes/mine" --profile "$T_TMP/prof")
 assert_eq "$out" "$T_TMP/prof/themes/mine" "profile path"

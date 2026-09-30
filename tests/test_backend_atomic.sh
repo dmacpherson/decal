@@ -24,6 +24,12 @@ assert_contains "$(calls)" "podman run" "rpm built in container"
 assert_contains "$(calls)" "rpm-ostree install --uninstall=plymouth-theme-angular $T_TMP/rpms/decal-ply-1.0-$hash.noarch.rpm" "single transaction swap"
 assert_file "$LS_RUNTMP/reboot" "reboot flagged"
 assert_eq "$(cat "$DECAL_STATE/files/ply.rpm")" "decal-ply" "state records rpm name"
+# a newer build replaces the older RPM file (only the layered one is kept)
+src3="$T_TMP/src3"; mkdir -p "$src3"; echo z > "$src3/f"; touch "$T_TMP/rpms/decal-prn-1.0-000000000000.noarch.rpm"
+hash3=$(_tree_hash "$src3"); echo "decal-prn-1.0-$hash3.noarch.rpm" > "$STUBS/want"
+files_install prn "$src3" /usr/share/prn >/dev/null 2>&1
+assert_eq "$(ls "$T_TMP/rpms" | grep '^decal-prn-' | tr '\n' ' ')" "decal-prn-1.0-$hash3.noarch.rpm " "older RPMs of the same package pruned"
+assert_file "$T_TMP/rpms/decal-ply-1.0-$hash.noarch.rpm" "other packages' RPMs kept"
 # declared dependencies go into the RPM (rpm-ostree then keeps them) and into its hash (so it's rebuilt)
 stub podman 'for a; do case $a in *:/root/rpmbuild:Z) cp "${a%%:*}"/SPECS/*.spec "$STUBS/spec";; esac; done; mkdir -p "$DECAL_RPM_DIR"; touch "$DECAL_RPM_DIR/$(cat "$STUBS/want")"'
 h2=$(printf '%s %s' "$hash" "plymouth-plugin-script" | sha256sum | cut -c1-12); echo "decal-req-1.0-$h2.noarch.rpm" > "$STUBS/want"
