@@ -24,6 +24,7 @@ EOF
   exit 1
 }
 
+ORIG_ARGS=("$@")
 args=(); OPT_PROFILE=""
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -38,6 +39,22 @@ set -- "${args[@]+"${args[@]}"}"
 cmd=$1; shift
 PROFILE_HOME="${DECAL_PROFILE_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/decal/profile}"
 PROFILE_DIR="${OPT_PROFILE:-${DECAL_PROFILE:-$PROFILE_HOME}}"; export PROFILE_DIR
+
+# add/remove/apply: show the output and keep a plain-text copy (a GNOME Shell crash can take the terminal with it)
+if [[ $cmd == @(add|remove|apply) && -z ${DECAL_LOGGING:-} ]]; then
+  logdir="$LS_USER_STATE/logs"; mkdir -p "$logdir"
+  logf="$logdir/decal-$(date +%Y%m%d-%H%M%S)-$$.log"
+  ln -sfn "$(basename "$logf")" "$logdir/last.log"
+  { printf 'decal %s  (%s)\n' "${ORIG_ARGS[*]}" "$(date)"; } > "$logf"
+  set +e
+  DECAL_LOGGING=1 "$LS_REPO/decal" "${ORIG_ARGS[@]}" 2>&1 \
+    | awk -v f="$logf" '{ print; fflush(); l = $0; gsub(/\033\[[0-9;]*m/, "", l); print l >> f; fflush(f) }'
+  rc=${PIPESTATUS[0]}
+  # shellcheck disable=SC2012  # our own names: decal-<date>-<pid>.log
+  ls -1t "$logdir"/decal-*.log 2>/dev/null | tail -n +21 | xargs -r rm -f   # keep the last 20 runs
+  printf '    log: %s\n' "$logf" >&2
+  exit "$rc"
+fi
 
 if (( ${DECAL_FAKE_EUID:-$EUID} == 0 )) && [[ ${DECAL_ALLOW_ROOT:-0} != 1 ]]; then
   die "run as your normal user, not root; privileged steps use sudo themselves"

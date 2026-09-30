@@ -9,7 +9,7 @@ assert_eq "$(run_mod status)" "not-installed" "before"
 : > "$STUBS/calls"; run_mod remove; assert_eq "$(calls)" "" "remove never-added: no privileged commands"
 run_mod add
 assert_eq "$(cat "$f")" $'[org/gnome/login-screen]\nlogo=\'\'' "keyfile (logo hidden)"
-assert_contains "$(calls)" "dconf update" "dconf update"; assert_eq "$(run_mod status)" "installed" "after"
+assert_contains "$(calls)" "dconf compile" "gdm db compiled"; assert_eq "$(run_mod status)" "installed" "after"
 run_mod remove; assert_nofile "$f" "removed"; assert_eq "$(run_mod status)" "not-installed" "after remove"
 # a custom logo from the profile is copied into state and referenced
 sed -i 's/^login-logo = ""/login-logo = "logo.png"/' "$PROFILE_DIR/profile.toml"

@@ -9,13 +9,16 @@ gdm_mode() {
   else echo none; fi
 }
 gdm_keyfile() { echo "/etc/dconf/db/gdm.d/95-decal-$1"; }
+# rebuild only the gdm database: "dconf update" also makes every running session re-read all of its
+# settings, and GNOME Shell 50 can crash on that (stale app-folder handlers), logging the user out
+_gdm_compile() { srun dconf compile "$(sys_path /etc/dconf/db/gdm)" "$(sys_path /etc/dconf/db/gdm.d)"; }
 # gdm_set OWNER SECTION KEY VALUE [KEY VALUE...] : VALUE is a GVariant literal ('text', 24, true)
 gdm_set() {
   local owner=$1 section=$2 t i k; shift 2
   case $(gdm_mode) in
     dconf)
       { echo "[$section]"; while (( $# )); do echo "$1=$2"; shift 2; done; } | etc_write "$owner" "$(gdm_keyfile "$owner")"
-      srun dconf update ;;
+      _gdm_compile ;;
     debian)
       # the file is shared by several owners: record each key's previous value once, then set it
       local rec; rec=$(_gdm_rec "$owner"); t=$(mktemp -d); cp "$(sys_path "$GDM_DEB_FILE")" "$t/cur"
@@ -50,7 +53,7 @@ gdm_restore() {
   if [[ -r $(_gdm_rec "$owner") && -e $(sys_path "$GDM_DEB_FILE") ]]; then _gdm_deb_restore "$owner"; fi
   [[ -e $LS_STATE/backups/$owner ]] || return 0
   etc_restore "$owner" "$(gdm_keyfile "$owner")"; etc_restore "$owner" "$GDM_DEB_FILE"   # (older runs backed up the whole Debian file)
-  if [[ $(gdm_mode) == dconf ]]; then srun dconf update; fi
+  if [[ $(gdm_mode) == dconf ]]; then _gdm_compile; fi
 }
 # gdm_has OWNER KEY VALUE : true if OWNER's setting KEY=VALUE is in place
 gdm_has() {

@@ -68,4 +68,13 @@ assert_not_contains "$(calls)" "sudo -v" "remove does not prompt up front"
 
 # refuses to run as root (simulated)
 out=$(DECAL_FAKE_EUID=0 "$S" list 2>&1); assert_eq "$?" "1" "root refused rc"
+# every add/remove/apply run is logged (a GNOME Shell crash can take the terminal with it)
+export DECAL_USER_STATE="$T_TMP/ustate"; rm -rf "$DECAL_USER_STATE"
+out=$("$S" add aaa-ok 2>&1)
+logf=$(ls "$DECAL_USER_STATE"/logs/decal-*.log 2>/dev/null | tail -1)
+assert_file "$logf" "run log written"
+assert_contains "$(cat "$logf" 2>/dev/null)" "==> add aaa-ok" "log has the run's output"
+assert_not_contains "$(cat "$logf" 2>/dev/null)" $'\033[' "log has no colour codes"
+assert_contains "$out" "log: $logf" "run says where its log is"
+assert_eq "$(readlink -f "$DECAL_USER_STATE/logs/last.log")" "$(readlink -f "$logf")" "last.log points at the newest run"
 t_done

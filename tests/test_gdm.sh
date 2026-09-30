@@ -23,4 +23,12 @@ gdm_set cursor org/gnome/desktop/interface cursor-size 48
 gdm_restore cursor; assert_contains "$(cat "$F")" "logo=''" "branding survives cursor's removal"
 assert_contains "$(cat "$F")" "cursor-size=32" "cursor's first previous value restored"
 gdm_restore branding; assert_eq "$(cat "$F")" "$orig" "original again"
+# dconf mode: rebuild only the gdm database; "dconf update" makes every running session re-read all settings
+# (GNOME Shell 50 can crash on that: stale app-folder handlers), which logged the user out mid-apply
+rm -f "$F"; mkdir -p "$DECAL_ROOT/etc/dconf/profile"; echo 'system-db:gdm' > "$DECAL_ROOT/etc/dconf/profile/gdm"
+stub dconf; : > "$STUBS/calls"
+gdm_set cursor org/gnome/desktop/interface cursor-size 24
+assert_contains "$(calls)" "dconf compile $DECAL_ROOT/etc/dconf/db/gdm $DECAL_ROOT/etc/dconf/db/gdm.d" "gdm db compiled on its own"
+gdm_restore cursor
+assert_not_contains "$(calls)" "dconf update" "never a global dconf update"
 t_done
