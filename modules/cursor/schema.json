@@ -1,0 +1,9 @@
+{"keys": {
+  "source": {"type": "source", "default": "github-release:SakibShahariar/material-bibata-cursor"},
+  "asset": {"type": "string-or-strings", "default": ["bibata-material-dark-*.tar.gz", "bibata-material-light-*.tar.gz"]},
+  "version": {"type": "string", "default": "latest"},
+  "path": {"type": "string", "default": ""},
+  "theme": {"type": "string"},
+  "size": {"type": "int", "default": 24, "min": 8, "max": 256},
+  "login": {"type": "bool", "default": true}
+}, "required": ["theme"]}

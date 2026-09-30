@@ -1,0 +1,111 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Layout: tokyo-sharp
+# Tokyo Night structure (fade-in start, simple segments) with sharp powerline
+# separators. Uses colour ROLES only; the active theme supplies the values.
+# Roles: accent on_accent seg_dir seg_git seg_lang seg_time text dim info warn error lang
+
+format = """
+[░▒▓](accent)\
+$os\
+[](bg:seg_dir fg:accent)\
+$directory\
+[](fg:seg_dir bg:seg_git)\
+$git_branch\
+$git_status\
+[](fg:seg_git bg:seg_lang)\
+$python\
+$nodejs\
+$bun\
+$rust\
+$golang\
+$php\
+[](fg:seg_lang bg:seg_time)\
+$cmd_duration\
+$time\
+[ ](fg:seg_time)\
+\n$character"""
+
+[os]
+disabled = false
+style = "bg:accent fg:on_accent"
+format = "[ $symbol ]($style)"
+
+[os.symbols]
+Bazzite = ""   # GNOME foot (no Bazzite glyph in Nerd Fonts; matches the panel logo)
+Fedora = "󰣛"
+Ubuntu = "󰕈"
+Debian = "󰣚"
+Arch = "󰣇"
+Linux = "󰌽"
+Unknown = "󰌽"
+
+[directory]
+style = "fg:text bg:seg_dir"
+format = "[ $path ]($style)"
+truncation_length = 3
+truncation_symbol = "…/"
+read_only = " 󰌾"
+read_only_style = "fg:warn bg:seg_dir"
+
+[directory.substitutions]
+"Documents" = "󰈙 "
+"Downloads" = " "
+"Music" = " "
+"Pictures" = " "
+"Work" = "󰃖 "
+
+[git_branch]
+symbol = ""
+style = "bg:seg_git"
+format = '[[ $symbol $branch ](fg:info bg:seg_git)]($style)'
+
+[git_status]
+style = "bg:seg_git"
+format = '[[($all_status$ahead_behind )](fg:warn bg:seg_git)]($style)'
+
+[python]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:lang bg:seg_lang)]($style)'
+
+[nodejs]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:lang bg:seg_lang)]($style)'
+
+[bun]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:lang bg:seg_lang)]($style)'
+
+[rust]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:lang bg:seg_lang)]($style)'
+
+[golang]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:lang bg:seg_lang)]($style)'
+
+[php]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:lang bg:seg_lang)]($style)'
+
+[cmd_duration]
+min_time = 2000
+style = "bg:seg_time"
+format = '[[ 󱦟 $duration ](fg:warn bg:seg_time)]($style)'
+
+[time]
+disabled = false
+time_format = "%R"
+style = "bg:seg_time"
+format = '[[  $time ](fg:dim bg:seg_time)]($style)'
+
+[character]
+success_symbol = "[❯](bold info)"
+error_symbol = "[❯](bold error)"
+vimcmd_symbol = "[❮](bold accent)"

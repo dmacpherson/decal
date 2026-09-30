@@ -1,0 +1,15 @@
+# Theme: cyberpunk (neon on near-black).
+# Defines every colour role a layout may use (see ../../README.md).
+[palettes.theme]
+accent    = "#f706cf"   # fade + first block (neon pink)
+on_accent = "#0d0221"   # text on the accent block
+seg_dir   = "#7a04eb"   # directory block (electric violet)
+seg_git   = "#3a0c6e"   # git block
+seg_lang  = "#240847"   # language block
+seg_time  = "#16052c"   # duration/time block
+text      = "#e6e1ff"   # directory text
+dim       = "#a99bd6"   # time text
+info      = "#00f6ff"   # git branch, success prompt (neon cyan)
+warn      = "#fcee0a"   # git changes, command duration (neon yellow)
+error     = "#ff2a6d"   # error prompt (neon red)
+lang      = "#f706cf"   # language/version text

@@ -1,0 +1,11 @@
+{"keys": {
+  "image": {"type": "path-or-url", "default": ""},
+  "login.image": {"type": "path-or-url", "default": ""},
+  "login.blur": {"type": "int", "default": 24, "min": 0},
+  "login.brightness": {"type": "int", "default": 65, "min": 1, "max": 100},
+  "login.enable": {"type": "bool", "default": true},
+  "desktop.image": {"type": "path-or-url", "default": ""},
+  "desktop.blur": {"type": "int", "default": 0, "min": 0},
+  "desktop.brightness": {"type": "int", "default": 100, "min": 1, "max": 100},
+  "desktop.enable": {"type": "bool", "default": true}
+}}

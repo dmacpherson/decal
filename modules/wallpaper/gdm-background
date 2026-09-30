@@ -1,0 +1,43 @@
+#!/bin/bash
+# decal GDM background helper (runs as root; installed to /usr/local/libexec/).
+#   mount                 bind-mount the built theme over the stock one, only if it was
+#                         built from the current stock file; records mounted|stale for status
+#   umount                remove our mount
+#   stock-copy SRC DEST   copy the real stock file to DEST, even while a mount covers it
+set -u
+st="${DECAL_STATE:-/var/lib/decal}/wallpaper"
+built="$st/gnome-shell-theme.gresource"
+
+mounted() { findmnt -rn "$1" >/dev/null 2>&1; }
+unmount_all() { local _; for _ in 1 2 3 4 5; do mounted "$1" || return 0; umount -l "$1"; done; }
+# with_stock PATH CMD... : run CMD with the path of the real (uncovered) file appended.
+# A non-recursive bind of the parent dir shows the original file under any file mount.
+with_stock() {
+  local p=$1 d rc; shift
+  if ! mounted "$p"; then "$@" "$p"; return; fi
+  d=$(mktemp -d); mount --bind "$(dirname "$p")" "$d" || { rmdir "$d"; return 1; }
+  "$@" "$d/$(basename "$p")"; rc=$?
+  umount "$d"; rmdir "$d"; return $rc
+}
+sha() { sha256sum "$1" | cut -d' ' -f1; }
+copy_to() { cp "$2" "$1"; }
+
+case "${1:-mount}" in
+  stock-copy)
+    with_stock "$2" copy_to "$3" ;;
+  mount)
+    stock=$(cat "$st/stock-path" 2>/dev/null) || exit 0
+    if [[ $(with_stock "$stock" sha) != "$(cat "$st/stock.sha256")" ]]; then
+      echo "decal: stock theme changed (GNOME update?); keeping stock login screen. Run: ./decal add wallpaper" >&2
+      unmount_all "$stock"; echo stale > "$st/state"; exit 0
+    fi
+    unmount_all "$stock"   # replace any older or manual mount
+    if command -v selinuxenabled >/dev/null && selinuxenabled && ! chcon --reference="$stock" "$built"; then
+      echo "decal: could not copy the SELinux label onto the theme; keeping stock login screen" >&2
+      echo label-failed > "$st/state"; exit 0
+    fi
+    mount --bind "$built" "$stock" && echo mounted > "$st/state" ;;
+  umount)
+    stock=$(cat "$st/stock-path" 2>/dev/null) || exit 0
+    unmount_all "$stock"; echo unmounted > "$st/state" ;;
+esac

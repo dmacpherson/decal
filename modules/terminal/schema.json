@@ -1,0 +1,23 @@
+{"keys": {
+  "app": {"type": "string", "default": "ptyxis"},
+  "layout": {"type": "string", "default": "tokyo-sharp"},
+  "theme": {"type": "string", "default": "cyberpunk"},
+  "nerd-font": {"type": "string", "default": "FiraCode"},
+  "nerd-font-source": {"type": "source", "default": "github-release:ryanoasis/nerd-fonts"},
+  "autosuggest-source": {"type": "source", "default": "github-release:akinomyoga/ble.sh"},
+  "font": {"type": "string", "default": "FiraCode Nerd Font 10"},
+  "cursor": {"type": "enum", "values": ["block", "ibeam", "underline"], "default": "underline"},
+  "brew": {"type": "strings", "default": []},
+  "remove-brew": {"type": "bool", "default": false},
+  "features.prompt": {"type": "bool", "default": true},
+  "features.nerd-font": {"type": "bool", "default": true},
+  "features.autosuggest": {"type": "bool", "default": true},
+  "features.completions": {"type": "bool", "default": true},
+  "features.history": {"type": "bool", "default": true},
+  "features.fuzzy": {"type": "bool", "default": true},
+  "features.jump": {"type": "bool", "default": true},
+  "features.ls": {"type": "bool", "default": true},
+  "features.cat": {"type": "bool", "default": true},
+  "features.default-terminal": {"type": "bool", "default": true},
+  "features.auto-update": {"type": "bool", "default": true}
+}}

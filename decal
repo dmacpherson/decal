@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2030,SC2031,SC1091  # modules run in isolated subshells; module files sourced at runtime
+# decal: add/remove/report system customizations. See README.md.
+set -euo pipefail
+LS_REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+export LS_REPO
+MODULES_DIR="${DECAL_MODULES_DIR:-$LS_REPO/modules}"
+# shellcheck source=lib/common.sh
+source "$LS_REPO/lib/common.sh"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: ./decal [--dry-run] [--profile DIR] <command> [module...]
+  list                       modules and descriptions
+  status [module...]         installed / partial / not-installed / stale / not in profile
+  add    <module...|all>     apply (idempotent); all = every module in your profile
+  remove <module...|all>     undo exactly what add did
+  apply  <dir|file.tar.gz|git-url>   make it the active profile, then add everything in it
+                             (never removes anything; use remove, or [apps] remove-* lists)
+  export <out.tar.gz>        pack the active profile
+  fetch  [module...]         pre-download sources (themes, fonts, ...)
+  capture <module>           print current config to copy into your profile
+EOF
+  exit 1
+}
+
+args=(); OPT_PROFILE=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --dry-run) export LS_DRY_RUN=1 ;;
+    --profile) OPT_PROFILE=${2:?--profile needs a directory}; shift ;;
+    -h|--help) usage ;;
+    *) args+=("$1") ;;
+  esac; shift
+done
+set -- "${args[@]+"${args[@]}"}"
+[[ $# -ge 1 ]] || usage
+cmd=$1; shift
+PROFILE_HOME="${DECAL_PROFILE_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/decal/profile}"
+PROFILE_DIR="${OPT_PROFILE:-${DECAL_PROFILE:-$PROFILE_HOME}}"; export PROFILE_DIR
+
+if (( ${DECAL_FAKE_EUID:-$EUID} == 0 )) && [[ ${DECAL_ALLOW_ROOT:-0} != 1 ]]; then
+  die "run as your normal user, not root; privileged steps use sudo themselves"
+fi
+
+all_modules() { local d; for d in "$MODULES_DIR"/*/; do [[ -f $d/module.sh ]] && basename "$d"; done; }
+resolve() { # args -> validated module names (all expands)
+  local m
+  if [[ $# -eq 1 && $1 == all ]]; then all_modules; return; fi
+  for m in "$@"; do [[ -f $MODULES_DIR/$m/module.sh ]] || die "unknown module: $m"; echo "$m"; done
+}
+pyprof() { python3 "$LS_REPO/lib/profile.py" "$@" --profile "$PROFILE_DIR" --modules "$MODULES_DIR"; }
+in_profile() { pyprof shell "$1" 2>/dev/null | grep -qx 'declare -g P__in_profile=true'; }
+profile_modules() { local m; for m in $(all_modules); do in_profile "$m" && echo "$m"; done; return 0; }
+# module_field NAME VAR : read a variable from a module without running it (profile vars loaded)
+module_field() { ( set +u; cd "$MODULES_DIR/$1" && export MODULE_DIR="$PWD"; eval "$(pyprof shell "$1" 2>/dev/null)"; source ./module.sh >/dev/null 2>&1; eval "printf '%s' \"\${$2:-}\"" ); }
+
+# run_module ACTION NAME : isolated subshell with the module's profile variables
+run_module() {
+  local action=$1 name=$2
+  (
+    set -euo pipefail
+    export MODULE_DIR="$MODULES_DIR/$name"
+    source "$LS_REPO/lib/common.sh"
+    source "$LS_REPO/lib/platform.sh"
+    platform_load
+    # remove/status work from recorded state: a broken profile falls back to schema defaults
+    if ! penv=$(pyprof shell "$name" 2>"$LS_RUNTMP/perr"); then
+      if [[ $action != remove && $action != status ]]; then cat "$LS_RUNTMP/perr" >&2; exit 3; fi
+      warn "$(tail -1 "$LS_RUNTMP/perr") -- using defaults and what was recorded at add time"
+      penv=$(pyprof shell "$name" --defaults) || exit 3
+    fi
+    eval "$penv"
+    cd "$MODULE_DIR"
+    source ./module.sh
+    declare -F "module_$action" >/dev/null || { warn "$name has no $action"; exit 2; }
+    "module_$action"
+  )
+}
+# do_modules ACTION NAME... : run in order (remove: caller passes reverse order); stop at first failure
+do_modules() {
+  local action=$1 m rc; shift
+  (( $# )) || return 0
+  if [[ $action == add && ${LS_DRY_RUN:-0} != 1 && -n $LS_SUDO ]]; then
+    for m in "$@"; do
+      if [[ $(module_field "$m" MODULE_NEEDS_ROOT) == 1 ]]; then "$LS_SUDO" -v || die "sudo needed"; break; fi
+    done
+  fi
+  for m in "$@"; do
+    info "$action $m"
+    # not "run_module ... || die": that context disables set -e inside the subshell
+    set +e; run_module "$action" "$m"; rc=$?; set -e
+    (( rc == 0 )) || die "$action $m failed (stopped; later modules not run)"
+  done
+}
+find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single sub-folder)
+  if [[ -f $1/profile.toml ]]; then echo "$1"; return 0; fi
+  local subs=("$1"/*/)
+  if [[ ${#subs[@]} -eq 1 && -f ${subs[0]}profile.toml ]]; then echo "${subs[0]%/}"; return 0; fi
+  return 1
+}
+# set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: stage in a temp dir)
+# The new profile is validated before the active one is touched; a replaced real folder is kept as a dated backup.
+set_profile() {
+  local src=$1 t=$PROFILE_HOME stage tmp url
+  _valid() { python3 "$LS_REPO/lib/profile.py" check --profile "$1" --modules "$MODULES_DIR" || die "$src: the profile is invalid (the active profile was not changed)"; }
+  _aside() {  # move the active profile out of the way (a symlink is just dropped)
+    local b
+    if [[ -L $t ]]; then rm -f "$t"
+    elif [[ -e $t ]]; then b="$t.old-$(date +%Y%m%d-%H%M%S)"; [[ ! -e $b ]] || b+="-$$"; mv "$t" "$b"; info "previous profile kept at $b"; fi
+    mkdir -p "$(dirname "$t")"
+  }
+  if [[ -d $src ]]; then
+    [[ -f $src/profile.toml ]] || die "$src has no profile.toml"
+    src=$(cd "$src" && pwd -P)
+    _valid "$src"
+    if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$src; return 0; fi
+    if [[ -e $t && $(readlink -f "$t") == "$src" ]]; then PROFILE_DIR=$t; info "$src is already the active profile"; return 0; fi
+    _aside; ln -s "$src" "$t"
+  elif [[ $src == *.tar.gz || $src == *.tgz ]]; then
+    [[ -f $src ]] || die "not found: $src"
+    tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX"); tar -xzf "$src" -C "$tmp" || die "could not unpack $src"
+    stage=$(find_profile_root "$tmp") || die "$src contains no profile.toml"
+    _valid "$stage"
+    if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$stage; return 0; fi
+    _aside; mv "$stage" "$t"
+  elif [[ $src =~ ^(git\+)?(https://|ssh://|file://|git@) ]]; then
+    url=${src#git+}
+    tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX"); git clone -q "$url" "$tmp/p" || die "git clone failed: $url"
+    [[ -f $tmp/p/profile.toml ]] || die "$url has no profile.toml"
+    _valid "$tmp/p"
+    if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$tmp/p; return 0; fi
+    if [[ -d $t/.git && ! -L $t && $(git -C "$t" remote get-url origin 2>/dev/null) == "$url" ]]; then
+      git -C "$t" pull -q --ff-only || die "git pull failed in $t"
+    else
+      _aside; mv "$tmp/p" "$t"
+    fi
+  else
+    die "unknown profile source: $src (a folder, a .tar.gz, or a git URL)"
+  fi
+  PROFILE_DIR=$t
+  info "active profile: $t -> $(readlink -f "$t")"
+}
+
+LS_RUNTMP="$(mktemp -d "${TMPDIR:-/tmp}/decal.XXXXXX")"; export LS_RUNTMP
+trap 'rm -rf "$LS_RUNTMP"' EXIT
+
+case $cmd in
+  list)
+    for m in $(all_modules); do printf '%-18s %s\n' "$m" "$(module_field "$m" MODULE_DESC)"; done ;;
+  status)
+    if [[ $# -gt 0 ]]; then names=$(resolve "$@") || exit 1; else names=$(all_modules); fi
+    mapfile -t mods <<<"$names"
+    for m in "${mods[@]}"; do
+      set +e; res=$(run_module status "$m" 2>"$LS_RUNTMP/err"); rc=$?; set -e
+      (( rc == 0 )) || res="error: $(tail -1 "$LS_RUNTMP/err")"
+      if ! in_profile "$m"; then
+        if [[ $res == not-installed* ]]; then res="not in profile"; else res="$res (not in profile)"; fi
+      fi
+      printf '%-18s %s\n' "$m" "$res"
+    done ;;
+  capture)
+    [[ $# -eq 1 ]] || usage
+    m=$(resolve "$1")
+    set +e; run_module capture "$m"; rc=$?; set -e
+    [[ $rc == 2 ]] && die "$m has no capture"; exit $rc ;;
+  add|remove)
+    [[ $# -ge 1 ]] || usage
+    if [[ $cmd == add ]]; then
+      pyprof check || die "fix $PROFILE_DIR/profile.toml first (nothing was changed)"
+      if [[ $# -eq 1 && $1 == all ]]; then names=$(profile_modules); else names=$(resolve "$@") || exit 1; fi
+    else
+      names=$(resolve "$@") || exit 1   # not "< <(resolve)": die in a process substitution can't stop us
+    fi
+    mapfile -t mods < <(printf '%s\n' "$names" | sed '/^$/d')
+    if [[ $cmd == add ]]; then
+      for m in "${mods[@]}"; do in_profile "$m" || die "$m is not in your profile (add a [$m] section to $PROFILE_DIR/profile.toml)"; done
+    else
+      mapfile -t mods < <(printf '%s\n' "${mods[@]}" | tac)
+    fi
+    do_modules "$cmd" "${mods[@]}"
+    if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
+  apply)
+    [[ $# -eq 1 ]] || usage
+    set_profile "$1"; export PROFILE_DIR
+    pyprof check || die "$PROFILE_DIR/profile.toml is invalid (nothing was added)"
+    mapfile -t mods < <(profile_modules)
+    do_modules add "${mods[@]}"
+    if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
+  export)
+    [[ $# -eq 1 ]] || usage
+    [[ -f $PROFILE_DIR/profile.toml ]] || die "no active profile at $PROFILE_DIR (run ./decal apply first)"
+    run tar -czf "$1" --exclude=.git -C "$(readlink -f "$PROFILE_DIR")" .
+    info "exported $(readlink -f "$PROFILE_DIR") -> $1" ;;
+  fetch)
+    if [[ $# -gt 0 ]]; then names=$(resolve "$@") || exit 1; else names=$(profile_modules); fi
+    mapfile -t mods < <(printf '%s\n' "$names" | sed '/^$/d')
+    for m in "${mods[@]}"; do
+      set +e; run_module fetch "$m" 2>"$LS_RUNTMP/err"; rc=$?; set -e
+      if (( rc != 0 && rc != 2 )); then cat "$LS_RUNTMP/err" >&2; fi
+      (( rc == 0 || rc == 2 )) || die "fetch $m failed"
+    done ;;
+  *) usage ;;
+esac

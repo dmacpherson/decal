@@ -1,0 +1,10 @@
+{"keys": {
+  "flatpaks": {"type": "strings", "default": []},
+  "packages": {"type": "strings", "default": []},
+  "purge-data": {"type": "bool", "default": false},
+  "remove-flatpaks": {"type": "strings", "default": []},
+  "remove-packages": {"type": "strings", "default": []},
+  "remote": {"type": "string", "default": "flathub"},
+  "remote-url": {"type": "string", "default": "https://dl.flathub.org/repo/flathub.flatpakrepo"},
+  "defaults.*": {"type": "string"}
+}}

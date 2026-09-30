@@ -1,0 +1,12 @@
+[Icon Theme]
+Name=Demo-Icons
+Inherits=hicolor
+Directories=apps/48,places/48
+
+[apps/48]
+Size=48
+Context=Applications
+
+[places/48]
+Size=48
+Context=Places

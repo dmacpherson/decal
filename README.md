@@ -1,0 +1,48 @@
+# decal
+
+Stick your setup onto any Linux machine, and peel it off cleanly.
+
+decal keeps your look and tools in one profile (boot splash, login screen,
+wallpaper, cursor, icons, GTK theme, GNOME settings and extensions, apps,
+terminal) and applies it module by module on Fedora Atomic (Bazzite,
+Silverblue…), Fedora/RHEL, Debian/Ubuntu and Arch. Every module can be removed
+again, undoing exactly what it did.
+
+```bash
+./decal apply ~/my-profile          # a folder, a .tar.gz, or a git URL: becomes the active profile, then applied (never removes anything)
+./decal status                      # what's applied
+./decal add cursor icons            # apply some modules from the active profile
+./decal remove wallpaper            # undo exactly what add did
+./decal --dry-run apply <profile>   # show what would happen
+./decal export backup.tar.gz        # pack the active profile
+./decal fetch                       # pre-download themes, fonts, ...
+./decal capture gnome-settings      # print your current settings to copy into the profile
+```
+
+Run it as your normal user; it asks for sudo once when needed. The active
+profile lives at `~/.config/decal/profile`. Start from
+[`examples/profile/profile.toml`](examples/profile/profile.toml): every key is
+listed there, and typos are rejected before anything changes.
+
+| Module | What it does |
+|---|---|
+| plymouth | Boot splash + disk-unlock prompt (themes from any git source) |
+| wallpaper | Blurred login-screen background + desktop wallpaper, separate settings |
+| apps | Flatpaks / packages + default apps (installed if missing) |
+| gnome-settings | Appearance, input, power, dock, launcher (dconf file in your profile) |
+| gnome-extensions | Extensions + their settings + panel logo colour |
+| branding | Login-screen logo |
+| terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable |
+| cursor | Cursor pack (Material Bibata by default), also on the login screen |
+| icons | Icon theme from any source, optionally another theme's folders on top |
+| gtk-theme | GTK theme for GTK3 apps (optionally forced onto libadwaita apps) |
+
+Everything fetched from outside has a `source` key: `git+https://…` (with
+`path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an
+`https://` URL, or a path inside your profile. Downloads are cached in
+`~/.cache/decal/sources`.
+
+Adding a module: `modules/<name>/module.sh` (`MODULE_DESC`, `module_add`,
+`module_remove`, `module_status`, optionally `module_capture`/`module_fetch`,
+`MODULE_NEEDS_ROOT=1`) plus `schema.json` for its profile keys. Tests:
+`bash tests/run.sh`; distro e2e: `bash tests/containers/run.sh`.

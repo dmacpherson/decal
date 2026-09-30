@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+source "$(dirname "$0")/lib.sh"
+t_setup
+export DECAL_MODULES_DIR="$REPO/tests/fixtures/modules-apply" DECAL_PLATFORM=fedora
+export LS_TEST_LOG="$T_TMP/log"; : > "$LS_TEST_LOG"
+export DECAL_PROFILE_HOME="$T_TMP/home/profile"; unset DECAL_PROFILE
+S="$REPO/decal"
+P="$T_TMP/myprof"; mkdir -p "$P"; printf '[p1]\nword = "one"\n' > "$P/profile.toml"
+
+# directory: symlinked, then only profiled modules are added
+"$S" apply "$P" >/dev/null 2>&1; assert_eq "$?" "0" "apply dir rc"
+assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$P")" "dir profile is a symlink"
+assert_eq "$(tr '\n' ' ' < "$LS_TEST_LOG")" "p1 add one " "adds only modules in the profile"
+# re-applying never removes modules the profile doesn't mention
+: > "$LS_TEST_LOG"; "$S" apply "$P" >/dev/null 2>&1
+assert_not_contains "$(cat "$LS_TEST_LOG")" "remove" "apply never removes"
+out=$("$S" --sync apply "$P" 2>&1); assert_eq "$?" "1" "no --sync option"
+# status shows not in profile
+assert_contains "$("$S" status p2 2>&1)" "not in profile" "status: not in profile"
+# tarball with one top-level folder; replaces the symlink with a real dir
+mkdir -p "$T_TMP/t/prof"; printf '[p2]\nword = "two"\n' > "$T_TMP/t/prof/profile.toml"; tar -czf "$T_TMP/p.tar.gz" -C "$T_TMP/t" prof
+: > "$LS_TEST_LOG"; "$S" apply "$T_TMP/p.tar.gz" >/dev/null 2>&1
+[[ -L $DECAL_PROFILE_HOME ]] && _t_fail "tarball profile should be a real dir"
+assert_eq "$(tr '\n' ' ' < "$LS_TEST_LOG")" "p2 add two " "tarball applied"
+# git URL: clone, then re-apply pulls
+G="$T_TMP/gitprof"; mkdir -p "$G"; printf '[p1]\nword = "g1"\n' > "$G/profile.toml"
+git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t add -A; git -C "$G" -c user.name=t -c user.email=t@t commit -qm 1
+: > "$LS_TEST_LOG"; "$S" apply "file://$G" >/dev/null 2>&1; assert_contains "$(cat "$LS_TEST_LOG")" "p1 add g1" "git clone applied"
+assert_contains "$(ls -d "$DECAL_PROFILE_HOME".old-*)" ".old-" "previous profile kept as a dated backup"
+printf '[p1]\nword = "g2"\n' > "$G/profile.toml"; git -C "$G" -c user.name=t -c user.email=t@t commit -qam 2
+: > "$LS_TEST_LOG"; "$S" apply "file://$G" >/dev/null 2>&1; assert_contains "$(cat "$LS_TEST_LOG")" "p1 add g2" "re-apply pulls"
+# export round-trips without .git
+"$S" export "$T_TMP/out.tar.gz" >/dev/null 2>&1
+assert_contains "$(tar -tzf "$T_TMP/out.tar.gz")" "profile.toml" "export has profile.toml"
+assert_not_contains "$(tar -tzf "$T_TMP/out.tar.gz")" ".git/" "export has no git metadata"
+# fetch runs module_fetch for profiled modules
+: > "$LS_TEST_LOG"; "$S" fetch >/dev/null 2>&1; assert_eq "$(cat "$LS_TEST_LOG")" "p1 fetch" "fetch"
+# a failed fetch names the source and reason
+P3="$T_TMP/failprof"; mkdir -p "$P3"; printf '[p1]\nword = "fail"\n' > "$P3/profile.toml"
+out=$("$S" --profile "$P3" fetch 2>&1); assert_eq "$?" "1" "failed fetch rc"
+assert_contains "$out" "https://x.invalid/y" "failed fetch shows the URL and reason"
+# dry-run apply never changes the active profile
+before=$(readlink -f "$DECAL_PROFILE_HOME"); "$S" --dry-run apply "$P" >/dev/null 2>&1
+assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$before" "dry-run apply leaves the active profile"
+# bad sources
+out=$("$S" apply "$T_TMP/nope" 2>&1); assert_eq "$?" "1" "unknown source rc"
+mkdir -p "$T_TMP/empty"; out=$("$S" apply "$T_TMP/empty" 2>&1); assert_contains "$out" "has no profile.toml" "dir without profile.toml"
+# re-applying the active profile's own path is a no-op for the profile (real dir and symlink)
+: > "$LS_TEST_LOG"; out=$("$S" apply "$DECAL_PROFILE_HOME" 2>&1); assert_eq "$?" "0" "apply active (real dir) rc"
+assert_file "$DECAL_PROFILE_HOME/profile.toml" "active real-dir profile kept"
+assert_contains "$(cat "$LS_TEST_LOG")" "p1 add g2" "active profile re-applied"
+"$S" apply "$P" >/dev/null 2>&1; "$S" apply "$DECAL_PROFILE_HOME" >/dev/null 2>&1
+assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$P")" "active symlink not turned into a self-loop"
+# an invalid profile never replaces the active one
+B="$T_TMP/bad"; mkdir -p "$B"; printf '[p1]
+bogus = 1
+' > "$B/profile.toml"
+out=$("$S" apply "$B" 2>&1); assert_eq "$?" "1" "invalid profile rc"
+assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$P")" "invalid profile left the active one in place"
+printf '[p1]
+bogus = 1
+' > "$T_TMP/t/prof/profile.toml"; tar -czf "$T_TMP/bad.tar.gz" -C "$T_TMP/t" prof
+out=$("$S" apply "$T_TMP/bad.tar.gz" 2>&1); assert_eq "$?" "1" "invalid tarball rc"
+assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$P")" "invalid tarball left the active one in place"
+# earlier backups are never deleted
+printf '[p2]\nword = "two"\n' > "$T_TMP/t/prof/profile.toml"; tar -czf "$T_TMP/p.tar.gz" -C "$T_TMP/t" prof
+n0=$(ls -d "$DECAL_PROFILE_HOME".old* 2>/dev/null | wc -l)
+"$S" apply "$T_TMP/p.tar.gz" >/dev/null 2>&1; "$S" apply "$T_TMP/p.tar.gz" >/dev/null 2>&1
+assert_eq "$(ls -d "$DECAL_PROFILE_HOME".old* | wc -l)" "$((n0 + 1))" "each replaced real-dir profile kept as its own backup"
+# check refuses a folder without profile.toml
+out=$(python3 "$REPO/lib/profile.py" check --profile "$T_TMP/empty" --modules "$DECAL_MODULES_DIR" 2>&1); assert_eq "$?" "2" "check: missing profile.toml fails"
+assert_contains "$out" "no profile.toml" "check: missing profile.toml message"
+t_done

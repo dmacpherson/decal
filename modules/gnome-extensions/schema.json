@@ -1,0 +1,6 @@
+{"keys": {
+  "enable": {"type": "strings"},
+  "file": {"type": "path", "default": ""},
+  "logo-color": {"type": "color", "default": "#deddda"},
+  "source": {"type": "string", "default": "https://extensions.gnome.org"}
+}, "required": ["enable"]}

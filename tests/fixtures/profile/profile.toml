@@ -1,0 +1,42 @@
+# Generic test profile: no personal data, no network (every source is a path in this folder).
+[plymouth]
+source = "demo-plymouth"
+path = ""
+theme = "angular"
+
+[wallpaper]
+image = "wallpaper.jpg"
+
+[apps]
+flatpaks = ["com.discordapp.Discord"]
+
+[apps.defaults]
+browser = "com.brave.Browser"
+text-editor = "org.gnome.TextEditor"
+
+[gnome-settings]
+file = "gnome/settings.ini"
+
+[gnome-extensions]
+enable = ["logomenu@aryan_k", "blur-my-shell@aunetx", "bazaar-integration@kolunmi.github.io"]
+file = "gnome/extensions.ini"
+
+[branding]
+login-logo = ""
+
+[terminal]
+app = "ptyxis"
+brew = ["fastfetch"]
+
+[cursor]
+source = "demo-cursors"
+theme = "Demo-Cursor"
+
+[icons]
+source = "demo-icons"
+theme = "Demo-Icons"
+folders = "Demo-Folders"
+
+[gtk-theme]
+source = "demo-gtk"
+theme = "Demo-GTK"

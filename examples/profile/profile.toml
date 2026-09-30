@@ -1,0 +1,72 @@
+# Example decal profile. Copy this folder, edit it, then run:  ./decal apply <folder>
+# A module only runs if its [section] exists here. Keys shown are the defaults unless noted.
+# apply never removes anything: undo a module with ./decal remove <name>.
+
+[plymouth]                        # boot splash + disk-unlock prompt
+theme = "angular"                 # a folder in the source below
+# source = "git+https://github.com/adi1090x/plymouth-themes"
+# path = "pack_1"
+
+# [wallpaper]                     # put an image next to this file (or use an https:// URL)
+# image = "wallpaper.jpg"
+# [wallpaper.login]               # GDM login screen (blurred; kept across GNOME updates)
+# blur = 24
+# brightness = 65
+# [wallpaper.desktop]             # desktop; GNOME's lock screen shows this, blurred
+# blur = 0
+# brightness = 100
+
+[apps]
+flatpaks = []                     # extra Flathub apps, e.g. ["com.discordapp.Discord"]
+remove-flatpaks = []              # flatpaks you don't want, e.g. ["org.mozilla.firefox"] (app data kept)
+remove-packages = []              # native packages you don't want (refused if others depend on them)
+[apps.defaults]                   # role = app id; installed from Flathub if missing
+browser = "com.brave.Browser"
+# roles: browser text-editor pdf images video music files mail
+
+# [gnome-settings]
+# file = "gnome/settings.ini"     # start with: ./decal capture gnome-settings > gnome/settings.ini
+
+# [gnome-extensions]
+# enable = ["blur-my-shell@aunetx"]
+# file = "gnome/extensions.ini"
+
+[branding]
+login-logo = ""                   # "" hides the login-screen logo, or a path to an image
+
+[terminal]
+app = "ptyxis"                    # ptyxis kitty alacritty foot wezterm ghostty
+layout = "tokyo-sharp"
+theme = "cyberpunk"
+font = "FiraCode Nerd Font 10"
+cursor = "underline"              # block ibeam underline
+brew = ["fastfetch"]              # extra Homebrew formulae
+[terminal.features]
+prompt = true                     # Starship
+nerd-font = true
+autosuggest = true                # ble.sh
+completions = true                # carapace
+history = true                    # atuin (Ctrl-R)
+fuzzy = true                      # fzf (Ctrl-T, Alt-C)
+jump = true                       # zoxide (z)
+ls = true                         # eza
+cat = true                        # bat
+default-terminal = true
+auto-update = true
+
+[cursor]                          # default source: Material Bibata (all colours)
+theme = "Bibata-Material-Lilac"
+size = 24
+login = true
+
+[icons]
+source = "git+https://github.com/L4ki/Slot-Plasma-Themes"
+path = "Slot Icons Themes"
+theme = "Slot-Dark-Icons"
+folders = "Slot-Gradient-Dark-Icons"
+
+[gtk-theme]
+source = "git+https://github.com/L4ki/Slot-Plasma-Themes"
+path = "Slot GTK Themes"
+theme = "Slot-Dark-GTK"
+libadwaita = false

@@ -1,0 +1,125 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# decal prompt: Tokyo Night layout (fade-in start, sharp powerline
+# separators, simple segments) with a cyberpunk neon palette.
+# All colours live in [palettes.cyberpunk] below; tweak them there.
+
+palette = "cyberpunk"
+
+format = """
+[░▒▓](neon_pink)\
+$os\
+[](bg:seg_dir fg:neon_pink)\
+$directory\
+[](fg:seg_dir bg:seg_git)\
+$git_branch\
+$git_status\
+[](fg:seg_git bg:seg_lang)\
+$python\
+$nodejs\
+$bun\
+$rust\
+$golang\
+$php\
+[](fg:seg_lang bg:seg_time)\
+$cmd_duration\
+$time\
+[ ](fg:seg_time)\
+\n$character"""
+
+[palettes.cyberpunk]
+neon_pink   = "#f706cf"   # first block + fade
+neon_cyan   = "#00f6ff"
+neon_yellow = "#fcee0a"
+neon_red    = "#ff2a6d"
+ink         = "#0d0221"   # dark text on bright blocks
+text        = "#e6e1ff"
+dim         = "#a99bd6"
+seg_dir     = "#7a04eb"   # electric violet
+seg_git     = "#3a0c6e"
+seg_lang    = "#240847"
+seg_time    = "#16052c"
+
+[os]
+disabled = false
+style = "bg:neon_pink fg:ink"
+format = "[ $symbol ]($style)"
+
+[os.symbols]
+Bazzite = ""   # GNOME foot (no Bazzite glyph in Nerd Fonts; matches the panel logo)
+Fedora = "󰣛"
+Ubuntu = "󰕈"
+Debian = "󰣚"
+Arch = "󰣇"
+Linux = "󰌽"
+Unknown = "󰌽"
+
+[directory]
+style = "fg:text bg:seg_dir"
+format = "[ $path ]($style)"
+truncation_length = 3
+truncation_symbol = "…/"
+read_only = " 󰌾"
+read_only_style = "fg:neon_yellow bg:seg_dir"
+
+[directory.substitutions]
+"Documents" = "󰈙 "
+"Downloads" = " "
+"Music" = " "
+"Pictures" = " "
+"Work" = "󰃖 "
+
+[git_branch]
+symbol = ""
+style = "bg:seg_git"
+format = '[[ $symbol $branch ](fg:neon_cyan bg:seg_git)]($style)'
+
+[git_status]
+style = "bg:seg_git"
+format = '[[($all_status$ahead_behind )](fg:neon_yellow bg:seg_git)]($style)'
+
+[python]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:neon_pink bg:seg_lang)]($style)'
+
+[nodejs]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:neon_pink bg:seg_lang)]($style)'
+
+[bun]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:neon_pink bg:seg_lang)]($style)'
+
+[rust]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:neon_pink bg:seg_lang)]($style)'
+
+[golang]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:neon_pink bg:seg_lang)]($style)'
+
+[php]
+symbol = ""
+style = "bg:seg_lang"
+format = '[[ $symbol ($version) ](fg:neon_pink bg:seg_lang)]($style)'
+
+[cmd_duration]
+min_time = 2000
+style = "bg:seg_time"
+format = '[[ 󱦟 $duration ](fg:neon_yellow bg:seg_time)]($style)'
+
+[time]
+disabled = false
+time_format = "%R"
+style = "bg:seg_time"
+format = '[[  $time ](fg:dim bg:seg_time)]($style)'
+
+[character]
+success_symbol = "[❯](bold neon_cyan)"
+error_symbol = "[❯](bold neon_red)"
+vimcmd_symbol = "[❮](bold neon_pink)"

@@ -1,0 +1,8 @@
+{"keys": {
+  "source": {"type": "source"},
+  "path": {"type": "string", "default": ""},
+  "ref": {"type": "string", "default": ""},
+  "theme": {"type": "string"},
+  "install": {"type": "install", "default": "all"},
+  "libadwaita": {"type": "bool", "default": false}
+}, "required": ["source", "theme"]}

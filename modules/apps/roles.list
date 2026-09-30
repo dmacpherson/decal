@@ -1,0 +1,9 @@
+# role        MIME types it covers (profile: [apps.defaults] <role> = "<app id>")
+browser       x-scheme-handler/http x-scheme-handler/https text/html application/xhtml+xml
+text-editor   text/plain text/markdown application/x-shellscript
+pdf           application/pdf
+images        image/png image/jpeg image/webp image/gif
+video         video/mp4 video/x-matroska video/webm
+music         audio/mpeg audio/flac audio/ogg audio/x-wav
+files         inode/directory
+mail          x-scheme-handler/mailto
