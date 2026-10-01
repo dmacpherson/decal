@@ -105,10 +105,11 @@ export default class Probe extends Extension {
         });
     }
 
-    // a screen lock switches extensions off, but apps keep running: their colour stays
+    // on the lock screen the accent stays (Decal Tweaks runs there too), and so does the apps' colour
     _lockCheck(result, finish) {
         Main.sessionMode.pushMode('unlock-dialog');
         after(500, () => {
+            result.lockedToggle = this._colors().toggle;
             result.lockedGtk = gtkCss().includes('--accent-bg-color');
             Main.sessionMode.popMode('unlock-dialog');
             after(1000, () => {

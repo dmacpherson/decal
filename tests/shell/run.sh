@@ -65,7 +65,7 @@ check "apps: GTK 4 (libadwaita) apps get it" '[[ $(cat "$OUT/accent-on.gtk4") ==
 if [[ -d /usr/share/themes/adw-gtk3-dark ]]; then
   check "apps: GTK 3 (adw-gtk3) apps get it" '[[ $(cat "$OUT/accent-on.gtk3") == *"$pink"* && $(cat "$OUT/accent-off.gtk3") != *"$pink"* ]]'
 else echo "SKIP apps: GTK 3 (no adw-gtk3-dark theme)"; fi
-check "apps: kept through a screen lock, extension back after it" 'grep -q "\"lockedGtk\":true,\"unlockedState\":1" "$OUT/accent-on.txt"'
+check "lock screen: the accent stays, apps keep it" 'grep -q "\"lockedToggle\":\"$pink\",\"lockedGtk\":true,\"unlockedState\":1" "$OUT/accent-on.txt"'
 check "apps: taken out again when switched off" 'grep -q "\"offGtk\":false" "$OUT/accent-on.txt"'
 check "minimize: GNOME animates it when the tweak is off" 'grep -q "\"minimizeAnimating\":true" "$OUT/accent-off.txt"'
 check "minimize: instant when the tweak is on" 'grep -q "\"minimizeAnimating\":false" "$OUT/accent-on.txt" && grep -q "\"minimized\":true" "$OUT/accent-on.txt"'

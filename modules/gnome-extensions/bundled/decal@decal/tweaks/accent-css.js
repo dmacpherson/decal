@@ -44,7 +44,8 @@ export function inlineImports(css, read) {
 const BEGIN = '/* decal accent: begin';
 const END = '/* decal accent: end';
 
-// the block for GTK 4 (libadwaita derives its other accent shades from these) or GTK 3 (adw-gtk3's colours)
+// the block for GTK 4 (libadwaita derives its other accent shades from these) or GTK 3 (adw-gtk3's colours).
+// Plain GTK 4 apps (no libadwaita) have no accent: their built-in theme's colours are fixed.
 export function gtkAccentCss(gtk, color, fg) {
     const lines = gtk === 4
         ? [':root {', `  --accent-bg-color: ${color};`, `  --accent-fg-color: ${fg};`, '}']

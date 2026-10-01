@@ -1,7 +1,7 @@
 // Apps too (setting accent-apps, with accent-enabled): the accent colour also for GTK apps, as a marked block in
 // GTK's user stylesheets: ~/.config/gtk-4.0/gtk.css (libadwaita) and gtk-3.0/gtk.css (adw-gtk3). Apps read them
-// when they start. Unlike the tweaks, it stays on through a screen lock (GNOME switches extensions off there,
-// while the apps keep running): only switching it or the extension off takes the block out.
+// when they start. Only switching it or the extension off takes the block out: if GNOME switches the extension
+// off for a screen lock (it normally runs there too, see metadata.json), the apps keep running and keep their colour.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
