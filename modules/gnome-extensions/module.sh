@@ -1,8 +1,13 @@
 # shellcheck shell=bash disable=SC2034,SC2154  # sourced: vars read by the runner; helpers/vars from lib/ and the profile (P_*)
 MODULE_DESC="GNOME extensions (install from extensions.gnome.org, enable, settings, panel logo)"
-VENDORED_MAIN="#deddda"              # main fill of the vendored SVG; recoloured to P_logo_color
+VENDORED_MAIN="#deddda"              # fill that gets recoloured to P_logo_color (the bundled GNOME logo uses it;
+                                     # so should a profile's own `logo` SVG)
 ICON_DIR="$HOME/.local/share/decal/icons"
-_logo_path() { echo "$ICON_DIR/gnome-logo-${P_logo_color#\#}.svg"; }
+_logo_src() { if [[ -n $P_logo ]]; then echo "$P_logo"; else echo icons/gnome-logo.svg; fi; }   # decal runs modules from their own folder
+_logo_path() {   # colour in the file name: GNOME caches icons by path
+  if [[ -n $P_logo ]]; then local b; b=$(basename "$P_logo"); echo "$ICON_DIR/logo-${b%.*}-${P_logo_color#\#}.svg"
+  else echo "$ICON_DIR/gnome-logo-${P_logo_color#\#}.svg"; fi
+}
 _uuids() { if (( ${#P_enable[@]} )); then printf '%s\n' "${P_enable[@]}"; fi; }
 INSTALLED="$LS_USER_STATE/gnome-extensions.installed"
 # config files some extensions keep outside dconf (e.g. Burn My Windows profiles): [gnome-extensions.files]
@@ -74,7 +79,8 @@ module_add() {
     else warn "$u is not available on $P_source for GNOME $(_shell_major); skipped"; fi
   done
   # panel logo (colour in the filename: GNOME caches icons by path)
-  sed "s/fill:$VENDORED_MAIN/fill:$P_logo_color/g" icons/gnome-logo.svg > "$(_logo_path)"
+  sed "s/fill:$VENDORED_MAIN/fill:$P_logo_color/g" "$(_logo_src)" > "$(_logo_path)"
+  find "$ICON_DIR" -maxdepth 1 \( -name 'gnome-logo-*.svg' -o -name 'logo-*.svg' \) ! -name "$(basename "$(_logo_path)")" -delete
   # enabled-extensions: merge ours in; take ours out of disabled-extensions
   local ini; ini=$(mktemp)
   printf '[org/gnome/shell]\nenabled-extensions=%s\n' "$(_uuids | python3 -c 'import sys; print([l.strip() for l in sys.stdin if l.strip()])')" > "$ini"
@@ -112,7 +118,7 @@ print(cur+[x for x in add if x not in cur])' "$cur" "$LS_USER_STATE/gnome-extens
     while IFS= read -r u; do [[ -n $u ]] && gnome-extensions uninstall "$u" || true; done < "$LS_USER_STATE/gnome-extensions.installed"
     rm -f "$LS_USER_STATE/gnome-extensions.installed"
   fi
-  rm -f "$ICON_DIR"/gnome-logo-*.svg
+  rm -f "$ICON_DIR"/gnome-logo-*.svg "$ICON_DIR"/logo-*.svg
   local d; if [[ -r $FILES_REC ]]; then while IFS= read -r d; do if [[ -n $d ]]; then _file_restore "$d"; fi; done < <(cat "$FILES_REC"); rm -f "$FILES_REC"; fi
 }
 

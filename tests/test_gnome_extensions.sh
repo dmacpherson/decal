@@ -80,4 +80,26 @@ assert_contains "$(calls)" "gnome-extensions disable blur-my-shell@aunetx" "drop
 assert_contains "$(calls)" "gnome-extensions uninstall blur-my-shell@aunetx" "and uninstalled (decal installed it)"
 assert_eq "$(v3 REC)" "" "no longer recorded"
 assert_eq "$(v3 F2)" "user's own" "remove puts the user's original file back"
+# your own panel logo from the profile, recoloured with logo-color like the bundled GNOME logo
+printf '<svg xmlns="http://www.w3.org/2000/svg"><g style="fill:#deddda"><circle r="1"/></g></svg>\n' > "$PROFILE_DIR/gnome/mylogo.svg"
+sed -i '/^\[gnome-extensions\]$/a logo = "gnome/mylogo.svg"\nlogo-color = "#ff0000"' "$PROFILE_DIR/profile.toml"
+body4() {
+  cd "$REPO/modules/gnome-extensions"
+  ( set -euo pipefail; source "$REPO/lib/common.sh"; LS_REPO="$REPO"; source "$REPO/lib/platform.sh"; platform_load
+    eval "$(python3 "$REPO/lib/profile.py" shell "$MODNAME" --profile "$PROFILE_DIR" --modules "$REPO/modules")"; source ./module.sh
+    mkdir -p "$HOME/.local/share/decal/icons"; echo old > "$HOME/.local/share/decal/icons/gnome-logo-deddda.svg"
+    module_add 2>/dev/null
+    echo "ICON=$(dconf read /org/gnome/shell/extensions/Logo-menu/custom-icon-path)"
+    echo "FILL=$(grep -c 'fill:#ff0000' "$HOME/.local/share/decal/icons/logo-mylogo-ff0000.svg" 2>/dev/null)"
+    echo "OLD=$(ls "$HOME/.local/share/decal/icons/" | tr '\n' ' ')"
+    module_remove 2>/dev/null
+    echo "LEFT=$(ls "$HOME/.local/share/decal/icons/" 2>/dev/null | tr '\n' ' ')" )
+}
+export -f body4
+out=$(dbus-run-session -- bash -c body4 2>/dev/null)
+v4() { grep "^$1=" <<<"$out" | head -1 | cut -d= -f2-; }
+assert_eq "$(v4 ICON)" "'$HOME/.local/share/decal/icons/logo-mylogo-ff0000.svg'" "panel logo points at the profile's logo"
+assert_eq "$(v4 FILL)" "1" "recoloured with logo-color"
+assert_eq "$(v4 OLD)" "logo-mylogo-ff0000.svg " "the previous logo file is cleaned up"
+assert_eq "$(v4 LEFT)" "" "remove deletes it"
 t_done
