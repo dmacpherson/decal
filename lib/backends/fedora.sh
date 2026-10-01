@@ -15,3 +15,4 @@ txn_hooks_add() {
 }
 
 _pkg_del_check() { local out; out=$(rpm -e --test "$@" 2>&1) || { echo "$out" | tr '\n' ' '; return 1; }; }
+PKG_MAP[docker-engine]=moby-engine

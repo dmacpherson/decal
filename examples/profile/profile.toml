@@ -71,3 +71,6 @@ asset = "adw-gtk3*.tar.xz"
 theme = "adw-gtk3-dark"
 libadwaita = false
 flatpak = true                    # also for Flatpak apps (e.g. Brave), via the theme's Flathub package
+
+# [docker]                        # Docker Engine + Compose (docker and docker-compose commands)
+# group = true                    # add you to the docker group: docker without sudo (root-level access)

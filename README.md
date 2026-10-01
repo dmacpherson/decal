@@ -38,7 +38,8 @@ listed there, and typos are rejected before anything changes.
 | terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable |
 | cursor | Cursor pack (Material Bibata by default), also on the login screen |
 | icons | Icon theme from any source, optionally another theme's folders on top |
-| gtk-theme | GTK theme for GTK3 apps (optionally forced onto libadwaita apps) |
+| gtk-theme | GTK theme for GTK3 apps (optionally forced onto libadwaita apps), Flatpak apps included |
+| docker | Docker Engine + Compose, the docker service, you in the docker group |
 
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an

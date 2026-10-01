@@ -23,3 +23,4 @@ _pkg_del_check() {
   for p in $(awk '/^Remv /{print $2}' <<<"$out"); do [[ $want == *" $p "* ]] || extra+="$p "; done
   echo "${extra% }"
 }
+PKG_MAP[docker-engine]=docker.io
