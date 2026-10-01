@@ -80,6 +80,9 @@ flatpak = true                    # also for Flatpak apps (e.g. Brave), via the 
 # desktop = false                 # Claude desktop app: Linux beta, Debian/Ubuntu only (skipped elsewhere)
 # cowork = true                   # desktop's Cowork tab: adds you to the kvm group
 
+# [tools]                         # CLI tools from their official installers, updated on each apply
+# install = ["uv"]
+
 # [ollama]                        # local AI models; runs as you, models live in ~/.ollama
 # gpu = true                      # GPU build (Homebrew cask ollama-binary); false = CPU-only
 # models = ["llama3.2"]           # downloaded if missing (remove keeps them)

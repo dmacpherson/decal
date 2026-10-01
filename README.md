@@ -41,6 +41,7 @@ listed there, and typos are rejected before anything changes.
 | gtk-theme | GTK theme for GTK3 apps (optionally forced onto libadwaita apps), Flatpak apps included |
 | docker | Docker Engine + Compose, the docker service, you in the docker group |
 | claude | Claude Code (CLI) and the Claude desktop app (Linux beta: Debian/Ubuntu only) |
+| tools | Command-line tools from their official installers (uv), updated on every apply |
 | ollama | Ollama (local AI models) from Homebrew, GPU build, running as your user, plus your models |
 
 Everything fetched from outside has a `source` key: `git+https://…` (with
