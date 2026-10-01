@@ -1,1 +1,1 @@
-{"keys": {"word": {"type": "string", "default": "hi"}, "file": {"type": "path", "default": ""}}}
+{"keys": {"word": {"type": "string", "default": "hi"}, "file": {"type": "path", "default": ""}, "files.*": {"type": "path"}}}

@@ -34,8 +34,10 @@ if env.returncode:
     sys.exit(env.stderr.strip() or "profile.py failed")
 h.update(env.stdout.encode())
 prof = os.path.realpath(a.profile)
-for v in sorted(set(re.findall(r"'([^']+)'|(/[^\s'\"()]+)", env.stdout))):
-    p = v[0] or v[1]
+# absolute paths where a value starts (after =, (, a space or a quote): not a "/" inside a table key
+# like [burn-my-windows/profiles/decal.conf]=/path/to/file
+cands = re.findall(r"'(/[^']+)'", env.stdout) + re.findall(r"(?:^|[\s=(])(/[^\s'\"()\[\]=]+)", env.stdout, re.M)
+for p in sorted(set(cands)):
     if os.path.isabs(p) and os.path.exists(p) and os.path.realpath(p).startswith(prof + os.sep):
         h.update(p.encode())
         add_tree(p)
