@@ -1,6 +1,6 @@
 // gjs -m tests/js/accent_test.js [SHELL_CSS] : unit tests for the Decal Tweaks accent stylesheet generator
 import GLib from 'gi://GLib';
-import {accentCss, readableFg, validColor} from '../../modules/gnome-extensions/bundled/decal@decal/accent.js';
+import {accentCss, readableFg, validColor} from '../../modules/gnome-extensions/bundled/decal@decal/tweaks/accent-css.js';
 
 let fails = 0, count = 0;
 const eq = (got, want, what) => { count++; if (got !== want) { fails++; print(`  FAIL: ${what}: expected [${want}] got [${got}]`); } };

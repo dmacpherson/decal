@@ -1,4 +1,4 @@
-// Accent colour: GNOME Shell takes its accent only from a fixed list. Its stylesheet refers to it as
+// Accent colour stylesheet. GNOME Shell takes its accent only from a fixed list. Its stylesheet refers to it as
 // -st-accent-color / -st-accent-fg-color (often inside st-mix() etc.), so we re-declare exactly those
 // rules with a chosen colour. Built from the running Shell's own stylesheet, it follows GNOME updates.
 // Pure functions (no Shell imports): unit-tested with gjs.

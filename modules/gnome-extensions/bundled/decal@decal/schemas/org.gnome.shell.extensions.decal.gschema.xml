@@ -16,5 +16,10 @@
       <summary>Text colour on the accent</summary>
       <description>#rrggbb, or empty for automatic (white or black, whichever reads better)</description>
     </key>
+    <key name="instant-minimize" type="b">
+      <default>false</default>
+      <summary>Instant minimize</summary>
+      <description>Minimize windows without an animation; every other animation stays.</description>
+    </key>
   </schema>
 </schemalist>

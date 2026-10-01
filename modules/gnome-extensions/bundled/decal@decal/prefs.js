@@ -33,6 +33,12 @@ export default class DecalTweaksPrefs extends ExtensionPreferences {
         group.add(row);
 
         page.add(group);
+
+        const windows = new Adw.PreferencesGroup({title: 'Windows'});
+        const instant = new Adw.SwitchRow({title: 'Instant minimize', subtitle: 'No minimize animation; other animations stay'});
+        settings.bind('instant-minimize', instant, 'active', Gio.SettingsBindFlags.DEFAULT);
+        windows.add(instant);
+        page.add(windows);
         window.add(page);
     }
 }
