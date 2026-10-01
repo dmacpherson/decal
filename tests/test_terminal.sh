@@ -74,6 +74,31 @@ assert_nofile "$HOME/.local/share/blesh" "autosuggest off -> our ble.sh removed"
 assert_nofile "$XDG_CONFIG_HOME/xdg-terminals.list" "default-terminal off -> restored (was absent)"
 assert_contains "$(cat "$CFGD/bashrc.sh")" "starship init bash" "other features still there"
 mod module_remove 2>/dev/null
+# claude-code feature: Anthropic's installer when claude is missing; remove takes only what it installed, never ~/.claude
+cat > "$T_TMP/claude-install.sh" <<'EOF'
+mkdir -p "$HOME/.local/bin" "$HOME/.local/share/claude/versions"; echo bin > "$HOME/.local/share/claude/versions/9.9"
+ln -sf "$HOME/.local/share/claude/versions/9.9" "$HOME/.local/bin/claude"
+EOF
+mkdir -p "$HOME/.claude"; echo mine > "$HOME/.claude/settings.json"
+sed -i 's/^app = "ptyxis"$/&\nfeatures.claude-code = true/' "$PROFILE_DIR/profile.toml"
+mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"   # font already there: only the installer is fetched
+cc() { ( mod_run_pre() { ls_fetch() { echo "ls_fetch $*" >> "$STUBS/calls"; [[ $1 == https://claude.ai/install.sh ]] && echo "$T_TMP/claude-install.sh"; }; }; mod "$@" ) >>"$T_TMP/cc.log" 2>&1; }
+: > "$STUBS/calls"; cc module_add
+assert_contains "$(calls)" "ls_fetch https://claude.ai/install.sh" "Anthropic's installer fetched"
+assert_file "$HOME/.local/bin/claude" "claude installed"
+: > "$STUBS/calls"; cc module_add; assert_not_contains "$(calls)" "claude.ai/install.sh" "already installed: not reinstalled"
+sed -i 's/^features.claude-code = true$/features.claude-code = false/' "$PROFILE_DIR/profile.toml"; cc module_add
+assert_nofile "$HOME/.local/bin/claude" "switched off: the claude decal installed is removed"
+assert_nofile "$HOME/.local/share/claude" "with its versions"
+assert_eq "$(cat "$HOME/.claude/settings.json")" "mine" "~/.claude (settings, memory, history) never touched"
+# a claude that was already there before decal is never removed
+mkdir -p "$HOME/.local/bin"; echo own > "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/claude"
+sed -i 's/^features.claude-code = false$/features.claude-code = true/' "$PROFILE_DIR/profile.toml"; : > "$STUBS/calls"; cc module_add
+assert_not_contains "$(calls)" "claude.ai/install.sh" "an existing claude is used as is"
+sed -i 's/^features.claude-code = true$/features.claude-code = false/' "$PROFILE_DIR/profile.toml"; cc module_add
+assert_eq "$(cat "$HOME/.local/bin/claude")" "own" "an existing claude is never removed"
+sed -i '/^features.claude-code = /d' "$PROFILE_DIR/profile.toml"
+
 # switching fonts removes the old one; remove works from what add recorded even after the section is deleted
 FD="$HOME/.local/share/fonts/decal"; mkdir -p "$FD/FiraCodeNerdFont" "$FD/HackNerdFont"
 sed -i 's/^app = "ptyxis"$/&\nnerd-font = "Hack"\nremove-brew = true/' "$PROFILE_DIR/profile.toml"

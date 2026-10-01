@@ -53,6 +53,7 @@ ls = true                         # eza
 cat = true                        # bat
 default-terminal = true
 auto-update = true
+claude-code = false               # Claude Code (Anthropic's installer; it keeps itself updated)
 
 [cursor]                          # default source: Material Bibata (all colours)
 theme = "Bibata-Material-Lilac"
@@ -74,3 +75,7 @@ flatpak = true                    # also for Flatpak apps (e.g. Brave), via the 
 
 # [docker]                        # Docker Engine + Compose (docker and docker-compose commands)
 # group = true                    # add you to the docker group: docker without sudo (root-level access)
+
+# [ollama]                        # local AI models; runs as you, models live in ~/.ollama
+# gpu = true                      # GPU build (Homebrew cask ollama-binary); false = CPU-only
+# models = ["llama3.2"]           # downloaded if missing (remove keeps them)

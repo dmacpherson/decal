@@ -19,5 +19,6 @@
   "features.ls": {"type": "bool", "default": true},
   "features.cat": {"type": "bool", "default": true},
   "features.default-terminal": {"type": "bool", "default": true},
-  "features.auto-update": {"type": "bool", "default": true}
+  "features.auto-update": {"type": "bool", "default": true},
+  "features.claude-code": {"type": "bool", "default": false}
 }}

@@ -16,7 +16,9 @@ t_setup() {
   T_TMP="$(mktemp -d "${TMPDIR:-/tmp}/lstest.XXXXXX")"
   trap 'rm -rf "$T_TMP"' EXIT   # also when a test stops early
   export TMPDIR="$T_TMP"        # every temp file the code under test makes goes with it
-  # never the real home: modules write and delete under $HOME and the XDG folders (tests may point them elsewhere)
+  # never the real home: modules write and delete under $HOME and the XDG folders (tests may point them elsewhere);
+  # tools installed in the real home (e.g. ~/.local/bin) are hidden too
+  PATH=$(tr ':' '\n' <<<"$PATH" | grep -v "^$HOME/" | paste -sd:); export PATH
   export HOME="$T_TMP/home" XDG_CONFIG_HOME="$T_TMP/home/.config" XDG_DATA_HOME="$T_TMP/home/.local/share" \
          XDG_STATE_HOME="$T_TMP/home/.local/state" XDG_CACHE_HOME="$T_TMP/home/.cache"
   mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"

@@ -1,0 +1,4 @@
+{"keys": {
+  "gpu": {"type": "bool", "default": true},
+  "models": {"type": "strings", "default": []}
+}}

@@ -35,11 +35,12 @@ listed there, and typos are rejected before anything changes.
 | gnome-settings | Appearance, input, power, dock, launcher (dconf file in your profile) |
 | gnome-extensions | Extensions + their settings + panel logo colour |
 | branding | Login-screen logo |
-| terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable |
+| terminal | Terminal app, Starship prompt, Nerd Font and CLI tools (optionally Claude Code), each feature switchable |
 | cursor | Cursor pack (Material Bibata by default), also on the login screen |
 | icons | Icon theme from any source, optionally another theme's folders on top |
 | gtk-theme | GTK theme for GTK3 apps (optionally forced onto libadwaita apps), Flatpak apps included |
 | docker | Docker Engine + Compose, the docker service, you in the docker group |
+| ollama | Ollama (local AI models) from Homebrew, GPU build, running as your user, plus your models |
 
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an
