@@ -4,6 +4,42 @@ VENDORED_MAIN="#deddda"              # main fill of the vendored SVG; recoloured
 ICON_DIR="$HOME/.local/share/decal/icons"
 _logo_path() { echo "$ICON_DIR/gnome-logo-${P_logo_color#\#}.svg"; }
 _uuids() { if (( ${#P_enable[@]} )); then printf '%s\n' "${P_enable[@]}"; fi; }
+INSTALLED="$LS_USER_STATE/gnome-extensions.installed"
+# config files some extensions keep outside dconf (e.g. Burn My Windows profiles): [gnome-extensions.files]
+# maps a path under ~/.config to a file in the profile; a file that was already there is backed up and put back
+FILES_REC="$LS_USER_STATE/gnome-extensions.files"
+FILES_BK="$LS_USER_STATE/gnome-extensions-files"
+_cfg() { echo "${XDG_CONFIG_HOME:-$HOME/.config}/$1"; }
+_file_restore() {
+  local d=$1 t; t=$(_cfg "$d")
+  if [[ -e $FILES_BK/$d ]]; then mv "$FILES_BK/$d" "$t"; else rm -f "$t"; fi
+  grep -vxF "$d" "$FILES_REC" > "$FILES_REC.t" || true; mv "$FILES_REC.t" "$FILES_REC"
+}
+_files_apply() {
+  local d t
+  if [[ -r $FILES_REC ]]; then
+    while IFS= read -r d; do if [[ -n $d && -z ${P_files[$d]+x} ]]; then _file_restore "$d"; fi; done < <(cat "$FILES_REC")
+  fi
+  for d in "${!P_files[@]}"; do
+    t=$(_cfg "$d")
+    if ! grep -qxF "$d" "$FILES_REC" 2>/dev/null; then
+      if [[ -e $t ]]; then mkdir -p "$(dirname "$FILES_BK/$d")"; cp -a "$t" "$FILES_BK/$d"; fi
+      echo "$d" >> "$FILES_REC"
+    fi
+    mkdir -p "$(dirname "$t")"; install -m 600 "${P_files[$d]}" "$t"
+  done
+}
+# extensions decal installed that are no longer in the profile: disabled and uninstalled
+_drop_unlisted() {
+  [[ -r $INSTALLED ]] || return 0
+  local u keep=""
+  while IFS= read -r u; do
+    [[ -n $u ]] || continue
+    if _uuids | grep -qxF "$u"; then keep+="$u"$'\n'
+    else step "removing $u (no longer in the profile)"; gnome-extensions disable "$u" 2>/dev/null || true; gnome-extensions uninstall "$u" || true; fi
+  done < <(cat "$INSTALLED")
+  printf '%s' "$keep" > "$INSTALLED"
+}
 _dt() { python3 "$LS_REPO/lib/dconf_tool.py" "$@"; }
 _settings() {  # _settings CMD [args] : run dconf_tool on the profile's extension settings (if any)
   [[ -n $P_file ]] || return 0
@@ -29,6 +65,7 @@ module_add() {
   have gnome-extensions || die "gnome-extensions not found (GNOME Shell required)"
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] would install missing: $(for u in $(_uuids); do _present "$u" || printf '%s ' "$u"; done)"; return 0; fi
   mkdir -p "$LS_USER_STATE" "$ICON_DIR"
+  _drop_unlisted
   local u new=0
   for u in $(_uuids); do
     _present "$u" && continue
@@ -52,6 +89,7 @@ module_add() {
 import ast,sys; cur=ast.literal_eval(sys.argv[1] if sys.argv[1] != "@as []" else "[]"); drop=set(open(sys.argv[2]).read().split())
 print([x for x in cur if x not in drop])' "$dis" "$LS_USER_STATE/gnome-extensions.undisabled")"
   fi
+  _files_apply
   step "applying extension settings"
   _settings apply
   (( new )) && info "new extensions activate after you log out and back in"
@@ -75,6 +113,7 @@ print(cur+[x for x in add if x not in cur])' "$cur" "$LS_USER_STATE/gnome-extens
     rm -f "$LS_USER_STATE/gnome-extensions.installed"
   fi
   rm -f "$ICON_DIR"/gnome-logo-*.svg
+  local d; if [[ -r $FILES_REC ]]; then while IFS= read -r d; do if [[ -n $d ]]; then _file_restore "$d"; fi; done < <(cat "$FILES_REC"); rm -f "$FILES_REC"; fi
 }
 
 module_status() {

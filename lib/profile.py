@@ -105,8 +105,14 @@ def section_values(sec, schema, data, pdir, present):
     keys = schema.get("keys", {})
     wild = [k[:-1] for k in keys if k.endswith(".*")]          # "defaults." prefixes
     if present:
+        def in_table(path):   # a key of a "name.*" table (it may contain dots itself, e.g. a file name)
+            for w in wild:
+                tbl = get(data, w[:-1])
+                if path.startswith(w) and isinstance(tbl, dict) and path[len(w):] in tbl:
+                    return True
+            return False
         for path, _ in leaves(data):
-            if path in keys or any(path.startswith(w) and "." not in path[len(w):] for w in wild):
+            if path in keys or in_table(path):
                 continue
             known = ", ".join(sorted(keys))
             raise ProfileError(f"profile.toml: [{sec}] unknown key '{path}' (known: {known})")

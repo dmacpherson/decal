@@ -48,4 +48,36 @@ export -f body2
 assert_not_contains "$(calls)" "gnome-extensions install" "an installed-but-not-loaded extension isn't downloaded again"
 assert_eq "$(grep '^REC=' <<<"$out" | cut -d= -f2-)" "blur-my-shell@aunetx " "recorded once"
 assert_contains "$(grep '^ST=' <<<"$out")" "log out" "status: log out to activate, not 'not installed'"
+# extension config files kept outside dconf (e.g. Burn My Windows profiles) come from the profile;
+# and an extension decal installed that leaves the list is disabled and uninstalled on the next add
+mkdir -p "$PROFILE_DIR/gnome"; printf '[burn-my-windows-profile]\nfire-enable-effect=true\n' > "$PROFILE_DIR/gnome/bmw.conf"
+cat >> "$PROFILE_DIR/profile.toml" <<'EOT'
+[gnome-extensions.files]
+"burn-my-windows/profiles/decal.conf" = "gnome/bmw.conf"
+EOT
+body3() {
+  cd "$REPO/modules/gnome-extensions"
+  ( set -euo pipefail; source "$REPO/lib/common.sh"; LS_REPO="$REPO"; source "$REPO/lib/platform.sh"; platform_load
+    run_add() { ( eval "$(python3 "$REPO/lib/profile.py" shell "$MODNAME" --profile "$PROFILE_DIR" --modules "$REPO/modules")"; source ./module.sh; module_add 2>/dev/null ); }
+    run_rm() { ( eval "$(python3 "$REPO/lib/profile.py" shell "$MODNAME" --profile "$PROFILE_DIR" --modules "$REPO/modules")"; source ./module.sh; module_remove 2>/dev/null ); }
+    F="$XDG_CONFIG_HOME/burn-my-windows/profiles/decal.conf"
+    mkdir -p "$(dirname "$F")"; echo "user's own" > "$F"
+    echo "blur-my-shell@aunetx" > "$LS_USER_STATE/gnome-extensions.installed"; mkdir -p "$HOME/.local/share/gnome-shell/extensions/blur-my-shell@aunetx"
+    run_add
+    echo "F1=$(tr '\n' ' ' < "$F")"; echo "MODE=$(stat -c %a "$F")"
+    sed -i 's/, "blur-my-shell@aunetx"//' "$PROFILE_DIR/profile.toml"
+    run_add
+    echo "REC=$(tr '\n' ' ' < "$LS_USER_STATE/gnome-extensions.installed")"
+    run_rm
+    echo "F2=$(cat "$F")" )
+}
+export -f body3
+: > "$STUBS/calls"; out=$(dbus-run-session -- bash -c body3 2>/dev/null)
+v3() { grep "^$1=" <<<"$out" | head -1 | cut -d= -f2-; }
+assert_eq "$(v3 F1)" "[burn-my-windows-profile] fire-enable-effect=true " "profile file copied into ~/.config" 
+assert_eq "$(v3 MODE)" "600" "private file mode (like the extension writes it)"
+assert_contains "$(calls)" "gnome-extensions disable blur-my-shell@aunetx" "dropped extension disabled"
+assert_contains "$(calls)" "gnome-extensions uninstall blur-my-shell@aunetx" "and uninstalled (decal installed it)"
+assert_eq "$(v3 REC)" "" "no longer recorded"
+assert_eq "$(v3 F2)" "user's own" "remove puts the user's original file back"
 t_done
