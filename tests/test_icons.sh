@@ -13,7 +13,8 @@ echo x > "$PROFILE_DIR/demo-icons/Demo-Icons/actions/16/go-next-symbolic-rtl.svg
 out=$(run_mod add 2>&1); assert_eq "$?" "0" "add rc"
 C="$ICONS/Demo-Icons+Demo-Folders"
 for t in Demo-Icons Demo-Folders Demo-Spaced-Icons; do assert_file "$ICONS/$t/index.theme" "installed $t"; done
-assert_eq "$(readlink "$C/apps/48/app.svg")" "$ICONS/Demo-Icons/apps/48/app.svg" "base icons are symlinks (no copy)"
+assert_eq "$(readlink -f "$C/apps/48/app.svg")" "$(readlink -f "$ICONS/Demo-Icons/apps/48/app.svg")" "base icons are symlinks (no copy)"
+assert_eq "$(readlink "$C/apps/48/app.svg")" "../../../Demo-Icons/apps/48/app.svg" "relative links: they also work where Flatpak apps see the icons (/run/host/user-share/icons)"
 assert_nofile "$C/actions/16/window-close-symbolic.svg" "theme's UI symbols left out (symbolic = adwaita by default)"
 assert_file "$C/actions/16/window-close.svg" "full-colour icons kept"
 assert_nofile "$C/actions/16/go-next-symbolic-rtl.svg" "right-to-left UI symbols left out too"

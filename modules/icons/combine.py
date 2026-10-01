@@ -20,6 +20,11 @@ def symbolic(f):  # foo-symbolic.svg, foo-symbolic-rtl.svg (not emblem-symbolic-
     return re.search(r"-symbolic(-rtl|-ltr)?(\.[a-z]+)?$", f) is not None
 
 
+def link(target, name):
+    """Relative symlink: it also resolves where Flatpak apps see the icons (/run/host/user-share/icons)."""
+    os.symlink(os.path.relpath(target, os.path.dirname(name)), name)
+
+
 def overlay(src_root, dst_root, skip_symbolic):
     """Mirror src_root's folders under dst_root and symlink each file (replacing what's there)."""
     for root, _dirs, files in os.walk(src_root):
@@ -31,7 +36,7 @@ def overlay(src_root, dst_root, skip_symbolic):
             t = os.path.join(d, f)
             if os.path.lexists(t):
                 os.unlink(t)
-            os.symlink(os.path.join(root, f), t)
+            link(os.path.join(root, f), t)
 
 
 shutil.rmtree(a.out, ignore_errors=True)
@@ -43,13 +48,13 @@ for entry in os.listdir(a.base):
     if a.no_symbolic and os.path.isdir(src):
         overlay(src, os.path.join(a.out, entry), True)   # file by file, to leave the symbolic ones out
     elif entry != "places":
-        os.symlink(src, os.path.join(a.out, entry))       # whole folder: nothing to leave out
+        link(src, os.path.join(a.out, entry))             # whole folder: nothing to leave out
 if a.folders and os.path.isdir(os.path.join(a.folders, "places")):
     if not a.no_symbolic:
         overlay(os.path.join(a.base, "places"), os.path.join(a.out, "places"), False)
     overlay(os.path.join(a.folders, "places"), os.path.join(a.out, "places"), a.no_symbolic)
 elif not a.no_symbolic and os.path.isdir(os.path.join(a.base, "places")):
-    os.symlink(os.path.join(a.base, "places"), os.path.join(a.out, "places"))
+    link(os.path.join(a.base, "places"), os.path.join(a.out, "places"))
 
 
 def read(path):
