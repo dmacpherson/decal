@@ -31,4 +31,21 @@ assert_eq "$(v LOGO)" "7" "logo generated in LOGO_COLOR (7 main fills)"
 assert_nofile "$T_TMP/home/.local/share/decal/icons/gnome-logo-deddda.svg" "logo removed on remove"
 assert_eq "$(v EN2)" "" "user-db enabled-extensions back to unset"
 assert_contains "$(calls)" "https://extensions.gnome.org/extension-info/" "extensions site from profile default"
+# installed but not yet loaded (the shell only sees new extensions after logging out and in):
+# not downloaded again, recorded once, and status says to log out rather than "not installed"
+body2() {
+  cd "$REPO/modules/gnome-extensions"
+  ( set -euo pipefail; source "$REPO/lib/common.sh"; LS_REPO="$REPO"; source "$REPO/lib/platform.sh"; platform_load
+    eval "$(python3 "$REPO/lib/profile.py" shell "$MODNAME" --profile "$PROFILE_DIR" --modules "$REPO/modules")"; source ./module.sh
+    mkdir -p "$HOME/.local/share/gnome-shell/extensions/blur-my-shell@aunetx"
+    echo "blur-my-shell@aunetx" > "$LS_USER_STATE/gnome-extensions.installed"
+    module_add 2>/dev/null
+    echo "REC=$(tr '\n' ' ' < "$LS_USER_STATE/gnome-extensions.installed")"
+    echo "ST=$(module_status)" )
+}
+export -f body2
+: > "$STUBS/calls"; out=$(dbus-run-session -- bash -c body2 2>/dev/null)
+assert_not_contains "$(calls)" "gnome-extensions install" "an installed-but-not-loaded extension isn't downloaded again"
+assert_eq "$(grep '^REC=' <<<"$out" | cut -d= -f2-)" "blur-my-shell@aunetx " "recorded once"
+assert_contains "$(grep '^ST=' <<<"$out")" "log out" "status: log out to activate, not 'not installed'"
 t_done

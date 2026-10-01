@@ -10,6 +10,10 @@ _settings() {  # _settings CMD [args] : run dconf_tool on the profile's extensio
   _dt "$1" --base /org/gnome/shell/extensions/ --ini "$P_file" --extensions \
     --prev "$LS_USER_STATE/gnome-extensions.prev.json" --subst "@HOME@=$HOME" --subst "@LOGO_PATH@=$(_logo_path)" --subst "@TERMINAL_CMD@=$(terminal_cmd)" "${@:2}"
 }
+# known to the running shell, or installed but waiting for the next login (the shell only scans at login)
+_loaded() { gnome-extensions info "$1" >/dev/null 2>&1; }
+_on_disk() { [[ -d ${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$1 ]]; }
+_present() { _loaded "$1" || _on_disk "$1"; }
 _shell_major() { gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -1; }
 
 _install_from_ego() {  # UUID -> 0 installed, 1 unavailable
@@ -23,12 +27,13 @@ _install_from_ego() {  # UUID -> 0 installed, 1 unavailable
 
 module_add() {
   have gnome-extensions || die "gnome-extensions not found (GNOME Shell required)"
-  if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] would install missing: $(for u in $(_uuids); do gnome-extensions info "$u" >/dev/null 2>&1 || printf '%s ' "$u"; done)"; return 0; fi
+  if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] would install missing: $(for u in $(_uuids); do _present "$u" || printf '%s ' "$u"; done)"; return 0; fi
   mkdir -p "$LS_USER_STATE" "$ICON_DIR"
   local u new=0
   for u in $(_uuids); do
-    gnome-extensions info "$u" >/dev/null 2>&1 && continue
-    if _install_from_ego "$u"; then echo "$u" >> "$LS_USER_STATE/gnome-extensions.installed"; new=1
+    _present "$u" && continue
+    if _install_from_ego "$u"; then
+      grep -qxF "$u" "$LS_USER_STATE/gnome-extensions.installed" 2>/dev/null || echo "$u" >> "$LS_USER_STATE/gnome-extensions.installed"; new=1
     else warn "$u is not available on $P_source for GNOME $(_shell_major); skipped"; fi
   done
   # panel logo (colour in the filename: GNOME caches icons by path)
@@ -73,11 +78,14 @@ print(cur+[x for x in add if x not in cur])' "$cur" "$LS_USER_STATE/gnome-extens
 }
 
 module_status() {
-  local u missing=() s
-  for u in $(_uuids); do gnome-extensions info "$u" >/dev/null 2>&1 || missing+=("$u"); done
+  local u missing=() pending=() s wait=""
+  for u in $(_uuids); do
+    if _loaded "$u"; then :; elif _on_disk "$u"; then pending+=("$u"); else missing+=("$u"); fi
+  done
   if [[ -n $P_file ]]; then s=$(_settings status | tail -1); else s=installed; fi
+  if (( ${#pending[@]} )); then wait="${#pending[@]} active after you log out and back in"; fi
   if [[ $s == not-installed ]]; then echo "not-installed"
-  elif (( ${#missing[@]} )) || [[ $s != installed ]]; then echo "partial (${#missing[@]} not installed; settings: $s)"
-  else echo "installed"; fi
+  elif (( ${#missing[@]} )) || [[ $s != installed ]]; then echo "partial (${#missing[@]} not installed${wait:+; $wait}; settings: $s)"
+  else echo "installed${wait:+ ($wait)}"; fi
 }
 module_capture() { python3 "$LS_REPO/lib/dconf_tool.py" capture --base /org/gnome/shell/extensions/; }
