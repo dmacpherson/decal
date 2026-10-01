@@ -13,29 +13,65 @@ export default class Probe extends Extension {
     enable() {
         const out = GLib.getenv('PROBE_OUT');
         const result = {};
-        const finish = () => {
+        const write = () => {
             GLib.file_set_contents(`${out}.txt`, JSON.stringify(result));
             GLib.file_set_contents(`${out}.done`, '');
         };
+        const finish = () => this._offCheck(result, write);
         after(8000, () => {
             Main.overview.hide();
             after(2000, () => {
-                // accent: which custom stylesheets are loaded, and a screenshot with Quick Settings open
+                // accent: which custom stylesheets are loaded and the colours they give
                 const ext = Main.extensionManager.lookup('decal@decal');
                 result.state = ext?.state;
                 result.error = String(ext?.error ?? '');
-                result.sheets = St.ThemeContext.get_for_stage(global.stage).get_theme()
-                    .get_custom_stylesheets().map(f => f.get_path());
-                Main.panel.statusArea.quickSettings.menu.open(false);
-                after(1500, () => {
-                    const stream = Gio.File.new_for_path(`${out}.png`).replace(null, false, Gio.FileCreateFlags.NONE, null);
-                    new Shell.Screenshot().screenshot(false, stream, (o, res) => {
-                        try { o.screenshot_finish(res); } catch (e) { result.shotError = String(e); }
-                        stream.close(null);
-                        Main.panel.statusArea.quickSettings.menu.close(false);
-                        this._minimizeCheck(result, finish);
-                    });
+                const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
+                result.sheets = [theme.default_stylesheet, ...theme.get_custom_stylesheets()].map(f => f.get_uri());
+                // another extension's stylesheet arriving while Decal Tweaks runs
+                theme.load_stylesheet(this.dir.get_child('late.css'));
+                after(500, () => {
+                    result.colors = this._colors();
+                    this._screenshot(result, finish);
                 });
+            });
+        });
+    }
+
+    // computed colours of widgets styled by GNOME, the accent-user@decal fixture and late.css
+    _colors() {
+        const hex = c => `#${[c.red, c.green, c.blue].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+        const calendar = new St.BoxLayout({style_class: 'calendar'});
+        // unclickable, so :insensitive: GNOME's rule for that is more specific than the fixture's, yet loses to it
+        const today = new St.Label({style_class: 'calendar-day calendar-today', text: '1'});
+        calendar.add_child(today);
+        const icon = new St.Label({style_class: 'decal-test-icon', text: 'x'});
+        const dot = new St.Widget({style_class: 'decal-test-dot'});
+        const late = new St.Label({style_class: 'decal-test-late', text: 'x'});
+        const toggle = new St.Button({style_class: 'quick-toggle', toggle_mode: true, checked: true});
+        const actors = [calendar, icon, dot, late, toggle];
+        actors.forEach(a => Main.uiGroup.add_child(a));
+        const colors = {
+            icon: hex(icon.get_theme_node().get_foreground_color()),
+            dot: hex(dot.get_theme_node().get_background_color()),
+            late: hex(late.get_theme_node().get_foreground_color()),
+            today: hex(today.get_theme_node().get_background_color()),
+            toggle: hex(toggle.get_theme_node().get_background_color()),
+        };
+        actors.forEach(a => a.destroy());
+        return colors;
+    }
+
+    // a screenshot with Quick Settings open
+    _screenshot(result, finish) {
+        Main.panel.statusArea.quickSettings.menu.open(false);
+        after(1500, () => {
+            const stream = Gio.File.new_for_path(`${GLib.getenv('PROBE_OUT')}.png`)
+                .replace(null, false, Gio.FileCreateFlags.NONE, null);
+            new Shell.Screenshot().screenshot(false, stream, (o, res) => {
+                try { o.screenshot_finish(res); } catch (e) { result.shotError = String(e); }
+                stream.close(null);
+                Main.panel.statusArea.quickSettings.menu.close(false);
+                this._minimizeCheck(result, finish);
             });
         });
     }
@@ -55,6 +91,21 @@ export default class Probe extends Extension {
                 result.minimized = actor.meta_window.minimized;
                 finish();
             });
+        });
+    }
+
+    // accent switched off while running: GNOME's theme and accent come back, the other stylesheets stay
+    _offCheck(result, finish) {
+        Main.extensionManager.lookup('decal@decal')?.stateObj?.getSettings().set_boolean('accent-enabled', false);
+        after(500, () => {
+            const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
+            const sheets = [theme.default_stylesheet, ...theme.get_custom_stylesheets()].map(f => f.get_uri());
+            const colors = this._colors();
+            result.offToggle = colors.toggle;
+            result.offIcon = colors.icon;
+            result.offOurs = sheets.filter(u => u.includes('decal-accent')).length;
+            result.offOthers = sheets.filter(u => /accent-user@decal|late\.css/.test(u)).length;
+            finish();
         });
     }
 

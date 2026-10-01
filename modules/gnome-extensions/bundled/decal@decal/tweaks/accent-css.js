@@ -1,14 +1,16 @@
-// Accent colour stylesheet. GNOME Shell takes its accent only from a fixed list. Its stylesheet refers to it as
-// -st-accent-color / -st-accent-fg-color (often inside st-mix() etc.), so we re-declare exactly those
-// rules with a chosen colour. Built from the running Shell's own stylesheet, it follows GNOME updates.
+// Accent colour stylesheets. GNOME Shell takes its accent only from a fixed list. Stylesheets refer to it as
+// -st-accent-color / -st-accent-fg-color (often inside st-mix() etc.). GNOME's own stylesheet is copied whole
+// with those replaced (recolor); an extension's stylesheet gets override rules re-declaring exactly its accent
+// declarations (accentCss). Built from the running Shell's stylesheets, it follows GNOME updates.
 // Pure functions (no Shell imports): unit-tested with gjs.
 
 const ACCENT = /-st-accent-(fg-)?color/;
 
-// css: GNOME Shell stylesheet text; color, fg: '#rrggbb'. Returns override CSS (accent declarations only).
+// css: an extension stylesheet's text; color, fg: '#rrggbb'. Returns override CSS (accent declarations only).
 export function accentCss(css, color, fg) {
     const out = [];
-    const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    // comments and @-statements (@import url(...);) out: they would glue onto the next selector
+    const text = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@[^{};]*;/g, '');
     for (const [, selector, body] of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
         const sel = selector.trim();
         if (!sel || sel.startsWith('@'))
@@ -16,11 +18,25 @@ export function accentCss(css, color, fg) {
         const decls = body.split(';').map(d => d.trim()).filter(d => ACCENT.test(d));
         if (!decls.length)
             continue;
-        const lines = decls.map(d =>
-            `  ${d.replaceAll('-st-accent-fg-color', fg).replaceAll('-st-accent-color', color)};`);
+        const lines = decls.map(d => `  ${recolor(d, color, fg)};`);
         out.push(`${sel} {\n${lines.join('\n')}\n}`);
     }
     return out.join('\n');
+}
+
+// css with GNOME's accent replaced by color / fg everywhere
+export function recolor(css, color, fg) {
+    return css.replaceAll('-st-accent-fg-color', fg).replaceAll('-st-accent-color', color);
+}
+
+// css with each url(path) replaced by url("resolve(path)"), so a copy elsewhere still finds the files
+export function absoluteUrls(css, resolve) {
+    return css.replace(/url\(\s*["']?([^"')]+?)["']?\s*\)/g, (_m, path) => `url("${resolve(path)}")`);
+}
+
+// css with each @import replaced by read(path): the imported file's text ('' when it can't be read)
+export function inlineImports(css, read) {
+    return css.replace(/@import\s+(?:url\(\s*)?["']?([^"')\s;]+)["']?\s*\)?[^;]*;/g, (_m, path) => read(path));
 }
 
 // White or black text, whichever is more readable on the colour (WCAG relative luminance).

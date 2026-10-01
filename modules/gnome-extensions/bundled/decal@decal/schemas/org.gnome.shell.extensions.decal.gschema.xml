@@ -4,7 +4,7 @@
     <key name="accent-enabled" type="b">
       <default>false</default>
       <summary>Custom accent colour</summary>
-      <description>Use accent-color instead of GNOME's accent in GNOME Shell (top bar, Quick Settings, sliders, switches, focus).</description>
+      <description>Use accent-color instead of GNOME's accent in GNOME Shell (Quick Settings, sliders, switches, focus) and in other extensions' stylesheets.</description>
     </key>
     <key name="accent-color" type="s">
       <default>'#ff40a0'</default>

@@ -12,10 +12,11 @@ shell_run() {  # shell_run NAME ON : one headless Shell with every Decal tweak o
   ( export HOME=$T/home XDG_CONFIG_HOME=$T/home/.config XDG_DATA_HOME=$T/home/.local/share XDG_CACHE_HOME=$T/home/.cache \
            XDG_RUNTIME_DIR=$T/run PROBE_OUT="$OUT/$name"
     mkdir -p "$XDG_DATA_HOME/gnome-shell/extensions" "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
-    cp -r "$repo/modules/gnome-extensions/bundled/decal@decal" "$here/probe@decal" "$XDG_DATA_HOME/gnome-shell/extensions/"
+    cp -r "$repo/modules/gnome-extensions/bundled/decal@decal" "$here/probe@decal" "$here/accent-user@decal" \
+          "$XDG_DATA_HOME/gnome-shell/extensions/"
     glib-compile-schemas "$XDG_DATA_HOME/gnome-shell/extensions/decal@decal/schemas"
     dbus-run-session -- bash -c '
-      dconf write /org/gnome/shell/enabled-extensions "[\"decal@decal\", \"probe@decal\"]"
+      dconf write /org/gnome/shell/enabled-extensions "[\"accent-user@decal\", \"decal@decal\", \"probe@decal\"]"
       dconf write /org/gnome/shell/welcome-dialog-last-shown-version "\"999\""
       dconf write /org/gnome/desktop/interface/accent-color "\"blue\""
       dconf write /org/gnome/shell/extensions/decal/accent-enabled '"$on"'
@@ -38,9 +39,21 @@ shell_run accent-off false
 shell_run accent-on true
 check "shell started with the extension" '[[ -e $OUT/accent-on.done ]]'
 check "accent: no JavaScript errors" '! grep -q "JS ERROR" "$OUT/accent-on.log" "$OUT/accent-off.log"'
-check "accent: stylesheet loaded when on" 'grep -q "decal-accent" "$OUT/accent-on.txt"'
-check "accent: nothing loaded when off" '! grep -q "decal-accent" "$OUT/accent-off.txt"'
+check "accent: recoloured stylesheets in use when on" 'grep -q "decal-accent" "$OUT/accent-on.txt"'
+check "accent: nothing of ours when off" '! grep -q "decal-accent" "$OUT/accent-off.txt"'
 check "accent: extension active" 'grep -q "\"state\":1" "$OUT/accent-on.txt"'
+# accent-user@decal uses the accent in its own stylesheet (like Just Perfection); probe@decal loads late.css later
+# shellcheck disable=SC2034  # read inside the check expressions
+blue='#3584e4' pink='#ff40a0'
+check "accent: GNOME's own accent replaced" 'grep -q "\"toggle\":\"$pink\"" "$OUT/accent-on.txt" && grep -q "\"toggle\":\"$blue\"" "$OUT/accent-off.txt"'
+check "accent: other extensions' accent rules use it" 'grep -q "\"icon\":\"$pink\"" "$OUT/accent-on.txt"'
+check "accent: also in a stylesheet they @import" 'grep -q "\"dot\":\"$pink\"" "$OUT/accent-on.txt"'
+check "accent: also in a stylesheet loaded later" 'grep -q "\"late\":\"$pink\"" "$OUT/accent-on.txt"'
+check "accent: other extensions keep GNOME's accent when off" 'grep -q "\"icon\":\"$blue\"" "$OUT/accent-off.txt"'
+check "accent: an extension restyling a GNOME accent rule still wins, even a more specific one" \
+  'grep -q "\"today\":\"#123456\"" "$OUT/accent-on.txt" && grep -q "\"today\":\"#123456\"" "$OUT/accent-off.txt"'
+check "accent: switching it off brings GNOME's back, other stylesheets kept" \
+  'grep -q "\"offToggle\":\"$blue\",\"offIcon\":\"$blue\",\"offOurs\":0,\"offOthers\":2" "$OUT/accent-on.txt"'
 check "minimize: GNOME animates it when the tweak is off" 'grep -q "\"minimizeAnimating\":true" "$OUT/accent-off.txt"'
 check "minimize: instant when the tweak is on" 'grep -q "\"minimizeAnimating\":false" "$OUT/accent-on.txt" && grep -q "\"minimized\":true" "$OUT/accent-on.txt"'
 if [[ -n $keep ]]; then echo "screenshots: $OUT/accent-off.png $OUT/accent-on.png"; else rm -rf "$OUT"; fi

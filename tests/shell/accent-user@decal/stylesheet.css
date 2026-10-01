@@ -1,0 +1,7 @@
+/* Test fixture: an extension that uses GNOME's accent in its own stylesheet, like Just Perfection's coloured icons */
+@import url("more.css");
+
+.decal-test-icon { color: -st-accent-color; }
+
+/* restyles a GNOME accent rule on purpose: must keep winning over Decal Tweaks */
+.calendar .calendar-day.calendar-today { background-color: #123456; }

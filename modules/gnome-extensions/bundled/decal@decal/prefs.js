@@ -11,7 +11,7 @@ export default class DecalTweaksPrefs extends ExtensionPreferences {
         const page = new Adw.PreferencesPage();
         const group = new Adw.PreferencesGroup({
             title: 'Accent colour',
-            description: 'Any colour for GNOME Shell: top bar, Quick Settings, sliders, switches. Apps keep GNOME\'s accent.',
+            description: 'Any colour for GNOME Shell: Quick Settings, sliders, switches, and other extensions\' accent-coloured bits. Apps keep GNOME\'s accent.',
         });
         const on = new Adw.SwitchRow({title: 'Custom accent colour'});
         settings.bind('accent-enabled', on, 'active', Gio.SettingsBindFlags.DEFAULT);
