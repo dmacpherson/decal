@@ -6,6 +6,8 @@ REC="$LS_USER_STATE/gtk-theme.installed"
 PREV="$LS_USER_STATE/gtk-theme.prev"
 G4REC="$LS_USER_STATE/gtk-theme.gtk4"
 G4BK="$LS_USER_STATE/gtk4-backup"
+FPREC="$LS_STATE/gtk-theme/flatpak"   # the theme's Flatpak package, if this module installed it
+MODULE_NEEDS_ROOT=1                   # system-wide Flatpak package (next to the apps using it)
 
 _src() {
   local a=() x
@@ -39,6 +41,27 @@ _gtk4_unlink() {
   done < "$G4REC"
   rm -f "$G4REC"; rmdir "$G4BK" 2>/dev/null || true
 }
+# Flatpak apps (Brave, ...) only see themes packaged for Flatpak: org.gtk.Gtk3theme.<name> on Flathub,
+# which Flatpak hands to every app when the desktop's gtk-theme has that name
+_flatpak_theme() {
+  have flatpak || return 0
+  local want="org.gtk.Gtk3theme.$P_theme" cur; cur=$(cat "$FPREC" 2>/dev/null || true)
+  if [[ -n $cur && $cur != "$want" ]]; then _flatpak_theme_remove; fi
+  if flatpak info --system "$want" >/dev/null 2>&1; then return 0; fi
+  if flatpak remote-info --system flathub "$want" >/dev/null 2>&1; then
+    step "installing $want for Flatpak apps"
+    srun flatpak install --system --noninteractive -y flathub "$want"
+    printf '%s\n' "$want" | swrite "$FPREC"
+  else
+    warn "Flatpak apps (e.g. Brave) won't use $P_theme: Flathub has no $want"
+  fi
+}
+_flatpak_theme_remove() {
+  local id; id=$(cat "$FPREC" 2>/dev/null || true)
+  [[ -n $id ]] || return 0
+  srun flatpak uninstall --system --noninteractive -y "$id" || true
+  srun rm -f "$FPREC"
+}
 module_fetch() { _src >/dev/null; }
 
 module_add() {
@@ -47,7 +70,9 @@ module_add() {
   src=$(_src)
   if [[ $LS_DRY_RUN == 1 ]]; then
     log "[dry-run] install GTK themes from $P_source into $THEMES (libadwaita: $P_libadwaita)"
-    run gsettings set org.gnome.desktop.interface gtk-theme "$P_theme"; return 0
+    run gsettings set org.gnome.desktop.interface gtk-theme "$P_theme"
+    if [[ $P_flatpak == true ]]; then _flatpak_theme; fi
+    return 0
   fi
   mkdir -p "$THEMES" "$LS_USER_STATE"
   step "installing GTK themes"
@@ -65,10 +90,12 @@ module_add() {
   done < "$REC"; printf '%s' "$keep" > "$REC"
   if [[ ! -e $PREV ]]; then echo "gtk-theme=$(gsettings get org.gnome.desktop.interface gtk-theme)" > "$PREV"; fi
   run gsettings set org.gnome.desktop.interface gtk-theme "$P_theme"
+  if [[ $P_flatpak == true ]]; then _flatpak_theme; else _flatpak_theme_remove; fi
   if [[ $P_libadwaita == true ]]; then _gtk4_unlink; _gtk4_link; else _gtk4_unlink; fi
 }
 module_remove() {
   local k v n
+  _flatpak_theme_remove
   if [[ $LS_DRY_RUN != 1 ]]; then _gtk4_unlink; fi
   if [[ -r $PREV ]]; then
     while IFS='=' read -r k v; do run gsettings set org.gnome.desktop.interface "$k" "$v"; done < "$PREV"

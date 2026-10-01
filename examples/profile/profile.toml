@@ -65,8 +65,9 @@ path = "Slot Icons Themes"
 theme = "Slot-Dark-Icons"
 folders = "Slot-Gradient-Dark-Icons"
 
-[gtk-theme]
-source = "git+https://github.com/L4ki/Slot-Plasma-Themes"
-path = "Slot GTK Themes"
-theme = "Slot-Dark-GTK"
+[gtk-theme]                       # GTK3 apps look like the GNOME (libadwaita) ones
+source = "github-release:lassekongo83/adw-gtk3"
+asset = "adw-gtk3*.tar.xz"
+theme = "adw-gtk3-dark"
 libadwaita = false
+flatpak = true                    # also for Flatpak apps (e.g. Brave), via the theme's Flathub package
