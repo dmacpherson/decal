@@ -1,0 +1,1 @@
+{"uuid": "demo-ext@decal", "name": "decal demo", "description": "test fixture", "shell-version": ["50"], "settings-schema": "org.gnome.shell.extensions.demo-ext"}

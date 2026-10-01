@@ -89,13 +89,14 @@ _settings() {  # _settings CMD [args] : run dconf_tool on the profile's extensio
 _loaded() { gnome-extensions info "$1" >/dev/null 2>&1; }
 _on_disk() { [[ -d ${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$1 ]]; }
 _present() { _loaded "$1" || _on_disk "$1"; }
-# extensions that ship with decal (bundled/<uuid>): copied in and kept in sync with decal's copy
+# extensions that ship with decal ($BUNDLED/<uuid>, none yet): copied in and kept in sync with decal's copy
+BUNDLED="${DECAL_BUNDLED_DIR:-bundled}"
 EXT_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions"
-_bundled() { [[ -d bundled/$1 ]]; }
+_bundled() { [[ -d $BUNDLED/$1 ]]; }
 _install_bundled() {  # UUID -> 0 if (re)installed, 1 if already up to date
   local u=$1 d="$EXT_HOME/$1"
-  if [[ -d $d ]] && diff -rq --exclude=gschemas.compiled "bundled/$u" "$d" >/dev/null 2>&1; then return 1; fi
-  rm -rf "$d"; mkdir -p "$EXT_HOME"; cp -r "bundled/$u" "$d"
+  if [[ -d $d ]] && diff -rq --exclude=gschemas.compiled "$BUNDLED/$u" "$d" >/dev/null 2>&1; then return 1; fi
+  rm -rf "$d"; mkdir -p "$EXT_HOME"; cp -r "$BUNDLED/$u" "$d"
   if [[ -d $d/schemas ]]; then glib-compile-schemas "$d/schemas"; fi
   return 0
 }

@@ -1,8 +1,0 @@
-{
-  "uuid": "decal-quick-settings@decal",
-  "name": "decal Quick Settings",
-  "description": "Hides the Quick Settings tiles you choose (GNOME has no setting for it). Installed and configured by decal.",
-  "shell-version": ["47", "48", "49", "50"],
-  "settings-schema": "org.gnome.shell.extensions.decal-quick-settings",
-  "url": "https://github.com/dmacpherson/decal"
-}
