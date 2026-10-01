@@ -41,4 +41,8 @@ assert_nofile "$DECAL_ROOT/etc/dry.conf" "dry-run no write"
 # need_reboot writes flag into LS_RUNTMP
 export LS_RUNTMP="$T_TMP/rt"; mkdir -p "$LS_RUNTMP"; need_reboot
 assert_file "$LS_RUNTMP/reboot" "reboot flag"
+# tests never see the real home: everything a module does under $HOME or the XDG folders stays in the test's temp dir
+for v in HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_CACHE_HOME; do
+  assert_contains "${!v:-unset}" "$T_TMP" "$v is inside the test's temp dir"
+done
 t_done
