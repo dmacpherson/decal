@@ -54,4 +54,22 @@ assert_nofile "$DECAL_STATE/apps/managed" "record cleared"
 assert_contains "$(calls)" "flatpak install --system --noninteractive -y flathub org.mozilla.firefox" "undo reinstalls the removed flatpak"
 assert_contains "$(calls)" "dnf install -y firefox" "undo reinstalls the removed package"
 assert_nofile "$DECAL_STATE/apps/removed-flatpaks" "removal record cleared"
+# launchers the distro hides (Hidden/NoDisplay) shown again by [apps] show: your own copy, marked as decal's
+A="$T_TMP/share/applications"; U="$XDG_DATA_HOME/applications"; mkdir -p "$U"
+printf '[Desktop Entry]\nName=btop++\nExec=btop\nTerminal=true\nHidden=true\nNoDisplay=true\n' > "$A/btop.desktop"
+printf '[Desktop Entry]\nName=Htop\nExec=htop\nNoDisplay=true\n' > "$A/htop.desktop"
+printf '[Desktop Entry]\nName=Mine\nHidden=true\n' > "$A/mine.desktop"; printf '[Desktop Entry]\nName=My own\n' > "$U/mine.desktop"
+printf '\n[apps]\nshow = ["btop", "htop", "mine", "nowhere"]\n' >> "$PROFILE_DIR/profile.toml"
+out=$(run_mod add 2>&1)
+assert_contains "$(cat "$U/btop.desktop")" "Exec=btop" "hidden launcher shown as your own copy"
+assert_not_contains "$(cat "$U/btop.desktop")" "Hidden=" "without Hidden"; assert_not_contains "$(cat "$U/btop.desktop")" "NoDisplay=" "or NoDisplay"
+assert_eq "$(cat "$U/mine.desktop")" $'[Desktop Entry]\nName=My own' "a launcher of your own is left alone"
+assert_contains "$out" "nowhere" "a launcher that doesn't exist: warned"
+assert_eq "$(run_mod status)" "partial (not shown: nowhere; defaults: set)" "status names what isn't shown"
+sed -i 's/^show = .*/show = ["btop", "mine"]/' "$PROFILE_DIR/profile.toml"
+run_mod add >/dev/null 2>&1
+assert_nofile "$U/htop.desktop" "taken off the list: decal's copy removed"
+assert_eq "$(run_mod status)" "installed (defaults: set)" "all listed launchers shown"
+run_mod remove >/dev/null 2>&1
+assert_nofile "$U/btop.desktop" "remove deletes decal's copies"; assert_file "$U/mine.desktop" "but never yours"
 t_done

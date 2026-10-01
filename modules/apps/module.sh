@@ -5,6 +5,7 @@ BRAVE_STATE="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser
 DEF_PREV="$LS_USER_STATE/apps-defaults.prev"
 MANAGED="$LS_STATE/apps/managed"
 REMOVED_FP="$LS_STATE/apps/removed-flatpaks"
+SHOW_MARK="# decal: shown by [apps] show (decal removes this copy when the app leaves the list)"
 _contradictions() {
   local id
   for id in "${P_remove_flatpaks[@]}"; do
@@ -38,6 +39,31 @@ _desktop_exists() {
   local d dirs; IFS=: read -ra dirs <<<"${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-$(sys_path /usr/local/share):$(sys_path /usr/share)}:$(sys_path /var/lib/flatpak/exports/share):$HOME/.local/share/flatpak/exports/share"
   for d in "${dirs[@]}"; do [[ -e $d/applications/$1 ]] && return 0; done; return 1
 }
+# show: launchers the distro hides (Hidden=/NoDisplay=true) get your own copy without that, which GNOME prefers;
+# decal only ever deletes copies carrying its mark
+_show_dir() { echo "${XDG_DATA_HOME:-$HOME/.local/share}/applications"; }
+_show_ours() { [[ -e $1 ]] && head -1 "$1" | grep -qxF "$SHOW_MARK"; }
+_show_src() {
+  local d dirs; IFS=: read -ra dirs <<<"${XDG_DATA_DIRS:-$(sys_path /usr/local/share):$(sys_path /usr/share)}"
+  if have brew; then dirs+=("$(brew --prefix)/share"); fi   # Homebrew's launchers aren't on GNOME's path at all
+  for d in "${dirs[@]}"; do if [[ -r $d/applications/$1.desktop ]]; then echo "$d/applications/$1.desktop"; return 0; fi; done
+  return 1
+}
+_shown() { local f; f="$(_show_dir)/$1.desktop"; [[ -r $f ]] && ! grep -qE '^(Hidden|NoDisplay)=true' "$f"; }
+_show_add() {
+  local id f src u; u=$(_show_dir)
+  for f in "$u"/*.desktop; do   # decal's copies of launchers no longer listed
+    if _show_ours "$f" && ! printf '%s\n' "${P_show[@]}" | grep -qxF "$(basename "$f" .desktop)"; then run rm -f "$f"; fi
+  done
+  for id in "${P_show[@]}"; do
+    f="$u/$id.desktop"
+    if [[ -e $f ]] && ! _show_ours "$f"; then warn "$id: you have your own $f; left alone"; continue; fi
+    src=$(_show_src "$id") || { warn "$id: no launcher $id.desktop installed; nothing to show"; continue; }
+    if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] show $id: copy of $src without Hidden/NoDisplay"; continue; fi
+    mkdir -p "$u"; { echo "$SHOW_MARK"; grep -vE '^(Hidden|NoDisplay)=' "$src"; } > "$f"
+  done
+}
+_show_remove() { local f; for f in "$(_show_dir)"/*.desktop; do if _show_ours "$f"; then run rm -f "$f"; fi; done; }
 _role_mimes() { awk -v r="$1" '$1==r {$1=""; print}' "$MODULE_DIR/roles.list"; }
 _roles() { if (( ${#P_defaults[@]} )); then printf '%s\n' "${!P_defaults[@]}" | sort; fi; }
 _brave_used() { { printf '%s\n' "${P_flatpaks[@]}"; if (( ${#P_defaults[@]} )); then printf '%s\n' "${P_defaults[@]}"; fi; } | grep -qx com.brave.Browser; }
@@ -105,6 +131,7 @@ module_add() {
   if (( ${#P_packages[@]} )); then pkg_install apps "${P_packages[@]}"; fi
   _unwanted_add
   _defaults_add
+  _show_add
   if _brave_used && ! _brave_origin; then
     info "One-time step: open Brave > Settings > System > 'Brave Origin' > Proceed with Origin for free on Linux"
   fi
@@ -112,6 +139,7 @@ module_add() {
 }
 module_remove() {
   _defaults_remove
+  _show_remove
   local id present=() extra=()
   if [[ $P_purge_data == true ]]; then extra=(--delete-data); fi
   if [[ -r $MANAGED ]]; then
@@ -124,10 +152,12 @@ module_remove() {
   pkg_remove apps
 }
 module_status() {
-  local id have_n=0 total=0 missing=() base extra
+  local id have_n=0 total=0 missing=() hidden=() base notes=()
   for id in "${P_flatpaks[@]}"; do total=$((total+1)); if _fp_present "$id"; then have_n=$((have_n+1)); else missing+=("$id"); fi; done
-  if (( total == have_n )); then base=installed; elif (( have_n == 0 )); then base=not-installed; else base="partial (missing: ${missing[*]}"; fi
-  extra="defaults: $(_defaults_ok && echo set || echo not set)"
-  if _brave_used; then extra+="; Brave Origin: $(_brave_origin && echo yes || echo no)"; fi
-  if [[ $base == partial* ]]; then echo "$base; $extra)"; else echo "$base ($extra)"; fi
+  for id in "${P_show[@]}"; do _shown "$id" || hidden+=("$id"); done
+  if (( total == have_n )); then base=installed; elif (( have_n == 0 )); then base=not-installed; else base=partial; notes+=("missing: ${missing[*]}"); fi
+  if (( ${#hidden[@]} )); then [[ $base != installed ]] || base=partial; notes+=("not shown: ${hidden[*]}"); fi
+  notes+=("defaults: $(_defaults_ok && echo set || echo not set)")
+  if _brave_used; then notes+=("Brave Origin: $(_brave_origin && echo yes || echo no)"); fi
+  echo "$base ($(printf '%s; ' "${notes[@]}" | sed 's/; $//'))"
 }

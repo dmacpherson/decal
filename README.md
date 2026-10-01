@@ -34,7 +34,7 @@ listed there, and typos are rejected before anything changes.
 |---|---|
 | plymouth | Boot splash + disk-unlock prompt (themes from any git source) |
 | wallpaper | Blurred login-screen background + desktop wallpaper, separate settings |
-| apps | Flatpaks / packages + default apps (installed if missing) |
+| apps | Flatpaks / packages + default apps (installed if missing), launchers your distro hides shown again |
 | gnome-settings | Appearance, input, power, dock, launcher (dconf file in your profile) |
 | gnome-extensions | Extensions + their settings + panel logo colour |
 | display | Scaling for every monitor (e.g. 150%), arrangement kept, saved like GNOME Settings does |

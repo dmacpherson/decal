@@ -20,6 +20,7 @@ theme = "angular"                 # a folder in the source below
 flatpaks = []                     # extra Flathub apps, e.g. ["com.discordapp.Discord"]
 remove-flatpaks = []              # flatpaks you don't want, e.g. ["org.mozilla.firefox"] (app data kept)
 remove-packages = []              # native packages you don't want (refused if others depend on them)
+show = []                         # launchers your distro hides from the app grid, e.g. ["btop"]
 [apps.defaults]                   # role = app id; installed from Flathub if missing
 browser = "com.brave.Browser"
 # roles: browser text-editor pdf images video music files mail
