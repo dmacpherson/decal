@@ -51,3 +51,7 @@ Adding a module: `modules/<name>/module.sh` (`MODULE_DESC`, `module_add`,
 `MODULE_NEEDS_ROOT=1`) plus `schema.json` for its profile keys. Tests:
 `bash tests/run.sh`; distro e2e: `bash tests/containers/run.sh` (removes the images it
 pulled; `--keep-images` keeps them). Neither leaves files behind.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). The bundled GNOME logo (`modules/gnome-extensions/icons/gnome-logo.svg`) is CC BY-SA 4.0.
