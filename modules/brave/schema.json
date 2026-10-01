@@ -1,4 +1,5 @@
 {"keys": {
   "preferences": {"type": "path", "default": ""},
+  "local-state": {"type": "path", "default": ""},
   "profile": {"type": "string", "default": "Default"}
 }}

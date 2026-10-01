@@ -6,13 +6,16 @@ export DECAL_PLATFORM=fedora
 B="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser/Default"; mkdir -p "$B"
 echo '{"brave":{"new_tab_page":{"show_clock":false},"other":1},"profile":{"name":"Personal"},"default_search_provider_data":{"template_url_data":{"short_name":"Brave","usage_count":9}}}' > "$B/Preferences"
 echo '{"brave":{"new_tab_page":{"show_clock":true,"show_stats":false}},"default_search_provider_data":{"template_url_data":{"short_name":"DuckDuckGo"}}}' > "$PROFILE_DIR/brave.json"
-printf '[brave]\npreferences = "brave.json"\n' >> "$PROFILE_DIR/profile.toml"
+# Local State (browser-wide): Brave Origin
+L="$(dirname "$B")/Local State"; echo '{"brave":{"origin":{"free_tier_accepted":false}},"browser":{"x":1}}' > "$L"
+echo '{"brave":{"origin":{"free_tier_accepted":true,"purchase_validated":true}}}' > "$PROFILE_DIR/brave-ls.json"
+printf '[brave]\npreferences = "brave.json"\nlocal-state = "brave-ls.json"\n' >> "$PROFILE_DIR/profile.toml"
 stub flatpak 'case "$*" in ps*) if [ -e "$STUBS/running" ]; then echo com.brave.Browser; fi;; esac; exit 0'; stub pgrep 'exit 1'
 run_mod() { mod_run brave "module_$1"; }
 q() { python3 -c 'import json,sys
 d=json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("."): d=d.get(k) if isinstance(d, dict) else None
-print(json.dumps(d))' "$B/Preferences" "$1"; }
+print(json.dumps(d))' "${2:-$B/Preferences}" "$1"; }
 
 assert_eq "$(run_mod status)" "not-installed" "before"
 # Brave rewrites its settings when it closes: nothing is written while it runs
@@ -24,6 +27,8 @@ assert_eq "$(q brave.new_tab_page.show_clock)" "true" "setting applied"; assert_
 assert_eq "$(q default_search_provider_data.template_url_data.short_name)" '"DuckDuckGo"' "value inside a bigger object applied"
 assert_eq "$(q default_search_provider_data.template_url_data.usage_count)" "9" "the rest of that object kept"
 assert_eq "$(q profile.name)" '"Personal"' "unrelated settings kept"; assert_eq "$(q brave.other)" "1" "siblings kept"
+assert_eq "$(q brave.origin.free_tier_accepted "$L")" "true" "Brave Origin switched on in Local State"
+assert_eq "$(q brave.origin.purchase_validated "$L")" "true" "(both flags Brave's own button sets)"; assert_eq "$(q browser.x "$L")" "1" "rest of Local State kept"
 assert_eq "$(run_mod status)" "installed" "status after add"
 # changed in Brave afterwards: shows up, re-applied; remove still restores what was there before decal
 python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["brave"]["new_tab_page"]["show_clock"]=False; json.dump(d,open(p,"w"))' "$B/Preferences"
@@ -33,6 +38,8 @@ run_mod remove >/dev/null 2>&1
 assert_eq "$(q brave.new_tab_page.show_clock)" "false" "remove restores the value from before decal"
 assert_eq "$(q brave.new_tab_page.show_stats)" "null" "a setting decal added is taken out again"
 assert_eq "$(q default_search_provider_data.template_url_data.short_name)" '"Brave"' "search engine restored"
+assert_eq "$(q brave.origin.free_tier_accepted "$L")" "false" "Origin back to how it was"
+assert_eq "$(q brave.origin.purchase_validated "$L")" "null" "flag decal added taken out"
 assert_nofile "$DECAL_USER_STATE/brave.prev.json" "record removed"
 # Brave never opened: nothing to merge into yet
 rm -rf "$B"; out=$(run_mod add 2>&1); assert_eq "$?" "0" "never-opened Brave: no failure"

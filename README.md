@@ -40,7 +40,7 @@ listed there, and typos are rejected before anything changes.
 | display | Scaling for every monitor (e.g. 150%), arrangement kept, saved like GNOME Settings does |
 | branding | Login-screen logo |
 | account | Your account picture (login screen, lock screen, user menu), no sudo |
-| brave | Brave settings its Sync keeps per device (look, toolbar, new tab page, search engines), applied while Brave is closed |
+| brave | Brave settings its Sync keeps per device (look, toolbar, new tab page, search engines) and Brave Origin, applied while Brave is closed |
 | terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable |
 | cursor | Cursor pack (Material Bibata by default), also on the login screen |
 | icons | Icon theme from any source, optionally another theme's folders on top |

@@ -46,6 +46,7 @@ login-logo = ""                   # "" hides the login-screen logo, or a path to
 
 # [brave]                         # Brave settings its Sync doesn't carry (look, toolbar, new tab page, search engines)
 # preferences = "brave/preferences.json"   # a partial Brave Preferences tree; only those values are set, remove restores them
+# local-state = "brave/local-state.json"   # same for the browser-wide Local State, e.g. Brave Origin (free on Linux)
 
 [terminal]
 app = "ptyxis"                    # ptyxis kitty alacritty foot wezterm ghostty
