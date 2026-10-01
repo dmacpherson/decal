@@ -46,6 +46,7 @@ layout = "tokyo-sharp"
 theme = "cyberpunk"
 font = "FiraCode Nerd Font 10"
 cursor = "underline"              # block ibeam underline
+opacity = 1                       # background opacity, 0-1 (1 = solid)
 brew = ["fastfetch"]              # extra Homebrew formulae
 [terminal.features]
 prompt = true                     # Starship

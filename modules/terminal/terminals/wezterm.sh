@@ -19,6 +19,7 @@ config.color_scheme = 'decal'
 config.font = wezterm.font '$FONT_FAMILY'
 config.font_size = $FONT_SIZE
 config.default_cursor_style = '$cur'
+config.window_background_opacity = $OPACITY
 return config
 EOF
   elif [[ $(head -1 "$_W/wezterm.lua") != "$_WMARK" ]]; then

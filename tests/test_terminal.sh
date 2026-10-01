@@ -28,6 +28,7 @@ assert_not_contains "$(calls)" "brew-env NO_SUDO=
 assert_contains "$(calls)" "brew-env NO_SUDO=1" "brew runs with HOMEBREW_NO_SUDO=1"
 assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis cursor-shape underline" "cursor"
 assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/abc/ palette decal-cyberpunk" "palette"
+assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/abc/ opacity 1" "opacity (default: opaque)"
 assert_eq "$(head -1 "$XDG_CONFIG_HOME/xdg-terminals.list")" "org.gnome.Ptyxis.desktop" "default terminal"
 assert_eq "$(cat "$DECAL_USER_STATE/terminal.current")" "ptyxis" "current recorded"
 assert_not_contains "$(calls)" "dnf install" "ptyxis preinstalled: nothing installed"
@@ -42,6 +43,14 @@ assert_file "$HOME/.local/share/blesh" "ble.sh we did not download is kept"
 assert_nofile "$XDG_CONFIG_HOME/xdg-terminals.list" "xdg-terminals.list back to absent"
 assert_nofile "$XDG_CONFIG_HOME/systemd/user/decal-brew-upgrade.timer" "timer removed"
 assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/abc/ palette 'gnome'" "ptyxis palette restored"
+assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/abc/ opacity 'x'" "ptyxis opacity restored"
+# a backup made by an older decal (no opacity in it) gets the current opacity added, so remove restores it too
+mkdir -p "$DECAL_USER_STATE"; echo "profile:palette='gnome'" > "$DECAL_USER_STATE/terminal-ptyxis.prev"
+sed -i 's/^app = "ptyxis"$/&\nopacity = 0.75/' "$PROFILE_DIR/profile.toml"
+mod module_add 2>/dev/null
+assert_contains "$(cat "$DECAL_USER_STATE/terminal-ptyxis.prev")" "profile:opacity='x'" "older backup gains the opacity"
+assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/abc/ opacity 0.75" "opacity from the profile"
+mod module_remove 2>/dev/null; sed -i '/^opacity = 0.75$/d' "$PROFILE_DIR/profile.toml"
 # marked-block mode when .bashrc doesn't source .bashrc.d
 printf '# plain bashrc\n' > "$HOME/.bashrc"; mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"; mod module_add 2>/dev/null
 assert_contains "$(cat "$HOME/.bashrc")" "# >>> decal terminal >>>" "block appended"

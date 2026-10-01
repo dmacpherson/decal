@@ -11,6 +11,7 @@ term_configure() {
   { echo "# managed by decal (terminal module)"
     echo "font-family = $FONT_FAMILY"; echo "font-size = $FONT_SIZE"
     echo "cursor-style = $(case $CURSOR in ibeam) echo bar ;; *) echo "$CURSOR" ;; esac)"
+    echo "background-opacity = $OPACITY"
     python3 "$MODULE_DIR/palette.py" "$PALETTE" ghostty; } > "$_G/decal.conf"
   grep -qxF "$_GI" "$_G/config" 2>/dev/null || echo "$_GI" >> "$_G/config"
 }

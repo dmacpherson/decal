@@ -10,7 +10,8 @@ term_configure() {
   { echo "# managed by decal (terminal module)"
     echo "[main]"; echo "font=$FONT_FAMILY:size=$FONT_SIZE"
     echo "[cursor]"; echo "style=$(case $CURSOR in ibeam) echo beam ;; *) echo "$CURSOR" ;; esac)"
-    python3 "$MODULE_DIR/palette.py" "$PALETTE" foot; } > "$_F/decal.ini"
+    python3 "$MODULE_DIR/palette.py" "$PALETTE" foot
+    echo "alpha=$OPACITY"; } > "$_F/decal.ini"   # still in the palette's [colors]
   if ! grep -qxF "$(_fi)" "$_F/foot.ini" 2>/dev/null; then   # include must come before any [section]
     { _fi; [[ -f $_F/foot.ini ]] && cat "$_F/foot.ini"; } > "$_F/foot.ini.tmp"; mv "$_F/foot.ini.tmp" "$_F/foot.ini"
   fi

@@ -25,11 +25,15 @@ term_configure() {
   fi
   if [[ ! -e $PT_PREV && $LS_DRY_RUN != 1 ]]; then
     mkdir -p "$LS_USER_STATE"
-    { [[ -n $P ]] && echo "profile:palette=$(gsettings get "$P" palette)"
+    { [[ -n $P ]] && printf 'profile:%s=%s\n' palette "$(gsettings get "$P" palette)" opacity "$(gsettings get "$P" opacity)"
       for k in font-name use-system-font cursor-shape; do echo "$k=$(gsettings get org.gnome.Ptyxis "$k")"; done; } > "$PT_PREV"
   fi
+  # a backup made before decal set the opacity: add it, so remove restores that too
+  if [[ -n $P && -e $PT_PREV && $LS_DRY_RUN != 1 ]] && ! grep -q '^profile:opacity=' "$PT_PREV"; then
+    echo "profile:opacity=$(gsettings get "$P" opacity)" >> "$PT_PREV"
+  fi
   run mkdir -p "$PT_PAL_DIR"; run cp "$PALETTE" "$PT_PAL_DIR/decal-$THEME.palette"
-  if [[ -n $P ]]; then run gsettings set "$P" palette "decal-$THEME"; fi
+  if [[ -n $P ]]; then run gsettings set "$P" palette "decal-$THEME"; run gsettings set "$P" opacity "$OPACITY"; fi
   run gsettings set org.gnome.Ptyxis font-name "$FONT"
   run gsettings set org.gnome.Ptyxis use-system-font false
   run gsettings set org.gnome.Ptyxis cursor-shape "$CURSOR"

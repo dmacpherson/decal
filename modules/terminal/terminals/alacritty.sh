@@ -9,6 +9,7 @@ term_configure() {
   { echo "$_AMARK"
     printf '[font]\nsize = %s\n\n[font.normal]\nfamily = "%s"\n\n' "$FONT_SIZE" "$FONT_FAMILY"
     printf '[cursor.style]\nshape = "%s"\n\n' "$(case $CURSOR in ibeam) echo Beam ;; block) echo Block ;; *) echo Underline ;; esac)"
+    printf '[window]\nopacity = %s\n\n' "$OPACITY"
     python3 "$MODULE_DIR/palette.py" "$PALETTE" alacritty; } > "$_A/decal.toml"
   if [[ ! -e $_A/alacritty.toml ]]; then
     printf '%s\n[general]\nimport = ["decal.toml"]\n' "$_AMARK" > "$_A/alacritty.toml"

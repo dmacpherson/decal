@@ -18,7 +18,7 @@ declare -A FEATURE_BREW=([prompt]=starship [fuzzy]=fzf [completions]=carapace [h
 
 _preset() { if [[ -e ${PROFILE_DIR:-/nonexistent}/terminal/$1/$2 ]]; then echo "$PROFILE_DIR/terminal/$1/$2"; else echo "$MODULE_DIR/$1/$2"; fi; }
 _init() {
-  TERMINAL=$P_app LAYOUT=$P_layout THEME=$P_theme NERD_FONT=$P_nerd_font FONT=$P_font CURSOR=$P_cursor
+  TERMINAL=$P_app LAYOUT=$P_layout THEME=$P_theme NERD_FONT=$P_nerd_font FONT=$P_font CURSOR=$P_cursor OPACITY=$P_opacity
   FONT_FAMILY="${FONT% *}"; FONT_SIZE="${FONT##* }"
   FONT_DIR="$HOME/.local/share/fonts/decal/${NERD_FONT}NerdFont"
   LAYOUT_FILE=$(_preset layouts "$LAYOUT.toml"); THEME_DIR=$(_preset themes "$THEME"); PALETTE="$THEME_DIR/colors.palette"

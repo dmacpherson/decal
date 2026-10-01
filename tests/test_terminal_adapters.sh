@@ -12,26 +12,32 @@ assert_contains "$(python3 "$M/palette.py" "$PAL" wezterm)" 'ansi = ["#1A1033"' 
 # each adapter: configure into a user config that already has content, then unconfigure restores it
 ad() { ( set -euo pipefail; source "$REPO/lib/common.sh"; LS_REPO="$REPO"; PLATFORM=${PLAT:-fedora}; MODULE_DIR="$M"
   THEME=cyberpunk PALETTE="$PAL" FONT="FiraCode Nerd Font 10" FONT_FAMILY="FiraCode Nerd Font" FONT_SIZE=10 CURSOR=underline
+  OPACITY=0.75
   source "$M/terminals/$1.sh"; shift; "$@" ); }
 mkdir -p "$XDG_CONFIG_HOME/kitty"; echo "# mine" > "$XDG_CONFIG_HOME/kitty/kitty.conf"
 ad kitty term_configure
 assert_contains "$(cat "$XDG_CONFIG_HOME/kitty/kitty.conf")" "include decal.conf" "kitty include"
 assert_contains "$(cat "$XDG_CONFIG_HOME/kitty/decal.conf")" "cursor_shape underline" "kitty cursor"
+assert_contains "$(cat "$XDG_CONFIG_HOME/kitty/decal.conf")" "background_opacity 0.75" "kitty opacity"
 ad kitty term_configured; assert_eq "$?" "0" "kitty configured"
 ad kitty term_unconfigure; assert_eq "$(cat "$XDG_CONFIG_HOME/kitty/kitty.conf")" "# mine" "kitty restored"
 ad ghostty term_configure
 assert_contains "$(cat "$XDG_CONFIG_HOME/ghostty/decal.conf")" "cursor-style = underline" "ghostty cursor"
+assert_contains "$(cat "$XDG_CONFIG_HOME/ghostty/decal.conf")" "background-opacity = 0.75" "ghostty opacity"
 ad ghostty term_unconfigure; assert_nofile "$XDG_CONFIG_HOME/ghostty/config" "ghostty created file removed"
 mkdir -p "$XDG_CONFIG_HOME/foot"; printf '[main]\nterm=xterm\n' > "$XDG_CONFIG_HOME/foot/foot.ini"
 ad foot term_configure; assert_eq "$(head -1 "$XDG_CONFIG_HOME/foot/foot.ini")" "include=$XDG_CONFIG_HOME/foot/decal.ini" "foot include first"
+assert_eq "$(awk '/^\[/{s=$0} /^alpha=/{print s, $0}' "$XDG_CONFIG_HOME/foot/decal.ini")" "[colors] alpha=0.75" "foot opacity (alpha in [colors])"
 ad foot term_unconfigure; assert_eq "$(cat "$XDG_CONFIG_HOME/foot/foot.ini")" $'[main]\nterm=xterm' "foot restored"
 ad alacritty term_configure; assert_contains "$(cat "$XDG_CONFIG_HOME/alacritty/alacritty.toml")" 'import = ["decal.toml"]' "alacritty created"
+assert_contains "$(cat "$XDG_CONFIG_HOME/alacritty/decal.toml")" $'[window]\nopacity = 0.75' "alacritty opacity"
 ad alacritty term_unconfigure; assert_nofile "$XDG_CONFIG_HOME/alacritty/alacritty.toml" "alacritty removed (ours)"
 mkdir -p "$XDG_CONFIG_HOME/alacritty"; echo "# user's" > "$XDG_CONFIG_HOME/alacritty/alacritty.toml"
 out=$(ad alacritty term_configure 2>&1); assert_contains "$out" 'import = ["decal.toml"]' "alacritty existing: prints line"
 assert_eq "$(cat "$XDG_CONFIG_HOME/alacritty/alacritty.toml")" "# user's" "alacritty existing untouched"
 PLAT=fedora ad wezterm term_configure; W="$HOME/.var/app/org.wezfurlong.wezterm/config/wezterm"
 assert_contains "$(cat "$W/wezterm.lua")" "SteadyUnderline" "wezterm (flatpak path) cursor"; assert_file "$W/colors/decal.toml" "wezterm scheme"
+assert_contains "$(cat "$W/wezterm.lua")" "config.window_background_opacity = 0.75" "wezterm opacity"
 PLAT=fedora ad wezterm term_unconfigure; assert_nofile "$W/wezterm.lua" "wezterm removed (ours)"
 # sources per platform
 assert_eq "$(PLAT=debian ad ghostty term_source)" "none" "ghostty debian"

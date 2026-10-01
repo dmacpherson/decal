@@ -9,6 +9,7 @@ term_configure() {
   { echo "# managed by decal (terminal module)"
     echo "font_family $FONT_FAMILY"; echo "font_size $FONT_SIZE"
     echo "cursor_shape $(case $CURSOR in ibeam) echo beam ;; *) echo "$CURSOR" ;; esac)"
+    echo "background_opacity $OPACITY"
     python3 "$MODULE_DIR/palette.py" "$PALETTE" kitty; } > "$_K/decal.conf"
   grep -qxF "$_KI" "$_K/kitty.conf" 2>/dev/null || echo "$_KI" >> "$_K/kitty.conf"
 }
