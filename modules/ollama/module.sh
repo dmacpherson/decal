@@ -1,13 +1,15 @@
 # shellcheck shell=bash disable=SC2034,SC2154  # sourced: vars read by the runner; helpers/vars from lib/ and the profile
-MODULE_DESC="Ollama (local AI models) from Homebrew, running as your user, plus the models in your profile"
+MODULE_DESC="Ollama (local AI models) from Homebrew, running as your user, plus the models in your profile (downloaded in the background)"
 # Homebrew keeps it current (brew upgrade); the service runs Homebrew's stable bin/ link, never a versioned path
 export HOMEBREW_NO_SUDO=1   # brew would otherwise reset decal's sudo session
 UNIT_NAME=decal-ollama.service
 UNIT="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT_NAME"
 REC="$LS_USER_STATE/ollama.installed"   # "cask ollama-binary" / "formula ollama": what decal installed
+JOB=decal-ollama-models   # background download job (transient systemd user unit, see pull-models.sh)
 _pkg() { if [[ $P_gpu == true ]]; then echo "cask ollama-binary"; else echo "formula ollama"; fi; }
 _bin() { echo "$(brew --prefix)/bin/ollama"; }
 _have_ollama() { [[ -x $(_bin) ]] || have ollama; }
+_cli() { if [[ -x $(_bin) ]]; then _bin; else command -v ollama; fi; }
 
 _install() {
   local kind name; read -r kind name <<<"$(_pkg)"
@@ -34,22 +36,31 @@ _service() {
   systemctl --user daemon-reload
   systemctl --user enable --now "$UNIT_NAME"
 }
-_models() {
-  (( ${#P_models[@]} )) || return 0
-  [[ $LS_DRY_RUN == 1 ]] && { log "[dry-run] download models: ${P_models[*]}"; return 0; }
-  local i m have_list
-  for i in $(seq 30); do have_list=$("$(_bin)" list 2>/dev/null) && break; sleep 1; done   # wait for the server
+# the profile's models not downloaded yet (all of them while the server isn't answering yet)
+_missing() {
+  local list m; list=$("$(_cli)" list 2>/dev/null | awk '{print $1}')
   for m in "${P_models[@]}"; do
-    [[ $m == *:* ]] || m="$m:latest"
-    if awk 'NR > 0 {print $1}' <<<"$have_list" | grep -qxF "$m"; then continue; fi
-    step "downloading model $m"
-    "$(_bin)" pull "${m%:latest}" || warn "could not download model $m"
+    if [[ $m == *:* ]]; then grep -qxF "$m" <<<"$list" || echo "$m"; else grep -qxF "$m:latest" <<<"$list" || echo "$m"; fi
   done
+}
+_pulling() { systemctl --user --quiet is-active "$JOB" 2>/dev/null; }
+# missing models download in the background; a later run finds the job still going, or starts it again if it
+# stopped short. Nothing is ever deleted: models taken off the list stay.
+_models() {
+  local missing; mapfile -t missing < <(_missing)
+  (( ${#missing[@]} )) || return 0
+  if _pulling; then info "models still downloading in the background (${missing[*]}): journalctl --user -u $JOB -f"; return 0; fi
+  if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] download in the background: ${missing[*]}"; return 0; fi
+  step "downloading models in the background: ${missing[*]}"
+  systemd-run --user --unit="$JOB" --collect --quiet --description="decal: download Ollama models" \
+    bash "$MODULE_DIR/pull-models.sh" "$(_cli)" "${missing[@]}" || { warn "could not start the model download"; return 0; }
+  info "models downloading in the background; follow them with: journalctl --user -u $JOB -f"
 }
 
 module_add() { _install; _service; _models; }
 
 module_remove() {
+  if _pulling; then run systemctl --user stop "$JOB"; fi
   if [[ -e $UNIT ]]; then
     run systemctl --user disable --now "$UNIT_NAME" || true
     run rm -f "$UNIT"; run systemctl --user daemon-reload
@@ -62,9 +73,11 @@ module_remove() {
 
 module_status() {
   _have_ollama || { echo not-installed; return 0; }
-  local why=() m list
+  local why=() missing
   if [[ -e $UNIT ]] && ! systemctl --user --quiet is-active "$UNIT_NAME" 2>/dev/null; then why+=("service not running"); fi
-  list=$("$(_bin)" list 2>/dev/null || true)
-  for m in "${P_models[@]}"; do [[ $m == *:* ]] || m="$m:latest"; awk '{print $1}' <<<"$list" | grep -qxF "$m" || why+=("model $m missing"); done
+  mapfile -t missing < <(_missing)
+  if (( ${#missing[@]} )); then
+    if _pulling; then why+=("downloading ${missing[*]}"); else why+=("missing ${missing[*]}"); fi
+  fi
   if (( ${#why[@]} )); then echo "partial (${why[*]})"; else echo installed; fi
 }
