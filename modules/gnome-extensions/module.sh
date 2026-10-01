@@ -152,7 +152,7 @@ print([x for x in cur if x not in drop])' "$dis" "$LS_USER_STATE/gnome-extension
   _disable_apply
   step "applying extension settings"
   _settings apply
-  (( new )) && info "new extensions activate after you log out and back in"
+  (( new )) && info "new or updated extensions take effect after you log out and back in"
   return 0
 }
 
