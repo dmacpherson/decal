@@ -1,0 +1,8 @@
+{
+  "uuid": "decal@decal",
+  "name": "Decal Tweaks",
+  "description": "Small GNOME Shell tweaks no other extension does. Accent colour: any colour for the top bar, Quick Settings, sliders and switches (GNOME only offers a fixed list). Installed and configured by decal.",
+  "shell-version": ["47", "48", "49", "50"],
+  "settings-schema": "org.gnome.shell.extensions.decal",
+  "url": "https://github.com/dmacpherson/decal"
+}

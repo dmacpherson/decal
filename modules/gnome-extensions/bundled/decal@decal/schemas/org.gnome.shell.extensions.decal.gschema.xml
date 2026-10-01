@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.decal" path="/org/gnome/shell/extensions/decal/">
+    <key name="accent-enabled" type="b">
+      <default>false</default>
+      <summary>Custom accent colour</summary>
+      <description>Use accent-color instead of GNOME's accent in GNOME Shell (top bar, Quick Settings, sliders, switches, focus).</description>
+    </key>
+    <key name="accent-color" type="s">
+      <default>'#ff40a0'</default>
+      <summary>Accent colour</summary>
+      <description>#rrggbb</description>
+    </key>
+    <key name="accent-fg-color" type="s">
+      <default>''</default>
+      <summary>Text colour on the accent</summary>
+      <description>#rrggbb, or empty for automatic (white or black, whichever reads better)</description>
+    </key>
+  </schema>
+</schemalist>
