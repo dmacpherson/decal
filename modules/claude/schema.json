@@ -1,0 +1,5 @@
+{"keys": {
+  "cli": {"type": "bool", "default": true},
+  "desktop": {"type": "bool", "default": false},
+  "cowork": {"type": "bool", "default": true}
+}}

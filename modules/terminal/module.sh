@@ -148,20 +148,6 @@ _font_add() {
   fc-cache -f "$FONT_DIR" >/dev/null
   info "new font installed: close ALL terminal windows (or open a fresh instance) to see it"
 }
-# Claude Code via Anthropic's installer (it updates itself); an existing claude is used as is
-CLAUDE_REC="$LS_USER_STATE/terminal.claude-code"
-_claude_add() {
-  if [[ -e $HOME/.local/bin/claude ]] || have claude; then return 0; fi
-  [[ $LS_DRY_RUN == 1 ]] && { log "[dry-run] install Claude Code (https://claude.ai/install.sh)"; return 0; }
-  step "installing Claude Code"
-  local inst; inst=$(ls_fetch https://claude.ai/install.sh) || die "could not download the Claude Code installer"
-  bash "$inst" || die "the Claude Code installer failed"
-  : > "$CLAUDE_REC"
-}
-_claude_remove() {   # only a claude decal installed; never ~/.claude or ~/.claude.json (settings, memory, history)
-  [[ -e $CLAUDE_REC ]] || return 0
-  run rm -rf "$HOME/.local/bin/claude" "$HOME/.local/share/claude"; run rm -f "$CLAUDE_REC"
-}
 _font_remove() {  # [KEEP] : remove our fonts (everything under fonts/decal), except KEEP
   local root d n=0; root=$(dirname "$FONT_DIR")
   for d in "$root"/*/; do
@@ -200,7 +186,6 @@ module_add() {
   # 2-3. downloads, only for enabled features (turning one off undoes it)
   if _on autosuggest; then _blesh_add; else _blesh_remove; fi
   if _on nerd-font; then _font_remove "$FONT_DIR"; _font_add; else _font_remove; fi
-  if _on claude-code; then _claude_add; else _claude_remove; fi
   # 4. generated prompt config + shell integration
   if [[ $LS_DRY_RUN != 1 ]]; then
     if _on prompt; then terminal_build > "$CFG/starship.toml"; else rm -f "$CFG/starship.toml"; fi
@@ -243,7 +228,7 @@ for l in open(p).read().split("\n"):
 open(p, "w").write("\n".join(out))
 EOF
   fi
-  run rm -rf "$CFG"; _font_remove; _blesh_remove; _claude_remove
+  run rm -rf "$CFG"; _font_remove; _blesh_remove
   local id p
   if [[ -r $LS_STATE/terminal/flatpaks ]]; then
     while IFS= read -r id; do [[ -n $id ]] && srun flatpak uninstall --system --noninteractive -y "$id"; done < "$LS_STATE/terminal/flatpaks"
