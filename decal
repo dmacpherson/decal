@@ -10,7 +10,8 @@ source "$LS_REPO/lib/common.sh"
 
 usage() {
   cat >&2 <<'EOF'
-usage: ./decal [--dry-run] [--verbose] [--profile DIR] <command> [module...]
+usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] <command> [module...]
+  (add/apply skip modules already applied with unchanged settings; --force applies them anyway)
   list                       modules and descriptions
   status [module...]         installed / partial / not-installed / stale / not in profile
   add    <module...|all>     apply (idempotent); all = every module in your profile
@@ -30,6 +31,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --dry-run) export LS_DRY_RUN=1 ;;
     -v|--verbose) export DECAL_VERBOSE=1 ;;
+    -f|--force) export DECAL_FORCE=1 ;;
     --profile) OPT_PROFILE=${2:?--profile needs a directory}; shift ;;
     -h|--help) usage ;;
     *) args+=("$1") ;;
@@ -97,12 +99,25 @@ run_module() {
     "module_$action"
   )
 }
+# a module is up to date when what its add depends on (settings, the profile files they point to, decal's code)
+# is unchanged since it was last applied, and its status still says installed: then add is skipped
+APPLIED="$LS_USER_STATE/applied"
+fingerprint() { python3 "$LS_REPO/lib/fingerprint.py" "$1" --profile "$PROFILE_DIR" --modules "$MODULES_DIR" 2>/dev/null; }
+up_to_date() {
+  [[ ${DECAL_FORCE:-} != 1 && -r $APPLIED/$1 ]] || return 1
+  [[ $(fingerprint "$1") == "$(cat "$APPLIED/$1")" ]] || return 1
+  local st; st=$(run_module status "$1" 2>/dev/null) || return 1
+  [[ $st == installed* ]]
+}
 # do_modules ACTION NAME... : run in order (remove: caller passes reverse order); stop at first failure
 do_modules() {
-  local action=$1 m rc need_sudo=0; shift
+  local action=$1 m rc need_sudo=0 skip=" " todo=(); shift
   (( $# )) || return 0
+  if [[ $action == add ]]; then
+    for m in "$@"; do if up_to_date "$m"; then skip+="$m "; else todo+=("$m"); fi; done
+  else todo=("$@"); fi
   if [[ $action == add && ${LS_DRY_RUN:-0} != 1 && -n $LS_SUDO ]]; then
-    for m in "$@"; do
+    for m in "${todo[@]}"; do
       if [[ $(module_field "$m" MODULE_NEEDS_ROOT) == 1 ]]; then "$LS_SUDO" -v || die "sudo needed"; need_sudo=1; break; fi
     done
   fi
@@ -112,6 +127,11 @@ do_modules() {
     ( while sleep 60; do "$LS_SUDO" -n -v 2>/dev/null || exit 0; done ) & keeper=$!
   fi
   for m in "$@"; do
+    if [[ $skip == *" $m "* ]]; then
+      if [[ ${DECAL_FANCY:-} == 1 ]]; then printf '\033[32m✓\033[0m add %s \033[2mup to date\033[0m\n' "$m"
+      else info "add $m: up to date (--force applies it anyway)"; fi
+      continue
+    fi
     # something may have ended the sudo session (brew does): ask here, not behind a module's spinner
     if (( need_sudo )) && ! "$LS_SUDO" -n true 2>/dev/null; then
       info "sudo needs your password again"; "$LS_SUDO" -v || die "sudo needed"
@@ -124,6 +144,10 @@ do_modules() {
       set +e; run_module "$action" "$m"; rc=$?; set -e
     fi
     if (( rc != 0 )); then [[ -z $keeper ]] || kill "$keeper" 2>/dev/null; die "$action $m failed (stopped; later modules not run)"; fi
+    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then
+      if [[ $action == add ]]; then mkdir -p "$APPLIED"; fingerprint "$m" > "$APPLIED/$m" || rm -f "$APPLIED/$m"
+      elif [[ $action == remove ]]; then rm -f "$APPLIED/$m"; fi
+    fi
   done
   [[ -z $keeper ]] || kill "$keeper" 2>/dev/null
   return 0
