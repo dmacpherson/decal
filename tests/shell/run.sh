@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # $… in single quotes is expanded later on purpose (inside the test session / by check)
 # Runs bundled GNOME Shell extensions in a throwaway headless GNOME Shell (own HOME, own D-Bus session,
 # virtual monitor) and checks them from inside the Shell with a probe extension. Needs gnome-shell;
 # never touches the running desktop. OUT=DIR keeps the screenshots there; otherwise nothing is left behind.
