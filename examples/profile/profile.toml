@@ -29,6 +29,7 @@ browser = "com.brave.Browser"
 
 # [gnome-extensions]
 # enable = ["blur-my-shell@aunetx"]
+# disable = ["caffeine@patapon.info"] # kept off, even if the distro turns them on (remove turns them back on)
 # logo = "my-logo.svg"            # Logo Menu panel icon (fill:#deddda is recoloured to logo-color); default: GNOME logo
 # logo-color = "#deddda"
 # file = "gnome/extensions.ini"

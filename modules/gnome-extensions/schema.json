@@ -1,5 +1,6 @@
 {"keys": {
   "enable": {"type": "strings"},
+  "disable": {"type": "strings", "default": []},
   "file": {"type": "path", "default": ""},
   "files.*": {"type": "path"},
   "logo": {"type": "path", "default": ""},

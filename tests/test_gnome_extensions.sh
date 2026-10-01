@@ -102,4 +102,28 @@ assert_eq "$(v4 ICON)" "'$HOME/.local/share/decal/icons/logo-mylogo-ff0000.svg'"
 assert_eq "$(v4 FILL)" "1" "recoloured with logo-color"
 assert_eq "$(v4 OLD)" "logo-mylogo-ff0000.svg " "the previous logo file is cleaned up"
 assert_eq "$(v4 LEFT)" "" "remove deletes it"
+# disable: extensions turned off and kept off (even ones the distro turns on); undone on remove
+body5() {
+  cd "$REPO/modules/gnome-extensions"
+  ( set -euo pipefail; source "$REPO/lib/common.sh"; LS_REPO="$REPO"; source "$REPO/lib/platform.sh"; platform_load
+    gsettings set org.gnome.shell enabled-extensions "['caffeine@patapon.info', 'logomenu@aryan_k']"
+    gsettings set org.gnome.shell disabled-extensions "['gsconnect@andyholmes.github.io']"
+    sed -i '/^\[gnome-extensions\]$/a disable = ["caffeine@patapon.info", "gsconnect@andyholmes.github.io"]' "$PROFILE_DIR/profile.toml"
+    run() { ( eval "$(python3 "$REPO/lib/profile.py" shell "$MODNAME" --profile "$PROFILE_DIR" --modules "$REPO/modules")"; source ./module.sh; "module_$1" 2>/dev/null ); }
+    run add
+    echo "EN=$(gsettings get org.gnome.shell enabled-extensions)"; echo "DIS=$(gsettings get org.gnome.shell disabled-extensions)"
+    run remove
+    echo "EN2=$(gsettings get org.gnome.shell enabled-extensions)"; echo "DIS2=$(gsettings get org.gnome.shell disabled-extensions)"
+    sed -i 's/^disable = .*/disable = ["logomenu@aryan_k"]/' "$PROFILE_DIR/profile.toml"
+    echo "OVERLAP=$( ( eval "$(python3 "$REPO/lib/profile.py" shell "$MODNAME" --profile "$PROFILE_DIR" --modules "$REPO/modules")"; source ./module.sh; module_add ) 2>&1 | grep -c 'both enable and disable')" )
+}
+export -f body5
+out=$(dbus-run-session -- bash -c body5 2>/dev/null)
+v5() { grep "^$1=" <<<"$out" | head -1 | cut -d= -f2-; }
+assert_not_contains "$(v5 EN)" "caffeine" "disabled extension taken out of enabled-extensions"
+assert_contains "$(v5 DIS)" "caffeine@patapon.info" "and put in disabled-extensions"
+assert_contains "$(v5 EN2)" "caffeine@patapon.info" "remove turns back on what was on"
+assert_contains "$(v5 DIS2)" "gsconnect@andyholmes.github.io" "and leaves off what was already off"
+assert_not_contains "$(v5 DIS2)" "caffeine" "caffeine no longer disabled after remove"
+assert_eq "$(v5 OVERLAP)" "1" "an extension in both lists is an error"
 t_done

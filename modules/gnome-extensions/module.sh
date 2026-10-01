@@ -45,6 +45,40 @@ _drop_unlisted() {
   done < <(cat "$INSTALLED")
   printf '%s' "$keep" > "$INSTALLED"
 }
+# disable: extensions kept off (also ones the distro turns on); each one's previous state is recorded
+DISABLED="$LS_USER_STATE/gnome-extensions.disabled"   # "<uuid> on|off": its state before decal turned it off
+_ext_lists() {  # _ext_lists UUID on|off : put UUID in enabled-extensions (on) or disabled-extensions (off)
+  local en dis; en=$(gsettings get org.gnome.shell enabled-extensions); dis=$(gsettings get org.gnome.shell disabled-extensions)
+  read -r en dis < <(python3 -c '
+import ast,sys
+def lst(v): return [] if v.startswith("@as") else ast.literal_eval(v)
+u,want,en,dis=sys.argv[1],sys.argv[2],lst(sys.argv[3]),lst(sys.argv[4])
+en=[x for x in en if x!=u]; dis=[x for x in dis if x!=u]
+(en if want=="on" else dis).append(u)
+print(repr(en).replace(" ",""), repr(dis).replace(" ",""))' "$1" "$2" "$en" "$dis")
+  gsettings set org.gnome.shell enabled-extensions "$en"; gsettings set org.gnome.shell disabled-extensions "$dis"
+}
+_is_on() { gsettings get org.gnome.shell enabled-extensions | grep -qF "'$1'"; }
+_disable_apply() {
+  local u st keep=""
+  if [[ -r $DISABLED ]]; then   # left the disable list: back to how it was
+    while read -r u st; do
+      [[ -n $u ]] || continue
+      if (( ${#P_disable[@]} )) && printf '%s\n' "${P_disable[@]}" | grep -qxF "$u"; then keep+="$u $st"$'\n'
+      elif [[ $st == on ]]; then _ext_lists "$u" on; fi
+    done < <(cat "$DISABLED")
+  fi
+  printf '%s' "$keep" > "$DISABLED"
+  for u in "${P_disable[@]}"; do
+    grep -q "^$u " "$DISABLED" || echo "$u $(_is_on "$u" && echo on || echo off)" >> "$DISABLED"
+    _ext_lists "$u" off
+  done
+}
+_disable_undo() {
+  [[ -r $DISABLED ]] || return 0
+  local u st; while read -r u st; do if [[ -n $u && $st == on ]]; then _ext_lists "$u" on; fi; done < "$DISABLED"
+  rm -f "$DISABLED"
+}
 _dt() { python3 "$LS_REPO/lib/dconf_tool.py" "$@"; }
 _settings() {  # _settings CMD [args] : run dconf_tool on the profile's extension settings (if any)
   [[ -n $P_file ]] || return 0
@@ -69,6 +103,9 @@ _install_from_ego() {  # UUID -> 0 installed, 1 unavailable
 module_add() {
   have gnome-extensions || die "gnome-extensions not found (GNOME Shell required)"
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] would install missing: $(for u in $(_uuids); do _present "$u" || printf '%s ' "$u"; done)"; return 0; fi
+  local x; for x in "${P_disable[@]}"; do
+    if _uuids | grep -qxF "$x"; then die "$x is in both enable and disable in [gnome-extensions]"; fi
+  done
   mkdir -p "$LS_USER_STATE" "$ICON_DIR"
   _drop_unlisted
   local u new=0
@@ -96,6 +133,7 @@ import ast,sys; cur=ast.literal_eval(sys.argv[1] if sys.argv[1] != "@as []" else
 print([x for x in cur if x not in drop])' "$dis" "$LS_USER_STATE/gnome-extensions.undisabled")"
   fi
   _files_apply
+  _disable_apply
   step "applying extension settings"
   _settings apply
   (( new )) && info "new extensions activate after you log out and back in"
@@ -106,6 +144,7 @@ module_remove() {
   [[ $LS_DRY_RUN == 1 ]] && { log "[dry-run] would restore extension settings and uninstall: $(cat "$LS_USER_STATE/gnome-extensions.installed" 2>/dev/null | tr '\n' ' ')"; return 0; }
   _dt remove --base /org/gnome/shell/extensions/ --prev "$LS_USER_STATE/gnome-extensions.prev.json"
   _dt remove --base / --prev "$LS_USER_STATE/gnome-extensions-enabled.prev.json"
+  _disable_undo
   if [[ -s $LS_USER_STATE/gnome-extensions.undisabled ]]; then
     local cur; cur=$(gsettings get org.gnome.shell disabled-extensions)
     gsettings set org.gnome.shell disabled-extensions "$(python3 -c '
