@@ -41,7 +41,7 @@ _drop_unlisted() {
   while IFS= read -r u; do
     [[ -n $u ]] || continue
     if _uuids | grep -qxF "$u"; then keep+="$u"$'\n'
-    else step "removing $u (no longer in the profile)"; gnome-extensions disable "$u" 2>/dev/null || true; gnome-extensions uninstall "$u" || true; fi
+    else step "removing $u (no longer in the profile)"; gnome-extensions disable "$u" 2>/dev/null || true; gnome-extensions uninstall "$u" || true; rm -rf "${EXT_HOME:?}/$u"; fi
   done < <(cat "$INSTALLED")
   printf '%s' "$keep" > "$INSTALLED"
 }
@@ -89,6 +89,16 @@ _settings() {  # _settings CMD [args] : run dconf_tool on the profile's extensio
 _loaded() { gnome-extensions info "$1" >/dev/null 2>&1; }
 _on_disk() { [[ -d ${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions/$1 ]]; }
 _present() { _loaded "$1" || _on_disk "$1"; }
+# extensions that ship with decal (bundled/<uuid>): copied in and kept in sync with decal's copy
+EXT_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions"
+_bundled() { [[ -d bundled/$1 ]]; }
+_install_bundled() {  # UUID -> 0 if (re)installed, 1 if already up to date
+  local u=$1 d="$EXT_HOME/$1"
+  if [[ -d $d ]] && diff -rq --exclude=gschemas.compiled "bundled/$u" "$d" >/dev/null 2>&1; then return 1; fi
+  rm -rf "$d"; mkdir -p "$EXT_HOME"; cp -r "bundled/$u" "$d"
+  if [[ -d $d/schemas ]]; then glib-compile-schemas "$d/schemas"; fi
+  return 0
+}
 _shell_major() { gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -1; }
 
 _install_from_ego() {  # UUID -> 0 installed, 1 unavailable
@@ -110,6 +120,11 @@ module_add() {
   _drop_unlisted
   local u new=0
   for u in $(_uuids); do
+    if _bundled "$u"; then
+      if _install_bundled "$u"; then new=1; fi
+      grep -qxF "$u" "$INSTALLED" 2>/dev/null || echo "$u" >> "$INSTALLED"   # decal's own: always decal's to remove
+      continue
+    fi
     _present "$u" && continue
     if _install_from_ego "$u"; then
       grep -qxF "$u" "$LS_USER_STATE/gnome-extensions.installed" 2>/dev/null || echo "$u" >> "$LS_USER_STATE/gnome-extensions.installed"; new=1
@@ -154,7 +169,7 @@ print(cur+[x for x in add if x not in cur])' "$cur" "$LS_USER_STATE/gnome-extens
   fi
   local u
   if [[ -r $LS_USER_STATE/gnome-extensions.installed ]]; then
-    while IFS= read -r u; do [[ -n $u ]] && gnome-extensions uninstall "$u" || true; done < "$LS_USER_STATE/gnome-extensions.installed"
+    while IFS= read -r u; do if [[ -n $u ]]; then gnome-extensions uninstall "$u" || true; rm -rf "${EXT_HOME:?}/$u"; fi; done < "$LS_USER_STATE/gnome-extensions.installed"
     rm -f "$LS_USER_STATE/gnome-extensions.installed"
   fi
   rm -f "$ICON_DIR"/gnome-logo-*.svg "$ICON_DIR"/logo-*.svg

@@ -126,4 +126,27 @@ assert_contains "$(v5 EN2)" "caffeine@patapon.info" "remove turns back on what w
 assert_contains "$(v5 DIS2)" "gsconnect@andyholmes.github.io" "and leaves off what was already off"
 assert_not_contains "$(v5 DIS2)" "caffeine" "caffeine no longer disabled after remove"
 assert_eq "$(v5 OVERLAP)" "1" "an extension in both lists is an error"
+# extensions bundled with decal (decal-quick-settings) install from decal itself, not extensions.gnome.org
+body6() {
+  cd "$REPO/modules/gnome-extensions"
+  ( set -euo pipefail; source "$REPO/lib/common.sh"; LS_REPO="$REPO"; source "$REPO/lib/platform.sh"; platform_load
+    sed -i 's/^enable = \[/enable = ["decal-quick-settings@decal", /' "$PROFILE_DIR/profile.toml"
+    sed -i '/^disable = /d' "$PROFILE_DIR/profile.toml"
+    run() { ( eval "$(python3 "$REPO/lib/profile.py" shell "$MODNAME" --profile "$PROFILE_DIR" --modules "$REPO/modules")"; source ./module.sh; "module_$1" 2>/dev/null ); }
+    E="$HOME/.local/share/gnome-shell/extensions/decal-quick-settings@decal"
+    run add
+    echo "JS=$([[ -f $E/extension.js ]] && echo yes)"; echo "SCHEMA=$([[ -f $E/schemas/gschemas.compiled ]] && echo yes)"
+    echo "REC=$(grep -c '^decal-quick-settings@decal$' "$LS_USER_STATE/gnome-extensions.installed")"
+    echo "orig" >> "$E/extension.js"; run add; echo "SYNCED=$(grep -c '^orig$' "$E/extension.js")"
+    run remove; echo "GONE=$([[ -e $E ]] && echo no || echo yes)" )
+}
+export -f body6
+: > "$STUBS/calls"; out=$(dbus-run-session -- bash -c body6 2>/dev/null)
+v6() { grep "^$1=" <<<"$out" | head -1 | cut -d= -f2-; }
+assert_eq "$(v6 JS)" "yes" "bundled extension installed"
+assert_eq "$(v6 SCHEMA)" "yes" "its settings schema compiled"
+assert_eq "$(v6 REC)" "1" "recorded as installed by decal"
+assert_not_contains "$(grep "^curl" "$STUBS/calls")" "decal-quick-settings" "never fetched from extensions.gnome.org"
+assert_eq "$(v6 SYNCED)" "0" "a changed copy is re-synced from decal"
+assert_eq "$(v6 GONE)" "yes" "remove uninstalls it"
 t_done
