@@ -15,7 +15,7 @@ module_add() {
     local f; f=$(_icon); mkdir -p "$PREV"; if [[ -r $f ]]; then cp "$f" "$PREV/picture"; fi
   fi
   step "setting your account picture"
-  _set "$P_picture"
+  _set "$(readlink -f "$P_picture")"   # the daemon refuses a path through a link (the active profile usually is one)
 }
 
 module_remove() {

@@ -8,16 +8,19 @@ ICONS="$T_TMP/icons"; mkdir -p "$ICONS"; echo "$HOME/.face" > "$STUBS/iconfile"
 stub busctl 'case "$*" in
   *FindUserByName*) echo "o \"/org/freedesktop/Accounts/User1000\"";;
   *get-property*IconFile*) echo "s \"$(cat "$STUBS/iconfile")\"";;
-  *SetIconFile*) f="${@: -1}"; if [ -z "$f" ]; then rm -f "'"$ICONS"'/me"; echo "$HOME/.face" > "$STUBS/iconfile";
+  *SetIconFile*) f="${@: -1}"; if [ -n "$f" ] && [ "$(readlink -f "$f")" != "$f" ]; then echo "file $f is not a regular file" >&2; exit 1; fi   # like the daemon
+                 if [ -z "$f" ]; then rm -f "'"$ICONS"'/me"; echo "$HOME/.face" > "$STUBS/iconfile";
                  else cp "$f" "'"$ICONS"'/me"; echo "'"$ICONS"'/me" > "$STUBS/iconfile"; fi;;
 esac'
 echo picture-1 > "$PROFILE_DIR/me.png"; printf '[account]\npicture = "me.png"\n' >> "$PROFILE_DIR/profile.toml"
+# the active profile is normally a link (~/.config/decal/profile -> your clone): the daemon rejects paths through it
+ln -s "$PROFILE_DIR" "$T_TMP/linked-profile"; REAL="$PROFILE_DIR"; PROFILE_DIR="$T_TMP/linked-profile"
 run_mod() { mod_run account "module_$1"; }
 PREV="$DECAL_USER_STATE/account-picture.prev"
 
 assert_eq "$(run_mod status)" "not-installed" "before: not set"
 : > "$STUBS/calls"; run_mod add >/dev/null 2>&1
-assert_contains "$(calls)" "SetIconFile s $PROFILE_DIR/me.png" "picture handed to AccountsService (no sudo)"
+assert_contains "$(calls)" "SetIconFile s $REAL/me.png" "picture handed to AccountsService by its real path (no sudo)"
 assert_eq "$(cat "$ICONS/me")" "picture-1" "account picture is the profile's"
 assert_eq "$(run_mod status)" "installed" "status after add"
 assert_file "$PREV" "previous picture recorded"; assert_nofile "$PREV/picture" "(there was none)"
