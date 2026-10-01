@@ -10,7 +10,7 @@ keep=${OUT:+1}; OUT="${OUT:-$(mktemp -d)}"; mkdir -p "$OUT"; rc=0
 shell_run() {  # shell_run NAME ON : one headless Shell with every Decal tweak on/off; probe writes NAME.txt / NAME.png
   local name=$1 on=$2 T; T=$(mktemp -d)
   ( export HOME=$T/home XDG_CONFIG_HOME=$T/home/.config XDG_DATA_HOME=$T/home/.local/share XDG_CACHE_HOME=$T/home/.cache \
-           XDG_RUNTIME_DIR=$T/run PROBE_OUT="$OUT/$name"
+           XDG_RUNTIME_DIR=$T/run PROBE_OUT="$OUT/$name" GTK_CHECK="$here/gtk-accent.js"
     mkdir -p "$XDG_DATA_HOME/gnome-shell/extensions" "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
     cp -r "$repo/modules/gnome-extensions/bundled/decal@decal" "$here/probe@decal" "$here/accent-user@decal" \
           "$XDG_DATA_HOME/gnome-shell/extensions/"
@@ -21,6 +21,7 @@ shell_run() {  # shell_run NAME ON : one headless Shell with every Decal tweak o
       dconf write /org/gnome/desktop/interface/accent-color "\"blue\""
       dconf write /org/gnome/shell/extensions/decal/accent-enabled '"$on"'
       dconf write /org/gnome/shell/extensions/decal/instant-minimize '"$on"'
+      dconf write /org/gnome/shell/extensions/decal/accent-apps '"$on"'
       gnome-shell --headless --wayland --no-x11 --virtual-monitor 1280x800 > "$PROBE_OUT.log" 2>&1 &
       for _ in $(seq 30); do [ -S "$XDG_RUNTIME_DIR/wayland-0" ] && break; sleep 0.5; done
       # a plain GTK window for the minimize check
@@ -29,6 +30,12 @@ shell_run() {  # shell_run NAME ON : one headless Shell with every Decal tweak o
         const app = new Gtk.Application({application_id: \"org.decal.TestWindow\"});
         app.connect(\"activate\", () => new Gtk.ApplicationWindow({application: app, title: \"decal-test-window\", default_width: 400, default_height: 300}).present());
         app.run([]);" >> "$PROBE_OUT.log" 2>&1 &
+      # GTK apps ("Apps too"): once the extension wrote gtk.css, render a GTK 4 (libadwaita) and a GTK 3 (adw-gtk3) window
+      if [ '"$on"' = true ]; then for _ in $(seq 20); do [ -e "$XDG_CONFIG_HOME/gtk-4.0/gtk.css" ] && break; sleep 0.5; done; fi
+      WAYLAND_DISPLAY=wayland-0 GDK_BACKEND=wayland gjs -m "$GTK_CHECK" 4 "$PROBE_OUT.gtk4" >> "$PROBE_OUT.log" 2>&1
+      if [ -d /usr/share/themes/adw-gtk3-dark ]; then
+        WAYLAND_DISPLAY=wayland-0 GDK_BACKEND=wayland GTK_THEME=adw-gtk3-dark gjs -m "$GTK_CHECK" 3 "$PROBE_OUT.gtk3" >> "$PROBE_OUT.log" 2>&1
+      fi
       for _ in $(seq 60); do [ -e "$PROBE_OUT.done" ] && break; sleep 1; done
       kill %2 %1 2>/dev/null; wait 2>/dev/null' ) >/dev/null 2>&1
   # the document portal mounts $XDG_RUNTIME_DIR/doc and lingers a moment after the session ends
@@ -54,6 +61,12 @@ check "accent: an extension restyling a GNOME accent rule still wins, even a mor
   'grep -q "\"today\":\"#123456\"" "$OUT/accent-on.txt" && grep -q "\"today\":\"#123456\"" "$OUT/accent-off.txt"'
 check "accent: switching it off brings GNOME's back, other stylesheets kept" \
   'grep -q "\"offToggle\":\"$blue\",\"offIcon\":\"$blue\",\"offOurs\":0,\"offOthers\":2" "$OUT/accent-on.txt"'
+check "apps: GTK 4 (libadwaita) apps get it" '[[ $(cat "$OUT/accent-on.gtk4") == *"$pink"* && $(cat "$OUT/accent-off.gtk4") != *"$pink"* ]]'
+if [[ -d /usr/share/themes/adw-gtk3-dark ]]; then
+  check "apps: GTK 3 (adw-gtk3) apps get it" '[[ $(cat "$OUT/accent-on.gtk3") == *"$pink"* && $(cat "$OUT/accent-off.gtk3") != *"$pink"* ]]'
+else echo "SKIP apps: GTK 3 (no adw-gtk3-dark theme)"; fi
+check "apps: kept through a screen lock, extension back after it" 'grep -q "\"lockedGtk\":true,\"unlockedState\":1" "$OUT/accent-on.txt"'
+check "apps: taken out again when switched off" 'grep -q "\"offGtk\":false" "$OUT/accent-on.txt"'
 check "minimize: GNOME animates it when the tweak is off" 'grep -q "\"minimizeAnimating\":true" "$OUT/accent-off.txt"'
 check "minimize: instant when the tweak is on" 'grep -q "\"minimizeAnimating\":false" "$OUT/accent-on.txt" && grep -q "\"minimized\":true" "$OUT/accent-on.txt"'
 if [[ -n $keep ]]; then echo "screenshots: $OUT/accent-off.png $OUT/accent-on.png"; else rm -rf "$OUT"; fi

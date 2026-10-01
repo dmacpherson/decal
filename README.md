@@ -43,7 +43,7 @@ listed there, and typos are rejected before anything changes.
 | cursor | Cursor pack (Material Bibata by default), also on the login screen |
 | icons | Icon theme from any source, optionally another theme's folders on top |
 | gtk-theme | GTK theme for GTK3 apps (optionally forced onto libadwaita apps), Flatpak apps included |
-| gnome-extensions → Decal Tweaks | decal's own extension for what no other extension does: any accent colour for GNOME Shell, instant minimize; one switch per tweak |
+| gnome-extensions → Decal Tweaks | decal's own extension for what no other extension does: any accent colour for GNOME Shell (and GTK apps), instant minimize; one switch per tweak |
 | docker | Docker Engine + Compose, the docker service, you in the docker group |
 | claude | Claude Code (CLI) and the Claude desktop app (Linux beta: Debian/Ubuntu only) |
 | tools | Command-line tools from their official installers (uv), updated on every apply |

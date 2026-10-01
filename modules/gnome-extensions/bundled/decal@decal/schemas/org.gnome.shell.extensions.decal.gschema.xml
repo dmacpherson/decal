@@ -16,6 +16,11 @@
       <summary>Text colour on the accent</summary>
       <description>#rrggbb, or empty for automatic (white or black, whichever reads better)</description>
     </key>
+    <key name="accent-apps" type="b">
+      <default>false</default>
+      <summary>Apps too</summary>
+      <description>Also give GTK apps the accent colour (libadwaita and adw-gtk3 apps, from their next start): a marked block in ~/.config/gtk-4.0/gtk.css and gtk-3.0/gtk.css, removed again when this is switched off.</description>
+    </key>
     <key name="instant-minimize" type="b">
       <default>false</default>
       <summary>Instant minimize</summary>

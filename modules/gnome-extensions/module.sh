@@ -34,6 +34,27 @@ _files_apply() {
     mkdir -p "$(dirname "$t")"; install -m 600 "${P_files[$d]}" "$t"
   done
 }
+# Decal Tweaks' "Apps too" block out of GTK's user stylesheets when decal removes the extension (switched off in a
+# running Shell, the extension takes it out itself). Same markers as its tweaks/accent-css.js; a file left empty goes.
+_strip_app_accent() {
+  local f
+  for f in "${XDG_CONFIG_HOME:-$HOME/.config}"/gtk-{4,3}.0/gtk.css; do
+    [[ -f $f ]] || continue
+    python3 - "$f" <<'EOF'
+import os, sys
+p = sys.argv[1]; text = open(p).read(); kept = []; inside = False
+for line in text.split('\n'):
+    if not inside and line.startswith('/* decal accent: begin'): inside = True
+    elif inside and line.startswith('/* decal accent: end'): inside = False
+    elif not inside: kept.append(line)
+rest = '\n'.join(kept).rstrip()
+new = rest + '\n' if rest else ''
+if new != text:
+    if new: open(p, 'w').write(new)
+    else: os.remove(p)
+EOF
+  done
+}
 # extensions decal installed that are no longer in the profile: disabled and uninstalled
 _drop_unlisted() {
   [[ -r $INSTALLED ]] || return 0
@@ -41,7 +62,8 @@ _drop_unlisted() {
   while IFS= read -r u; do
     [[ -n $u ]] || continue
     if _uuids | grep -qxF "$u"; then keep+="$u"$'\n'
-    else step "removing $u (no longer in the profile)"; gnome-extensions disable "$u" 2>/dev/null || true; gnome-extensions uninstall "$u" || true; rm -rf "${EXT_HOME:?}/$u"; fi
+    else step "removing $u (no longer in the profile)"; gnome-extensions disable "$u" 2>/dev/null || true; gnome-extensions uninstall "$u" || true; rm -rf "${EXT_HOME:?}/$u"
+      [[ $u != decal@decal ]] || _strip_app_accent; fi
   done < <(cat "$INSTALLED")
   printf '%s' "$keep" > "$INSTALLED"
 }
@@ -170,7 +192,9 @@ print(cur+[x for x in add if x not in cur])' "$cur" "$LS_USER_STATE/gnome-extens
   fi
   local u
   if [[ -r $LS_USER_STATE/gnome-extensions.installed ]]; then
-    while IFS= read -r u; do if [[ -n $u ]]; then gnome-extensions uninstall "$u" || true; rm -rf "${EXT_HOME:?}/$u"; fi; done < "$LS_USER_STATE/gnome-extensions.installed"
+    while IFS= read -r u; do
+      if [[ -n $u ]]; then gnome-extensions uninstall "$u" || true; rm -rf "${EXT_HOME:?}/$u"; [[ $u != decal@decal ]] || _strip_app_accent; fi
+    done < "$LS_USER_STATE/gnome-extensions.installed"
     rm -f "$LS_USER_STATE/gnome-extensions.installed"
   fi
   rm -f "$ICON_DIR"/gnome-logo-*.svg "$ICON_DIR"/logo-*.svg

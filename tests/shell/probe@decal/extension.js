@@ -8,16 +8,27 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const after = (ms, fn) => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => { fn(); return GLib.SOURCE_REMOVE; });
+const gtkCss = () => {
+    try {
+        return new TextDecoder().decode(GLib.file_get_contents(`${GLib.get_user_config_dir()}/gtk-4.0/gtk.css`)[1]);
+    } catch {
+        return '';
+    }
+};
+let started = false; // the lock check switches extensions off and on again: run once
 
 export default class Probe extends Extension {
     enable() {
+        if (started)
+            return;
+        started = true;
         const out = GLib.getenv('PROBE_OUT');
         const result = {};
         const write = () => {
             GLib.file_set_contents(`${out}.txt`, JSON.stringify(result));
             GLib.file_set_contents(`${out}.done`, '');
         };
-        const finish = () => this._offCheck(result, write);
+        const finish = () => this._lockCheck(result, () => this._offCheck(result, write));
         after(8000, () => {
             Main.overview.hide();
             after(2000, () => {
@@ -94,6 +105,19 @@ export default class Probe extends Extension {
         });
     }
 
+    // a screen lock switches extensions off, but apps keep running: their colour stays
+    _lockCheck(result, finish) {
+        Main.sessionMode.pushMode('unlock-dialog');
+        after(500, () => {
+            result.lockedGtk = gtkCss().includes('--accent-bg-color');
+            Main.sessionMode.popMode('unlock-dialog');
+            after(1000, () => {
+                result.unlockedState = Main.extensionManager.lookup('decal@decal')?.state;
+                finish();
+            });
+        });
+    }
+
     // accent switched off while running: GNOME's theme and accent come back, the other stylesheets stay
     _offCheck(result, finish) {
         Main.extensionManager.lookup('decal@decal')?.stateObj?.getSettings().set_boolean('accent-enabled', false);
@@ -105,6 +129,7 @@ export default class Probe extends Extension {
             result.offIcon = colors.icon;
             result.offOurs = sheets.filter(u => u.includes('decal-accent')).length;
             result.offOthers = sheets.filter(u => /accent-user@decal|late\.css/.test(u)).length;
+            result.offGtk = gtkCss().includes('--accent-bg-color');
             finish();
         });
     }

@@ -12,6 +12,6 @@ out=$(gjs -m "$REPO/tests/js/accent_test.js" $SHELL_CSS 2>&1); rc=$?
 assert_eq "$rc" "0" "accent generator unit tests"; [[ $rc == 0 ]] || printf '%s\n' "$out"
 # the settings schema compiles and has the accent keys
 glib-compile-schemas --strict --targetdir="$T_TMP" "$X/schemas" 2>&1; assert_eq "$?" "0" "schema compiles"
-for k in accent-enabled accent-color accent-fg-color instant-minimize; do assert_contains "$(cat "$X"/schemas/*.xml)" "name=\"$k\"" "schema key $k"; done
+for k in accent-enabled accent-color accent-fg-color accent-apps instant-minimize; do assert_contains "$(cat "$X"/schemas/*.xml)" "name=\"$k\"" "schema key $k"; done
 assert_contains "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["uuid"])' "$X/metadata.json")" "decal@decal" "metadata uuid"
 t_done

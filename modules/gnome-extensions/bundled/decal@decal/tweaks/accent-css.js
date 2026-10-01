@@ -39,6 +39,38 @@ export function inlineImports(css, read) {
     return css.replace(/@import\s+(?:url\(\s*)?["']?([^"')\s;]+)["']?\s*\)?[^;]*;/g, (_m, path) => read(path));
 }
 
+// Apps too: GTK's user stylesheets (~/.config/gtk-N.0/gtk.css) get a marked block with the accent.
+// decal's gnome-extensions module strips the same markers when it removes the extension.
+const BEGIN = '/* decal accent: begin';
+const END = '/* decal accent: end';
+
+// the block for GTK 4 (libadwaita derives its other accent shades from these) or GTK 3 (adw-gtk3's colours)
+export function gtkAccentCss(gtk, color, fg) {
+    const lines = gtk === 4
+        ? [':root {', `  --accent-bg-color: ${color};`, `  --accent-fg-color: ${fg};`, '}']
+        : [`@define-color accent_bg_color ${color};`, `@define-color accent_fg_color ${fg};`,
+            `@define-color accent_color ${color};`];
+    return [`${BEGIN} (Decal Tweaks, "Apps too": edits here are overwritten) */`, ...lines, `${END} */`].join('\n');
+}
+
+// a stylesheet's text with our block replaced by block, last so it wins, or removed when block is ''
+export function withBlock(text, block) {
+    const kept = [];
+    let inside = false;
+    for (const line of text.split('\n')) {
+        if (!inside && line.startsWith(BEGIN))
+            inside = true;
+        else if (inside && line.startsWith(END))
+            inside = false;
+        else if (!inside)
+            kept.push(line);
+    }
+    const rest = kept.join('\n').replace(/\s+$/, '');
+    if (!block)
+        return rest ? `${rest}\n` : '';
+    return rest ? `${rest}\n\n${block}\n` : `${block}\n`;
+}
+
 // White or black text, whichever is more readable on the colour (WCAG relative luminance).
 export function readableFg(hex) {
     const [r, g, b] = [1, 3, 5].map(i => {

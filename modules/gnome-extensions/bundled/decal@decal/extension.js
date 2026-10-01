@@ -2,6 +2,7 @@
 // Each tweak lives in tweaks/ and is switched on and off by its own setting.
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {AccentTweak} from './tweaks/accent.js';
+import {AppsAccent} from './tweaks/apps.js';
 import {InstantMinimizeTweak} from './tweaks/minimize.js';
 
 const TWEAKS = [
@@ -15,9 +16,13 @@ export default class DecalTweaks extends Extension {
         this._running = new Map();   // key -> tweak
         this._ids = TWEAKS.map(t => this._settings.connect(`changed::${t.key}`, () => this._sync(t)));
         TWEAKS.forEach(t => this._sync(t));
+        this._apps = new AppsAccent(this._settings);
+        this._apps.start();
     }
 
     disable() {
+        this._apps.stop();
+        this._apps = null;
         this._ids.forEach(id => this._settings.disconnect(id));
         for (const tweak of this._running.values())
             tweak.disable();

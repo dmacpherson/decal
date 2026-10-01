@@ -11,7 +11,7 @@ export default class DecalTweaksPrefs extends ExtensionPreferences {
         const page = new Adw.PreferencesPage();
         const group = new Adw.PreferencesGroup({
             title: 'Accent colour',
-            description: 'Any colour for GNOME Shell: Quick Settings, sliders, switches, and other extensions\' accent-coloured bits. Apps keep GNOME\'s accent.',
+            description: 'Any colour for GNOME Shell: Quick Settings, sliders, switches, and other extensions\' accent-coloured bits.',
         });
         const on = new Adw.SwitchRow({title: 'Custom accent colour'});
         settings.bind('accent-enabled', on, 'active', Gio.SettingsBindFlags.DEFAULT);
@@ -31,6 +31,11 @@ export default class DecalTweaksPrefs extends ExtensionPreferences {
         row.add_suffix(button);
         settings.bind('accent-enabled', row, 'sensitive', Gio.SettingsBindFlags.GET);
         group.add(row);
+
+        const apps = new Adw.SwitchRow({title: 'Apps too', subtitle: 'GTK apps (libadwaita, adw-gtk3) from their next start'});
+        settings.bind('accent-apps', apps, 'active', Gio.SettingsBindFlags.DEFAULT);
+        settings.bind('accent-enabled', apps, 'sensitive', Gio.SettingsBindFlags.GET);
+        group.add(apps);
 
         page.add(group);
 

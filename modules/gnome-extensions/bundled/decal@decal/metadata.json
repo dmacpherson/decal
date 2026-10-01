@@ -1,7 +1,7 @@
 {
   "uuid": "decal@decal",
   "name": "Decal Tweaks",
-  "description": "Small GNOME Shell tweaks no other extension does. Accent colour: any colour for Quick Settings, sliders, switches and other extensions' accent-coloured bits (GNOME only offers a fixed list). Instant minimize: no minimize animation, other animations untouched. Installed and configured by decal.",
+  "description": "Small GNOME Shell tweaks no other extension does. Accent colour: any colour for Quick Settings, sliders, switches and other extensions' accent-coloured bits (GNOME only offers a fixed list), optionally GTK apps too. Instant minimize: no minimize animation, other animations untouched. Installed and configured by decal.",
   "shell-version": ["47", "48", "49", "50"],
   "settings-schema": "org.gnome.shell.extensions.decal",
   "url": "https://github.com/dmacpherson/decal"

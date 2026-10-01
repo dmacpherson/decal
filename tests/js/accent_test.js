@@ -1,6 +1,6 @@
 // gjs -m tests/js/accent_test.js [SHELL_CSS] : unit tests for the Decal Tweaks accent stylesheet generator
 import GLib from 'gi://GLib';
-import {absoluteUrls, accentCss, inlineImports, readableFg, recolor, validColor} from '../../modules/gnome-extensions/bundled/decal@decal/tweaks/accent-css.js';
+import {absoluteUrls, accentCss, gtkAccentCss, inlineImports, readableFg, recolor, validColor, withBlock} from '../../modules/gnome-extensions/bundled/decal@decal/tweaks/accent-css.js';
 
 let fails = 0, count = 0;
 const eq = (got, want, what) => { count++; if (got !== want) { fails++; print(`  FAIL: ${what}: expected [${want}] got [${got}]`); } };
@@ -41,6 +41,18 @@ eq(absoluteUrls('.a { background-image: url("assets/a.svg"); } .b { background: 
     'relative urls made absolute');
 eq(absoluteUrls(".c { background-image: url('resource:///org/gnome/shell/theme/c.svg'); }", abs),
     '.c { background-image: url("resource:///org/gnome/shell/theme/c.svg"); }', 'absolute urls kept');
+// Apps too: a marked block in GTK's user stylesheets
+const g4 = gtkAccentCss(4, '#ff40a0', '#ffffff'), g3 = gtkAccentCss(3, '#ff40a0', '#ffffff');
+has(g4, '--accent-bg-color: #ff40a0;', 'GTK 4: libadwaita accent variable');
+has(g4, '--accent-fg-color: #ffffff;', 'GTK 4: text on the accent');
+has(g3, '@define-color accent_bg_color #ff40a0;', 'GTK 3: adw-gtk3 accent colour');
+has(g3, '@define-color accent_fg_color #ffffff;', 'GTK 3: text on the accent');
+eq(withBlock('', g4), `${g4}\n`, 'block into an empty file');
+eq(withBlock('/* mine */\nwindow { color: red; }\n', g4), `/* mine */\nwindow { color: red; }\n\n${g4}\n`, 'block appended after the user\'s own css');
+const once = withBlock('/* mine */\n', g4);
+eq(withBlock(once, gtkAccentCss(4, '#00ff00', '#000000')), `/* mine */\n\n${gtkAccentCss(4, '#00ff00', '#000000')}\n`, 'block replaced, not added twice');
+eq(withBlock(withBlock('/* mine */\n', g4) + '/* after */\n', ''), '/* mine */\n\n/* after */\n', 'block removed, the rest kept');
+eq(withBlock(withBlock('', g4), ''), '', 'nothing left when the file only had our block');
 eq(readableFg('#ff40a0'), '#ffffff', 'white text on hot pink');
 eq(readableFg('#ffff00'), '#000000', 'black text on yellow');
 eq(validColor('#ff40a0'), true, '#rrggbb accepted');
