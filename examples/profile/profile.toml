@@ -44,6 +44,9 @@ login-logo = ""                   # "" hides the login-screen logo, or a path to
 # [account]                       # your account picture: login screen, lock screen, user menu
 # picture = "account/me.png"      # square image in your profile; remove restores your previous picture
 
+# [brave]                         # Brave settings its Sync doesn't carry (look, toolbar, new tab page, search engines)
+# preferences = "brave/preferences.json"   # a partial Brave Preferences tree; only those values are set, remove restores them
+
 [terminal]
 app = "ptyxis"                    # ptyxis kitty alacritty foot wezterm ghostty
 layout = "tokyo-sharp"
