@@ -1,0 +1,3 @@
+# gitleaks false positives (reviewed)
+# public fingerprint of Anthropic's apt signing key, used to verify the downloaded key (modules/claude)
+e3ab904c2e66cf88d8ccb1ea6a98ac4a5d1a3f4f:modules/claude/module.sh:generic-api-key:9
