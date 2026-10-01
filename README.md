@@ -34,6 +34,7 @@ listed there, and typos are rejected before anything changes.
 | apps | Flatpaks / packages + default apps (installed if missing) |
 | gnome-settings | Appearance, input, power, dock, launcher (dconf file in your profile) |
 | gnome-extensions | Extensions + their settings + panel logo colour |
+| display | Scaling for every monitor (e.g. 150%), arrangement kept, saved like GNOME Settings does |
 | branding | Login-screen logo |
 | terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable |
 | cursor | Cursor pack (Material Bibata by default), also on the login screen |

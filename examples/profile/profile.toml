@@ -34,6 +34,9 @@ browser = "com.brave.Browser"
 # logo-color = "#deddda"
 # file = "gnome/extensions.ini"
 
+# [display]                       # every monitor at this scale (closest supported one), saved like Settings does
+# scale = 1.5
+
 [branding]
 login-logo = ""                   # "" hides the login-screen logo, or a path to an image
 

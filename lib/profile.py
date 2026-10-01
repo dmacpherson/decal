@@ -68,6 +68,11 @@ def check(sec, key, spec, v, pdir):
         if "min" in spec and v < spec["min"]: bad(f"must be >= {spec['min']}")
         if "max" in spec and v > spec["max"]: bad(f"must be <= {spec['max']}")
         return v
+    if t == "number":   # integer or decimal, e.g. a display scale of 1.5
+        if isinstance(v, bool) or not isinstance(v, (int, float)): bad("expected a number")
+        if "min" in spec and v < spec["min"]: bad(f"must be >= {spec['min']}")
+        if "max" in spec and v > spec["max"]: bad(f"must be <= {spec['max']}")
+        return v
     if t == "bool":
         if not isinstance(v, bool): bad("expected true or false")
         return v

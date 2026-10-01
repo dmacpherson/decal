@@ -6,6 +6,7 @@ cat > "$M/demo/schema.json" <<'EOF'
 {"keys": {
   "name": {"type": "string", "default": "x"},
   "size": {"type": "int", "default": 24, "min": 1},
+  "zoom": {"type": "number", "default": 1, "min": 0.5, "max": 4},
   "on": {"type": "bool", "default": true},
   "mode": {"type": "enum", "values": ["a", "b"], "default": "a"},
   "color": {"type": "color", "default": "#deddda"},
@@ -71,6 +72,14 @@ bad() { prof; local out; out=$(chk); assert_contains "$out" "$1" "$2"; python3 "
 bad "[demo] unknown key 'sise'" "unknown key" < <(printf '[demo]\nfile = "f.txt"\nsise = 3\n')
 bad "expected an integer" "wrong type" < <(printf '[demo]\nfile = "f.txt"\nsize = "big"\n')
 bad "must be >= 1" "min" < <(printf '[demo]\nfile = "f.txt"\nsize = 0\n')
+bad "expected a number" "number type" < <(printf '[demo]\nfile = "f.txt"\nzoom = "big"\n')
+bad "must be <= 4" "number max" < <(printf '[demo]\nfile = "f.txt"\nzoom = 5.5\n')
+prof <<'EOF'
+[demo]
+file = "f.txt"
+zoom = 1.5
+EOF
+eval "$(python3 "$REPO/lib/profile.py" shell demo --profile "$P" --modules "$M")"; assert_eq "$P_zoom" "1.5" "number accepted (decimal)"
 bad "missing required key 'file'" "required" < <(printf '[demo]\nsize = 3\n')
 bad "file not found" "missing file" < <(printf '[demo]\nfile = "nope.txt"\n')
 bad "expected a colour" "colour" < <(printf '[demo]\nfile = "f.txt"\ncolor = "purple"\n')
