@@ -40,6 +40,9 @@ browser = "com.brave.Browser"
 [branding]
 login-logo = ""                   # "" hides the login-screen logo, or a path to an image
 
+# [account]                       # your account picture: login screen, lock screen, user menu
+# picture = "account/me.png"      # square image in your profile; remove restores your previous picture
+
 [terminal]
 app = "ptyxis"                    # ptyxis kitty alacritty foot wezterm ghostty
 layout = "tokyo-sharp"

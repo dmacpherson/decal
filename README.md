@@ -39,6 +39,7 @@ listed there, and typos are rejected before anything changes.
 | gnome-extensions | Extensions + their settings + panel logo colour |
 | display | Scaling for every monitor (e.g. 150%), arrangement kept, saved like GNOME Settings does |
 | branding | Login-screen logo |
+| account | Your account picture (login screen, lock screen, user menu), no sudo |
 | terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable |
 | cursor | Cursor pack (Material Bibata by default), also on the login screen |
 | icons | Icon theme from any source, optionally another theme's folders on top |
