@@ -21,11 +21,14 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
   tags                       the tags your profile uses, and which sections have them
   add    <module...|all>     apply (idempotent); all = every module in your profile
   remove <module...|all>     undo exactly what add did
-  apply  <dir|file.tar.gz|git-url>   make it the active profile, then add everything in it
+  apply  <dir|file.tar.gz|git-url|github:owner/repo[@ref]>   make it the active profile, then add everything in it
                              (never removes anything; use remove, or [apps] remove-* lists)
   export <out.tar.gz>        pack the active profile
   fetch  [module...]         pre-download sources (themes, fonts, ...)
   capture <module>           print current config to copy into your profile
+  update                     update decal now (installs from install.sh also update themselves on every run;
+                             --no-update skips that once)
+  version                    the installed version
 EOF
   exit 1
 }
@@ -40,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --profile) OPT_PROFILE=${2:?--profile needs a directory}; shift ;;
     --tags) DECAL_TAGS=${2:?--tags needs a tag list, e.g. --tags dev}; export DECAL_TAGS; shift ;;
     --only) DECAL_ONLY=${2:?--only needs a tag}; export DECAL_ONLY; shift ;;
+    --no-update) export DECAL_NO_UPDATE=1 ;;
     -h|--help) usage ;;
     *) args+=("$1") ;;
   esac; shift
@@ -47,6 +51,28 @@ done
 set -- "${args[@]+"${args[@]}"}"
 [[ $# -ge 1 ]] || usage
 cmd=$1; shift
+
+# installed with install.sh (not a git checkout): every run first updates decal if a newer version is out, then
+# runs the command on it. Offline or GitHub unreachable: carries on. --no-update / DECAL_NO_UPDATE=1 skip it.
+_installer() { local t; t=$(mktemp "${TMPDIR:-/tmp}/decal-install.XXXXXX"); cp "$LS_REPO/install.sh" "$t"; echo "$t"; }   # a copy: the update replaces this folder
+self_update() {
+  [[ -e $LS_REPO/.installed && -z ${DECAL_NO_UPDATE:-} && -z ${DECAL_LOGGING:-} ]] || return 0
+  local new t; new=$(timeout 30 bash "$LS_REPO/install.sh" --check 2>/dev/null) || return 0
+  info "decal $new is out (you have $(cat "$LS_REPO/VERSION" 2>/dev/null)): updating first"
+  t=$(_installer)
+  if bash "$t" --update; then rm -f "$t"; DECAL_NO_UPDATE=1 exec "$LS_REPO/decal" "${ORIG_ARGS[@]}"; fi
+  rm -f "$t"; warn "the update failed; carrying on with this version"
+}
+case $cmd in
+  update)
+    [[ -e $LS_REPO/.installed ]] || die "$LS_REPO is a git checkout: update it with git pull (decal update is for installs made with install.sh)"
+    t=$(_installer); bash "$t" --update; rc=$?; rm -f "$t"; exit "$rc" ;;
+  version)
+    if [[ -e $LS_REPO/.installed ]]; then echo "decal $(cat "$LS_REPO/VERSION" 2>/dev/null) ($(cat "$LS_REPO/.channel" 2>/dev/null || echo latest))"
+    else echo "decal (git checkout at $LS_REPO)"; fi
+    exit 0 ;;
+esac
+self_update
 PROFILE_HOME="${DECAL_PROFILE_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/decal/profile}"
 PROFILE_DIR="${OPT_PROFILE:-${DECAL_PROFILE:-$PROFILE_HOME}}"; export PROFILE_DIR
 
@@ -212,6 +238,29 @@ find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single s
   if [[ ${#subs[@]} -eq 1 && -f ${subs[0]}profile.toml ]]; then echo "${subs[0]%/}"; return 0; fi
   return 1
 }
+# gh_tarball OWNER/REPO REF OUT : a GitHub repo as a .tar.gz without git. Private repos need a token: GITHUB_TOKEN,
+# GH_TOKEN or a `gh auth login`; without one, in a terminal, it asks (read access to the repo is enough)
+gh_tarball() {
+  local url="${DECAL_GITHUB_API:-https://api.github.com}/repos/$1/tarball${2:+/$2}" tok hdr="$LS_RUNTMP/gh-auth" code asked=0
+  have curl || die "curl is needed to download $1"
+  tok=${GITHUB_TOKEN:-${GH_TOKEN:-}}
+  if [[ -z $tok ]] && have gh; then tok=$(gh auth token 2>/dev/null || true); fi
+  while :; do
+    ( umask 077; if [[ -n $tok ]]; then printf 'Authorization: Bearer %s\n' "$tok"; fi > "$hdr" )   # not on the command line
+    code=$(curl -sSL --connect-timeout 10 -H @"$hdr" -o "$3" -w '%{http_code}' "$url" 2>/dev/null) || code=${code:-000}
+    rm -f "$hdr"
+    [[ $code == 200 ]] && return 0
+    if [[ $code =~ ^(401|403|404)$ && $asked == 0 ]] && { : < /dev/tty; } 2>/dev/null; then
+      info "$1 needs a GitHub token (private repo?): a fine-grained token with read access to its contents"
+      printf 'token: ' > /dev/tty; IFS= read -rs tok < /dev/tty; printf '\n' > /dev/tty; asked=1
+      [[ -n $tok ]] && continue
+    fi
+    case $code in
+      401|403|404) die "github:$1 not found or not allowed (private? set GITHUB_TOKEN, or log in with gh auth login)" ;;
+      *) die "could not download github:$1 (HTTP $code)" ;;
+    esac
+  done
+}
 # set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: stage in a temp dir)
 # The new profile is validated before the active one is touched; a replaced real folder is kept as a dated backup.
 set_profile() {
@@ -237,6 +286,18 @@ set_profile() {
     _valid "$stage"
     if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$stage; return 0; fi
     _aside; mv "$stage" "$t"
+  elif [[ $src =~ ^github:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(@(.+))?$ ]]; then
+    # no git needed: GitHub's archive of the repo (a branch, tag or commit after @; the default branch without)
+    tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
+    gh_tarball "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}" "$tmp/p.tar.gz"
+    mkdir "$tmp/x"; tar -xzf "$tmp/p.tar.gz" -C "$tmp/x" || die "could not unpack $src"
+    stage=$(find_profile_root "$tmp/x") || die "$src has no profile.toml"
+    _valid "$stage"
+    if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$stage; return 0; fi
+    echo "$src" > "$stage/.decal-source"
+    # the same source again: just the newer copy (no backup of a download)
+    if [[ -d $t && ! -L $t && $(cat "$t/.decal-source" 2>/dev/null) == "$src" ]]; then rm -rf "$t"; else _aside; fi
+    mv "$stage" "$t"
   elif [[ $src =~ ^(git\+)?(https://|ssh://|file://|git@) ]]; then
     url=${src#git+}
     tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX"); git clone -q "$url" "$tmp/p" || die "git clone failed: $url"
@@ -249,7 +310,7 @@ set_profile() {
       _aside; mv "$tmp/p" "$t"
     fi
   else
-    die "unknown profile source: $src (a folder, a .tar.gz, or a git URL)"
+    die "unknown profile source: $src (a folder, a .tar.gz, a git URL, or github:owner/repo)"
   fi
   PROFILE_DIR=$t
   info "active profile: $t -> $(readlink -f "$t")"

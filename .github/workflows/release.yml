@@ -1,0 +1,23 @@
+# Push a tag like v1.2.0 -> a GitHub release with decal.tar.gz and its checksum (what install.sh downloads).
+# Run the checks first (bash tests/run.sh, shellcheck, gitleaks); this only packages.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package
+        run: |
+          mkdir dist
+          git archive --format=tar.gz --prefix=decal/ -o dist/decal.tar.gz "$GITHUB_REF_NAME"   # .gitattributes leaves tests out
+          (cd dist && sha256sum decal.tar.gz > decal.tar.gz.sha256)
+          tar -tzf dist/decal.tar.gz decal/decal decal/install.sh >/dev/null
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/decal.tar.gz dist/decal.tar.gz.sha256 --title "$GITHUB_REF_NAME" --generate-notes

@@ -8,8 +8,33 @@ terminal) and applies it module by module on Fedora Atomic (Bazzite,
 Silverblue…), Fedora/RHEL, Debian/Ubuntu and Arch. Every module can be removed
 again, undoing exactly what it did.
 
+## Install
+
+No git needed: one line downloads the newest release (checksum verified) to `~/.local/share/decal`
+and puts `decal` in `~/.local/bin`. Give it a profile and it applies it straight away:
+
 ```bash
-./decal apply ~/my-profile          # a folder, a .tar.gz, or a git URL: becomes the active profile, then applied (never removes anything)
+curl -fsSL https://dmacpherson.github.io/decal/install | bash                                   # install decal
+curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- ~/my-profile --tags dev     # install + apply
+curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- github:you/your-profile     # profile from GitHub
+```
+
+Installed this way, decal keeps itself current: every run first checks for a newer release and,
+if there is one, updates and then runs your command on it (offline, it just carries on;
+`--no-update` skips it once). `decal update` updates on demand, `decal version` shows what you have.
+`DECAL_VERSION=v1.2.0` (or `main`) before `bash` picks a release (or the newest commit) and is
+remembered. Needs `bash`, `curl` or `wget`, `tar` and `python3`. A git checkout (`./decal`) works the same
+but never updates itself.
+
+A profile can be a folder (a USB stick is fine), a `.tar.gz` from `decal export`, a git URL, or
+`github:owner/repo[@branch]`, downloaded without git. For a private repo set `GITHUB_TOKEN` (a
+fine-grained token with read access to it: `curl … | GITHUB_TOKEN=… bash -s -- github:…`), be logged
+in with `gh`, or type the token when it asks.
+
+## Use
+
+```bash
+./decal apply ~/my-profile          # a folder, a .tar.gz, a git URL or github:owner/repo: becomes the active profile, then applied (never removes anything)
 ./decal status                      # what's applied
 ./decal add cursor icons            # apply some modules from the active profile
 ./decal remove wallpaper            # undo exactly what add did
