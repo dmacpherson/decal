@@ -88,6 +88,11 @@ out=$(DECAL_HOME="$T_TMP/notdecal" bash "$REPO/install.sh" 2>&1); assert_eq "$?"
 assert_eq "$(cat "$T_TMP/notdecal/file")" "mine" "and left as it was"
 out=$(DECAL_FAKE_EUID=0 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "root refused"; assert_contains "$out" "not root" "says why"
 
+# no profile given, in a terminal: the menu opens (not with DECAL_NO_MENU, and never without a terminal)
+python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" bash "$REPO/install.sh" -- q
+assert_contains "$(cat "$T_TMP/screen")" "stick it on" "the one-liner without a profile opens the menu"
+DECAL_NO_MENU=1 python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" bash "$REPO/install.sh" -- q
+assert_not_contains "$(cat "$T_TMP/screen")" "stick it on" "DECAL_NO_MENU=1: no menu"
 # install + apply in one go: the arguments go to decal apply
 latest v1.2.0; rm -rf "$H"; P="$T_TMP/myprofile"; mkdir -p "$P"; printf '[eee-conf]\nword = "one-liner"\n' > "$P/profile.toml"
 DECAL_VERSION=latest bash "$REPO/install.sh" "$P" >/dev/null 2>&1 < /dev/null; assert_eq "$?" "0" "install + apply rc"

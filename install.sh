@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # decal installer, no git needed:
-#   curl -fsSL https://dmacpherson.github.io/decal/install | bash                     # install / update decal
+#   curl -fsSL https://dmacpherson.github.io/decal/install | bash                     # install / update, open the menu
 #   curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- PROFILE [--tags dev]   # ...then apply PROFILE
 # Downloads decal to ~/.local/share/decal/app and links ~/.local/bin/decal. Run it again (or `decal update`) for the
 # newest version; decal also updates itself before add/apply/remove. PROFILE is anything `decal apply` takes: a
@@ -84,9 +84,15 @@ main() {
     if [[ -n $cur && $cur != "$tag" ]]; then say "decal updated: $cur -> $tag"; else say "decal $tag installed in $home"; fi
   fi
   case ":$PATH:" in *":$bin:"*) ;; *) say "add $bin to your PATH to run 'decal' directly (for now: $bin/decal)" ;; esac
-  [[ $mode == install && $# -gt 0 ]] || return 0
-  # piped into bash, stdin is the script: decal gets the terminal
-  if [[ ! -t 0 ]] && { : < /dev/tty; } 2>/dev/null; then exec "$home/decal" --no-update apply "$@" < /dev/tty; fi
+  [[ $mode == install ]] || return 0
+  # piped into bash, stdin is the script: decal gets the terminal. No profile given: the menu (when there's a
+  # terminal and DECAL_NO_MENU isn't set); a profile: applied straight away
+  local tty=0; if { : < /dev/tty; } 2>/dev/null && [[ -t 1 ]]; then tty=1; fi
+  if (( $# == 0 )); then
+    if (( tty )) && [[ -z ${DECAL_NO_MENU:-} ]]; then exec "$home/decal" --no-update ui < /dev/tty; fi
+    return 0
+  fi
+  if [[ ! -t 0 ]] && (( tty )); then exec "$home/decal" --no-update apply "$@" < /dev/tty; fi
   exec "$home/decal" --no-update apply "$@"
 }
 

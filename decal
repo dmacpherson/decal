@@ -16,6 +16,7 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
                              (without --tags: only the untagged settings)
   --only dev                 just the modules with a [section.dev], with dev's settings (implies --tags dev);
                              with remove: take away what dev adds (whole module if it is only there through dev)
+  (no command, in a terminal) the menu: apply, stamp, remove, update (also: decal ui)
   list                       modules and descriptions
   status [module...]         installed / partial / not-installed / stale / not in profile
   tags                       the tags your profile uses, and which sections have them
@@ -23,7 +24,8 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
   remove <module...|all>     undo exactly what add did
   apply  <dir|file.tar.gz|git-url|github:owner/repo[@ref]>   make it the active profile, then add everything in it
                              (never removes anything; use remove, or [apps] remove-* lists)
-  stamp  [PATH] [-gh [REPO]] save this machine's setup (what's changed from default) as a profile:
+  use    <profile source>    make it the active profile without applying anything
+  stamp  [MODULE...] [PATH] [-gh [REPO]] save this machine's setup (what's changed from default) as a profile:
                              ~/decal-$USER.tar.gz, or PATH (a .tar.gz, or a folder); -dr / --dry-run shows it
                              without saving; -gh / --github also puts it in a private GitHub repo (REPO, or
                              decal-$USER), one commit per stamp (--public: a public repo)
@@ -52,6 +54,7 @@ while [[ $# -gt 0 ]]; do
   esac; shift
 done
 set -- "${args[@]+"${args[@]}"}"
+if [[ $# -eq 0 && -t 0 && -t 1 ]]; then set -- ui; fi   # bare `decal` in a terminal: the menu
 [[ $# -ge 1 ]] || usage
 cmd=$1; shift
 
@@ -234,6 +237,8 @@ run_fancy() {
   else printf '\033[31m✗\033[0m %s %s\n' "$action" "$m"; tail -n 15 "$out" | sed 's/^/    /'; fi
   return "$rc"
 }
+# the tags this machine's last add/apply used (the menu pre-ticks them; the command line never reads them)
+remember_tags() { if [[ ${LS_DRY_RUN:-0} != 1 ]]; then mkdir -p "$LS_USER_STATE"; printf '%s\n' "${DECAL_TAGS:-}" > "$LS_USER_STATE/tags"; fi; }
 INSTALL_URL="https://dmacpherson.github.io/decal/install"
 # module_has NAME FUNC : the module defines FUNC
 module_has() { ( cd "$MODULES_DIR/$1" && export MODULE_DIR="$PWD"; set +u; source ./module.sh >/dev/null 2>&1; declare -F "$2" >/dev/null ); }
@@ -242,7 +247,7 @@ module_has() { ( cd "$MODULES_DIR/$1" && export MODULE_DIR="$PWD"; set +u; sourc
 # A module decal set up from your profile that is still in place is taken from the profile as you wrote it
 # (tags, sources, comments aside) unless it sets STAMP_LIVE=1 (those compare the machine with the defaults).
 do_stamp() {
-  local dest="" gh=0 repo="" public=0 me m frag st rc from
+  local dest="" gh=0 repo="" public=0 me m frag st rc from only=()
   while (( $# )); do
     case $1 in
       -gh|--github) gh=1
@@ -250,7 +255,8 @@ do_stamp() {
       --github=*) gh=1; repo=${1#--github=} ;;
       --public) public=1 ;;
       -*) die "stamp: unknown option $1" ;;
-      *) [[ -z $dest ]] || die "stamp: one place to save it (got $dest and $1)"; dest=$1 ;;
+      *) if [[ $1 != */* && $1 != *.* && -f $MODULES_DIR/$1/module.sh ]]; then only+=("$1")   # a module name
+         else [[ -z $dest ]] || die "stamp: one place to save it (got $dest and $1)"; dest=$1; fi ;;
     esac; shift
   done
   me=${USER:-$(id -un)}
@@ -261,6 +267,7 @@ do_stamp() {
   info "stamping this machine: only what's changed from the defaults"
   for m in $(all_modules); do
     [[ $(module_field "$m" STAMP_SKIP) != 1 ]] || continue
+    if (( ${#only[@]} )) && ! printf '%s\n' "${only[@]}" | grep -qxF "$m"; then continue; fi   # decal stamp MODULE...
     frag=""; from=0
     if [[ -f $PROFILE_DIR/profile.toml && -r $APPLIED/$m && $(module_field "$m" STAMP_LIVE) != 1 ]] && DECAL_TAGS=all in_profile "$m"; then
       st=$(DECAL_TAGS=all run_module status "$m" 2>/dev/null || true); [[ $st != installed* ]] || from=1
@@ -460,6 +467,7 @@ case $cmd in
         die "$m is not in your profile (add a [$m] section to $PROFILE_DIR/profile.toml)"
       done
       do_modules add "${mods[@]}"
+      remember_tags
     elif [[ -n ${DECAL_ONLY:-} ]]; then
       # remove --only TAG: a module that is only in the profile through the tag goes; one that is there anyway
       # keeps its own settings and only loses what the tag adds to its lists (if it can take that away)
@@ -487,9 +495,16 @@ case $cmd in
     pyprof check || die "$PROFILE_DIR/profile.toml is invalid (nothing was added)"
     mapfile -t mods < <(profile_modules | only_filter)
     do_modules add "${mods[@]}"
+    remember_tags
     tidy_cache
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
   stamp) do_stamp "$@" ;;
+  use)
+    [[ $# -eq 1 ]] || usage
+    set_profile "$1"; info "active profile: $PROFILE_DIR (nothing applied yet: decal add all, or the menu)" ;;
+  ui)
+    [[ -t 0 && -t 1 ]] || die "the menu needs a terminal"
+    exec python3 "$LS_REPO/lib/ui.py" ;;
   fetch)
     if [[ $# -gt 0 ]]; then names=$(resolve "$@") || exit 1; else names=$(profile_modules); fi
     mapfile -t mods < <(printf '%s\n' "$names" | sed '/^$/d')

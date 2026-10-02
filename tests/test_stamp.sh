@@ -60,6 +60,9 @@ cp "$M/live/module.sh" "$T_TMP/live.bak"; echo 'module_stamp() { printf "[live]\
 out=$("$S" stamp 2>&1); assert_eq "$?" "1" "an invalid stamp: fails"; assert_nofile "$HOME/decal-tester.tar.gz" "...and saves nothing"
 cp "$T_TMP/live.bak" "$M/live/module.sh"
 
+# decal stamp MODULE...: just those
+"$S" stamp live "$T_TMP/only.tgz" >/dev/null 2>&1; x "$T_TMP/only.tgz"
+assert_contains "$(cat "$T_TMP/x/profile.toml")" "[live]" "stamp MODULE: that module"; assert_not_contains "$(cat "$T_TMP/x/profile.toml")" "[mine]" "...and no other"
 # -gh: a fake GitHub (localhost); the repo is created private, each stamp a commit; the token never on a command line
 G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"
 python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!

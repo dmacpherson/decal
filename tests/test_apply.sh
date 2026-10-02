@@ -91,4 +91,8 @@ out=$(tty_run "$S" --profile "$P4" add p1 2>&1); rc=$?
 assert_eq "$rc" "1" "tty failure rc"
 assert_contains "$out" "✗ add p1" "tty: failed module marked"
 assert_contains "$out" "boom detail" "tty: a failed module's last lines are shown"
+# use: make a profile active without applying it
+U="$T_TMP/usethis"; mkdir -p "$U"; printf '[p1]\nword = "used"\n' > "$U/profile.toml"; : > "$LS_TEST_LOG"
+"$S" use "$U" >/dev/null 2>&1; assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$U")" "use: the active profile"
+assert_eq "$(cat "$LS_TEST_LOG")" "" "use: nothing applied"
 t_done

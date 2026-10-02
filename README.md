@@ -16,7 +16,7 @@ No git needed: one line downloads the newest release (checksum verified) to `~/.
 and puts `decal` in `~/.local/bin`. Give it a profile and it applies it straight away:
 
 ```bash
-curl -fsSL https://dmacpherson.github.io/decal/install | bash                                   # install decal
+curl -fsSL https://dmacpherson.github.io/decal/install | bash                                   # install decal, open the menu
 curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- ~/my-profile --tags dev     # install + apply
 curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- github:you/your-profile     # profile from GitHub
 ```
@@ -37,7 +37,22 @@ in with `gh`, or type the token when it asks.
 
 ## Use
 
+Run `decal` on its own for the menu:
+
+```
+  1   Apply     stick it on      put a profile on this machine
+  2   Stamp     take a print     save this machine's setup as a profile
+  3   Remove    peel it off      undo what decal changed
+  4   Update    fresh sheet      (when a newer version is out)
+  5   Logs      the fine print   what the last run did
+```
+
+Each one picks what it covers (the profile's tags and its modules, with their status), shows what would
+change, and asks before it does anything. It runs the same commands as below and shows them, so nothing
+it does is hidden. The tags you last applied are ticked for you next time.
+
 ```bash
+./decal use ~/my-profile            # make it the active profile, without applying anything
 ./decal apply ~/my-profile          # a folder, a .tar.gz, a git URL or github:owner/repo: becomes the active profile, then applied (never removes anything)
 ./decal status                      # what's applied
 ./decal add cursor icons            # apply some modules from the active profile
@@ -123,6 +138,7 @@ that `decal apply` puts on any other:
 decal stamp                    # -> ~/decal-$USER.tar.gz (the previous one kept as .old)
 decal stamp ~/backups/me.tgz   # or a .tar.gz / folder of your choice
 decal stamp -dr                # --dry-run: show what it would save, save nothing
+decal stamp apps brave         # just these modules
 decal stamp -gh                # --github: also into a private repo, decal-$USER (or -gh owner/name; --public)
 ```
 
