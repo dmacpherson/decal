@@ -39,4 +39,9 @@ run_mod remove >/dev/null 2>&1
 assert_eq "$(lay "$DECAL_DISPLAY_FAKE.applied")" "DP-1@0,0x2.0 DP-2@1920,0x2.0" "remove puts the previous layout back"
 # no GNOME display service (e.g. not in a GNOME session): skipped, not an error
 DECAL_DISPLAY_FAKE="$T_TMP/none.json" run_mod add >/dev/null 2>&1; assert_eq "$?" "0" "no display service: skipped"
+# taken out of the profile (scaling differs per machine): status doesn't compare against an empty scale
+sed -i '/^\[display\]/,$d' "$PROFILE_DIR/profile.toml"
+assert_eq "$(run_mod status 2>/dev/null)" "not-installed" "not in the profile, never set: not-installed"
+mkdir -p "$DECAL_USER_STATE"; echo '{}' > "$DECAL_USER_STATE/display.prev"
+assert_eq "$(run_mod status 2>/dev/null)" "installed" "not in the profile, set earlier: installed (remove can undo it)"
 t_done

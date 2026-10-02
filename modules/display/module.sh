@@ -21,6 +21,8 @@ module_remove() {
   rm -f "$PREV"
 }
 module_status() {
+  # not in the profile: nothing to compare against, only whether decal changed the layout earlier
+  [[ -n ${P_scale:-} ]] || { if [[ -e $PREV ]]; then echo installed; else echo not-installed; fi; return 0; }
   local st; st=$(mktemp)
   _s get > "$st" 2>/dev/null || { echo "partial (no GNOME display information)"; return 0; }
   if _s plan "$st" "$P_scale" 2>/dev/null | grep -q '"unchanged": true'; then echo installed; else echo "partial (not every monitor at $P_scale)"; fi
