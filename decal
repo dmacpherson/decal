@@ -135,10 +135,15 @@ profile_modules() { local m; for m in $(all_modules); do in_profile "$m" && echo
 module_field() { ( set +u; cd "$MODULES_DIR/$1" && export MODULE_DIR="$PWD"; eval "$(pyprof shell "$1" 2>/dev/null)"; source ./module.sh >/dev/null 2>&1; eval "printf '%s' \"\${$2:-}\"" ); }
 
 # run_module ACTION NAME : isolated subshell with the module's profile variables
+# a module named on its own (decal add ollama) that is only in the profile through tags gets its own tags'
+# settings, without the rest of those tags (MODULE_TAGS[name]); every profile read for it uses them
+declare -A MODULE_TAGS=()
+tags_for() { local t=${DECAL_TAGS:-}; if [[ -n ${MODULE_TAGS[$1]:-} ]]; then t="${t:+$t,}${MODULE_TAGS[$1]}"; fi; printf '%s' "$t"; }
 run_module() {
   local action=$1 name=$2
   (
     set -euo pipefail
+    DECAL_TAGS=$(tags_for "$name"); export DECAL_TAGS
     export MODULE_DIR="$MODULES_DIR/$name"
     source "$LS_REPO/lib/common.sh"
     source "$LS_REPO/lib/platform.sh"
@@ -162,7 +167,7 @@ run_module() {
 # a module is up to date when what its add depends on (settings, the profile files they point to, decal's code)
 # is unchanged since it was last applied, and its status still says installed: then add is skipped
 APPLIED="$LS_USER_STATE/applied"
-fingerprint() { python3 "$LS_REPO/lib/fingerprint.py" "$1" --profile "$PROFILE_DIR" --modules "$MODULES_DIR" 2>/dev/null; }
+fingerprint() { DECAL_TAGS=$(tags_for "$1") python3 "$LS_REPO/lib/fingerprint.py" "$1" --profile "$PROFILE_DIR" --modules "$MODULES_DIR" 2>/dev/null; }
 up_to_date() {
   [[ ${DECAL_FORCE:-} != 1 && -r $APPLIED/$1 ]] || return 1
   [[ $(fingerprint "$1") == "$(cat "$APPLIED/$1")" ]] || return 1
@@ -463,7 +468,9 @@ case $cmd in
       for m in "${mods[@]}"; do
         in_profile "$m" && continue
         tg=$(module_tags "$m" | paste -sd, -)
-        if [[ -n $tg ]]; then die "$m is only in your profile with a tag ($tg): add --tags ${tg%%,*}"; fi
+        if [[ -n $tg && ! ($# -eq 1 && $1 == all) ]]; then   # named on its own: its tags' settings, just for it
+          MODULE_TAGS[$m]=$tg; info "$m: using its [$m.${tg//,/] / [$m.}] settings (only for $m)"; continue
+        fi
         die "$m is not in your profile (add a [$m] section to $PROFILE_DIR/profile.toml)"
       done
       do_modules add "${mods[@]}"

@@ -82,8 +82,9 @@ list add a b c d
 onlydev add true" "--tags dev: dev's settings and modules too"
 "$S" --tags all add base >/dev/null 2>&1
 assert_eq "$(log)" "base add plain 9 7" "--tags all on one module: every tag"
-out=$("$S" add onlydev 2>&1); assert_eq "$?" "1" "a tag-only module without its tag: refused"
-assert_contains "$out" "only in your profile with a tag (dev): add --tags dev" "and says which tag"
+: > "$LS_TEST_LOG"; out=$("$S" add onlydev --force 2>&1); assert_eq "$?" "0" "a tag-only module named on its own: added"
+assert_eq "$(log)" "onlydev add true" "...with its tag's settings, and nothing else of the tag (list untouched)"
+assert_contains "$out" "onlydev: using its [onlydev.dev] settings" "...and says so"
 out=$("$S" add all --tags dvel 2>&1); assert_eq "$?" "1" "an unknown tag: refused"
 assert_contains "$out" "no section of the profile has the tag 'dvel' (tags in the profile: deck, dev)" "and lists the real ones"
 : > "$LS_TEST_LOG"

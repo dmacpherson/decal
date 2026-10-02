@@ -182,8 +182,9 @@ decal remove all --only dev       # take dev away: [docker.dev]-only modules rem
 decal tags                        # the tags your profile uses
 ```
 
-`all` can't be a tag name, a tag no section has is rejected, and `status` names the tag a
-module needs. For `remove --only`, a module that is also in the profile without the tag keeps
+Name a module on its own and it doesn't need the tag: `decal add ollama` uses `[ollama.dev]`'s settings
+for Ollama only, without the rest of `dev`. `all` can't be a tag name, a tag no section has is rejected,
+and `status` names the tag a module needs. For `remove --only`, a module that is also in the profile without the tag keeps
 its own settings and loses what the tag added (apps: flatpaks and shown launchers; terminal:
 brew tools, with `remove-brew = true`; brave: extensions); other modules leave it in place and say so.
 

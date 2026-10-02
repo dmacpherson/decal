@@ -274,8 +274,8 @@ class UI:
                     aside = "take off what it added" if mode == "remove" else "its settings and modules too"
                     self.put(y, 26, aside, curses.A_DIM)
                     continue
-                ok = mode != "apply" or self.available(name, on_t)
-                box = "[x]" if name in on_m and ok else ("[ ]" if ok else " · ")
+                ok = mode != "apply" or self.available(name, on_t) or name in on_m   # tickable on its own too
+                box = "[x]" if name in on_m else ("[ ]" if ok else "[ ]")
                 attr = (curses.A_REVERSE if cur else 0) | (0 if ok else curses.A_DIM)
                 self.put(y, 2, f"{box} {name:<18}", attr)
                 tg = ",".join(d.mod_tags.get(name, []))
@@ -295,7 +295,7 @@ class UI:
                     if mode == "apply":   # a tag brings its modules in, and takes away ones only it had
                         on_m |= {m for m in rows if name in d.mod_tags.get(m, []) and self.available(m, on_t)}
                         on_m = {m for m in on_m if self.available(m, on_t)}
-                elif mode != "apply" or self.available(name, on_t):
+                else:   # a module only a tag has can be ticked on its own (decal add MODULE uses its tag's settings)
                     on_m ^= {name}
             elif k == "a":
                 on_m = {m for m in rows if mode != "apply" or self.available(m, on_t)}
