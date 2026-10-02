@@ -95,4 +95,9 @@ assert_contains "$out" "boom detail" "tty: a failed module's last lines are show
 U="$T_TMP/usethis"; mkdir -p "$U"; printf '[p1]\nword = "used"\n' > "$U/profile.toml"; : > "$LS_TEST_LOG"
 "$S" use "$U" >/dev/null 2>&1; assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$U")" "use: the active profile"
 assert_eq "$(cat "$LS_TEST_LOG")" "" "use: nothing applied"
+# apply SOURCE MODULE...: that profile, only those modules
+A="$T_TMP/twomods"; mkdir -p "$A"; printf '[p1]\nword = "one"\n[p2]\nword = "two"\n' > "$A/profile.toml"; : > "$LS_TEST_LOG"
+"$S" apply "$A" p2 >/dev/null 2>&1; assert_eq "$?" "0" "apply SOURCE MODULE rc"
+assert_eq "$(cat "$LS_TEST_LOG")" "p2 add two" "apply SOURCE MODULE: just that module"
+assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$A")" "...and the profile is the active one"
 t_done

@@ -47,7 +47,8 @@ From a stamp file you've copied over:
 curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- ~/decal-$USER.tar.gz
 ```
 
-A private repo needs a GitHub token: decal asks for one, or uses `gh` if you're logged in.
+A private repo needs a GitHub token: decal asks for one, or uses `gh` if you're logged in. Only some
+modules? Put their names after the profile, e.g. `… bash -s -- github:YOUR-NAME/decal-YOUR-NAME ollama`.
 
 ## Take it off again
 

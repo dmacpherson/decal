@@ -22,7 +22,8 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
   tags                       the tags your profile uses, and which sections have them
   add    <module...|all>     apply (idempotent); all = every module in your profile
   remove <module...|all>     undo exactly what add did
-  apply  <dir|file.tar.gz|git-url|github:owner/repo[@ref]>   make it the active profile, then add everything in it
+  apply  <dir|file.tar.gz|git-url|github:owner/repo[@ref]> [module...]   make it the active profile, then add
+                             everything in it (or just those modules)
                              (never removes anything; use remove, or [apps] remove-* lists)
   use    <profile source>    make it the active profile without applying anything
   stamp  [MODULE...] [PATH] [-gh [REPO]] save this machine's setup (what's changed from default) as a profile:
@@ -342,7 +343,8 @@ gh_token() { local t=${GITHUB_TOKEN:-${GH_TOKEN:-}}; if [[ -z $t ]] && have gh; 
 # gh_ask WHAT : read a token from the terminal (none: fails)
 gh_ask() {
   { : < /dev/tty; } 2>/dev/null || return 1
-  info "$1"; printf 'token: ' > /dev/tty; local t; IFS= read -rs t < /dev/tty; printf '\n' > /dev/tty
+  # all on the terminal itself: decal's log pipe would print the explanation after the prompt
+  printf '\033[1;36m==>\033[0m %s\ntoken (typing is hidden): ' "$1" > /dev/tty; local t; IFS= read -rs t < /dev/tty; printf '\n' > /dev/tty
   [[ -n $t ]] && printf '%s' "$t"
 }
 gh_tarball() {
@@ -497,9 +499,13 @@ case $cmd in
     fi
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
   apply)
-    [[ $# -eq 1 ]] || usage
-    set_profile "$1"; export PROFILE_DIR
+    [[ $# -ge 1 ]] || usage
+    set_profile "$1"; export PROFILE_DIR; shift
     pyprof check || die "$PROFILE_DIR/profile.toml is invalid (nothing was added)"
+    if (( $# )); then   # apply SOURCE MODULE...: that profile, just those modules (as decal add would)
+      set +e; DECAL_PROFILE=$PROFILE_DIR "$LS_REPO/decal" add "$@"; rc=$?; set -e
+      tidy_cache; exit "$rc"
+    fi
     mapfile -t mods < <(profile_modules | only_filter)
     do_modules add "${mods[@]}"
     remember_tags
