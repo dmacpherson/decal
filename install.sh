@@ -35,7 +35,8 @@ _resolve() {
 
 main() {
   REPO=${DECAL_REPO:-dmacpherson/decal}
-  local home=${DECAL_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/decal} bin=${DECAL_BIN:-$HOME/.local/bin}
+  local home=${DECAL_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/decal}
+  local bin=${DECAL_BIN:-$(cat "$home/.bin" 2>/dev/null || echo "$HOME/.local/bin")}   # where the last install linked it
   local mode=install; case ${1:-} in --update) mode=update; shift ;; --check) mode=check; shift ;; esac
   if (( ${DECAL_FAKE_EUID:-$EUID} == 0 )) && [[ ${DECAL_ALLOW_ROOT:-0} != 1 ]]; then die "run as your normal user, not root (decal uses sudo itself when it needs to)"; fi
   local t; for t in tar python3; do have "$t" || die "$t is needed: install it with your package manager, then run this again"; done
@@ -58,7 +59,7 @@ main() {
   mkdir -p "$tmp/x"; tar -xzf "$tmp/decal.tar.gz" -C "$tmp/x" || die "could not unpack the download"
   local top; top=$(find "$tmp/x" -mindepth 1 -maxdepth 1 -type d | head -1)
   [[ -n $top && -f $top/decal ]] || die "the download doesn't contain decal"
-  echo "$tag" > "$top/VERSION"; echo "$version" > "$top/.channel"
+  echo "$tag" > "$top/VERSION"; echo "$version" > "$top/.channel"; echo "$bin" > "$top/.bin"
   : > "$top/.installed"   # installed by this script: decal updates itself (a git checkout never does)
   # swap in: the old copy stays until the new one is in place
   mkdir -p "$(dirname "$home")"; rm -rf "$home.old"

@@ -57,16 +57,16 @@ cmd=$1; shift
 _installer() { local t; t=$(mktemp "${TMPDIR:-/tmp}/decal-install.XXXXXX"); cp "$LS_REPO/install.sh" "$t"; echo "$t"; }   # a copy: the update replaces this folder
 self_update() {
   [[ -e $LS_REPO/.installed && -z ${DECAL_NO_UPDATE:-} && -z ${DECAL_LOGGING:-} ]] || return 0
-  local new t; new=$(timeout 30 bash "$LS_REPO/install.sh" --check 2>/dev/null) || return 0
+  local new t; new=$(DECAL_HOME=$LS_REPO timeout 30 bash "$LS_REPO/install.sh" --check 2>/dev/null) || return 0
   info "decal $new is out (you have $(cat "$LS_REPO/VERSION" 2>/dev/null)): updating first"
   t=$(_installer)
-  if bash "$t" --update; then rm -f "$t"; DECAL_NO_UPDATE=1 exec "$LS_REPO/decal" "${ORIG_ARGS[@]}"; fi
+  if DECAL_HOME=$LS_REPO bash "$t" --update; then rm -f "$t"; DECAL_NO_UPDATE=1 exec "$LS_REPO/decal" "${ORIG_ARGS[@]}"; fi
   rm -f "$t"; warn "the update failed; carrying on with this version"
 }
 case $cmd in
   update)
     [[ -e $LS_REPO/.installed ]] || die "$LS_REPO is a git checkout: update it with git pull (decal update is for installs made with install.sh)"
-    t=$(_installer); bash "$t" --update; rc=$?; rm -f "$t"; exit "$rc" ;;
+    t=$(_installer); DECAL_HOME=$LS_REPO bash "$t" --update; rc=$?; rm -f "$t"; exit "$rc" ;;
   version)
     if [[ -e $LS_REPO/.installed ]]; then echo "decal $(cat "$LS_REPO/VERSION" 2>/dev/null) ($(cat "$LS_REPO/.channel" 2>/dev/null || echo latest))"
     else echo "decal (git checkout at $LS_REPO)"; fi

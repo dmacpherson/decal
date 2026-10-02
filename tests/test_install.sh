@@ -67,6 +67,13 @@ serve_text "$API/commits/main" '{"sha": "0123456789abcdef0123456789abcdef0123456
 serve "$DL/archive/0123456789abcdef0123456789abcdef01234567.tar.gz" "$T_TMP/rel/v1.2.0/decal.tar.gz"
 DECAL_VERSION=main bash "$REPO/install.sh" >/dev/null 2>&1
 assert_eq "$(cat "$H/VERSION")" "main@0123456789ab" "DECAL_VERSION=main: the branch's commit"; assert_eq "$(cat "$H/.channel")" "main" "and stays on it"
+# installed somewhere else: decal checks and updates that copy, linked where it was before
+O="$T_TMP/elsewhere"; latest v1.1.0
+DECAL_VERSION=latest DECAL_HOME="$O/decal" DECAL_BIN="$O/bin" bash "$REPO/install.sh" >/dev/null 2>&1
+latest v1.2.0; out=$("$O/bin/decal" list 2>&1)
+assert_contains "$out" "decal v1.2.0 is out (you have v1.1.0)" "an install elsewhere: compared with itself"
+assert_eq "$(cat "$O/decal/MARK")" "v1.2.0" "and updated in place"; assert_eq "$(readlink "$O/bin/decal")" "$O/decal/decal" "link kept where it was"
+out=$("$O/bin/decal" list 2>&1); assert_not_contains "$out" "is out" "then up to date"
 out=$(DECAL_FAKE_EUID=0 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "root refused"; assert_contains "$out" "not root" "says why"
 
 # install + apply in one go: the arguments go to decal apply
