@@ -128,3 +128,13 @@ module_status() {
   elif (( unit || desk )); then echo "partial (login: $unit, desktop: $desk)"
   else echo not-installed; fi
 }
+# stamp: the desktop picture, if you changed it (a distro slideshow .xml is the distro's)
+module_stamp() {
+  have dconf || return 0
+  local u f; u=$(dconf read /org/gnome/desktop/background/picture-uri 2>/dev/null | tr -d "'")
+  [[ -n $u && $u == file://* ]] || return 0
+  f=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1][7:]))' "$u")
+  [[ -r $f && $f != *.xml ]] || return 0
+  stamp_note "wallpaper: your desktop picture"
+  printf '[wallpaper]\nimage = "%s"\n' "$(stamp_copy "$f" "wallpaper/$(basename "$f")")"
+}

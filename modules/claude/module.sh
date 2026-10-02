@@ -73,3 +73,9 @@ module_status() {
   elif [[ " ${parts[*]} " == *missing* ]]; then echo "partial (${parts[*]})"
   else echo "installed (${parts[*]})"; fi
 }
+# stamp: Claude Code installed -> [claude.dev]
+module_stamp() {
+  have claude || [[ -x $HOME/.local/bin/claude ]] || return 0
+  stamp_note "claude: Claude Code (dev tag)"
+  printf '[claude.dev]\ncli = true\n'
+}

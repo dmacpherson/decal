@@ -214,3 +214,35 @@ module_status() {
   else echo "installed${wait:+ ($wait)}"; fi
 }
 module_capture() { python3 "$LS_REPO/lib/dconf_tool.py" capture --base /org/gnome/shell/extensions/; }
+# stamp: the extensions that are on (and the distro's you turned off), their settings changed from default, the
+# config files those settings point to in ~/.config, and decal's panel logo
+STAMP_LIVE=1
+module_stamp() {
+  have gnome-extensions || return 0
+  local k rest en=() dis=() lp logo="" color="" n f rel files=()
+  while read -r k rest; do
+    case $k in enable) read -ra en <<<"$rest" ;; disable) read -ra dis <<<"$rest" ;; esac
+  done < <(python3 "$LS_REPO/lib/stamp.py" extensions)
+  (( ${#en[@]} )) || return 0
+  lp=$(dconf read /org/gnome/shell/extensions/Logo-menu/custom-icon-path 2>/dev/null | tr -d "'")
+  if [[ $lp == "$ICON_DIR"/* && -r $lp ]]; then   # the logo decal recoloured: colour in its name
+    if [[ $(basename "$lp") =~ -([0-9a-fA-F]{6})\.svg$ ]]; then color="#${BASH_REMATCH[1]}"; fi
+    if [[ $(basename "$lp") == logo-* ]]; then logo=$(stamp_copy "$lp" gnome/logo.svg); fi
+  else lp=""; fi
+  n=$(python3 "$LS_REPO/lib/stamp.py" dconf --out "$STAMP_DIR/gnome/extensions.ini" --extensions "${en[@]}" ${lp:+--replace "$lp=@LOGO_PATH@"})
+  if (( n > 0 )); then
+    local pat='@HOME@/[.]config/[^"'"'"' ]*'   # config files the settings point to
+    while IFS= read -r f; do
+      rel=${f#@HOME@/.config/}; [[ -f $HOME/.config/$rel ]] || continue
+      files+=("\"$rel\" = \"$(stamp_copy "$HOME/.config/$rel" "gnome/files/$rel")\"")
+    done < <(grep -oE "$pat" "$STAMP_DIR/gnome/extensions.ini" | sort -u)
+  fi
+  stamp_note "gnome-extensions: ${#en[@]} on${dis[*]:+, ${#dis[@]} distro ones off}, $n settings changed${logo:+, panel logo}"
+  echo "[gnome-extensions]"
+  echo "enable = $(toml_list "${en[@]}")"
+  if (( ${#dis[@]} )); then echo "disable = $(toml_list "${dis[@]}")"; fi
+  if (( n > 0 )); then echo 'file = "gnome/extensions.ini"'; fi
+  if [[ -n $logo ]]; then echo "logo = \"$logo\""; fi
+  if [[ -n $color ]]; then echo "logo-color = \"$color\""; fi
+  if (( ${#files[@]} )); then echo "[gnome-extensions.files]"; printf '%s\n' "${files[@]}"; fi
+}

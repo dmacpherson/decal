@@ -80,6 +80,12 @@ state_append() {
   { [[ -n $cur ]] && printf '%s\n' "$cur"; printf '%s\n' "$2"; } | sort -u | swrite "$f"
 }
 
+# stamp helpers (module_stamp): a line for the summary; copy a file/folder into the stamp (prints REL);
+# a TOML list of strings
+stamp_note() { printf '%s\n' "$*" >> "$STAMP_NOTES"; }
+stamp_copy() { mkdir -p "$STAMP_DIR/$(dirname "$2")"; cp -aL "$1" "$STAMP_DIR/$2"; printf '%s' "$2"; }
+toml_list() { local x items=() IFS=,; for x; do x=${x//\\/\\\\}; items+=("\"${x//\"/\\\"}\""); done; printf '[%s]' "${items[*]}" | sed 's/","/", "/g'; }
+
 # state_drop FILE LINE : take LINE out of a (root-owned) state file
 state_drop() { [[ -r $1 ]] || return 0; local cur; cur=$(grep -vxF "$2" "$1" || true); { [[ -z $cur ]] || printf '%s\n' "$cur"; } | swrite "$1"; }
 

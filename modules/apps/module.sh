@@ -178,3 +178,57 @@ module_status() {
   if _brave_used; then notes+=("Brave Origin: $(_brave_origin && echo yes || echo no)"); fi
   echo "$base ($(printf '%s; ' "${notes[@]}" | sed 's/; $//'))"
 }
+# stamp: what you changed after the OS was installed. Flatpaks: flatpak's own history (apps installed since, still
+# here; the distro's apps you removed). Packages: what's layered on an Atomic image (rpm-ostree records exactly that;
+# other systems: not stamped). Default apps from your mimeapps.list; launchers decal shows.
+STAMP_LIVE=1
+STAMP_OWNED_PKGS="moby-engine docker-compose docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin plymouth-plugin-script"
+module_stamp() {
+  local apps=() gone=() pkgs=() rmpkgs=() show=() id ch role d f best n out=()
+  declare -A last=() ever=() roles=()
+  if have flatpak; then
+    local inst; inst=$(flatpak list --app --columns=application 2>/dev/null)
+    while IFS=$'\t' read -r ch id; do
+      [[ -n $id && $id != *.Locale && $id != *.Debug && $id != *.Sources ]] || continue   # an app's add-ons, not apps
+      case $ch in *uninstall*) last[$id]=out ;; *install*) last[$id]=in; ever[$id]=1 ;; esac
+    done < <(flatpak history --columns=change,application 2>/dev/null)
+    for id in $(printf '%s\n' "${!last[@]}" | sort); do
+      if [[ ${last[$id]} == in ]] && grep -qxF "$id" <<<"$inst"; then apps+=("$id")
+      elif [[ ${last[$id]} == out && -z ${ever[$id]:-} ]] && ! grep -qxF "$id" <<<"$inst"; then gone+=("$id"); fi
+    done
+    if (( ${#last[@]} == 0 )) && [[ -n $inst ]]; then stamp_note "apps: flatpak has no install history here (journal trimmed?): flatpaks not stamped"; fi
+  fi
+  if have rpm-ostree; then
+    while IFS= read -r id; do
+      [[ -n $id && $id != decal-* && " $STAMP_OWNED_PKGS " != *" $id "* ]] && pkgs+=("$id")
+    done < <(rpm-ostree status --json 2>/dev/null | python3 -c 'import json,sys
+d=json.load(sys.stdin)["deployments"][0]
+print("\n".join(d.get("requested-packages",[])))' 2>/dev/null)
+    while IFS= read -r id; do [[ -n $id ]] && rmpkgs+=("$id"); done < <(rpm-ostree status --json 2>/dev/null | python3 -c 'import json,sys
+d=json.load(sys.stdin)["deployments"][0]
+print("\n".join(d.get("requested-base-removals",[])))' 2>/dev/null)
+  fi
+  # default apps: a role is yours when most of its types open with one app in your mimeapps.list
+  f="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+  if [[ -r $f ]]; then
+    while read -r role rest; do
+      [[ -n $role && $role != \#* ]] || continue
+      best=$(for m in $rest; do awk -F= -v m="$m" '/^\[/{s=$0} s=="[Default Applications]" && $1==m {split($2,a,";"); print a[1]}' "$f"; done | sort | uniq -c | sort -rn | head -1)
+      n=${best%% *}; n=$(echo "$best" | awk '{print $1}'); d=$(echo "$best" | awk '{print $2}')
+      if [[ -n $d ]] && (( n * 2 >= $(wc -w <<<"$rest") )); then roles[$role]=${d%.desktop}; fi
+    done < "$MODULE_DIR/roles.list"
+  fi
+  for f in "$(_show_dir)"/*.desktop; do if _show_ours "$f"; then show+=("$(basename "$f" .desktop)"); fi; done
+  (( ${#apps[@]} + ${#gone[@]} + ${#pkgs[@]} + ${#rmpkgs[@]} + ${#roles[@]} + ${#show[@]} )) || return 0
+  stamp_note "apps: ${#apps[@]} flatpaks you installed${gone[*]:+, ${#gone[@]} removed}${pkgs[*]:+, ${#pkgs[@]} layered packages}, ${#roles[@]} default apps"
+  echo "[apps]"
+  if (( ${#apps[@]} )); then echo "flatpaks = $(toml_list "${apps[@]}")"; fi
+  if (( ${#gone[@]} )); then echo "remove-flatpaks = $(toml_list "${gone[@]}")"; fi
+  if (( ${#pkgs[@]} )); then echo "packages = $(toml_list "${pkgs[@]}")"; fi
+  if (( ${#rmpkgs[@]} )); then echo "remove-packages = $(toml_list "${rmpkgs[@]}")"; fi
+  if (( ${#show[@]} )); then echo "show = $(toml_list "${show[@]}")"; fi
+  if (( ${#roles[@]} )); then
+    echo "[apps.defaults]"
+    for role in $(printf '%s\n' "${!roles[@]}" | sort); do echo "$role = \"${roles[$role]}\""; done
+  fi
+}

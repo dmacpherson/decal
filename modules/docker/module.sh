@@ -68,3 +68,10 @@ module_status() {
   elif ! have docker; then echo "installed (reboot pending)"
   else echo installed; fi
 }
+# stamp: Docker installed -> [docker.dev] (dev tools carry the dev tag), with whether you're in the docker group
+module_stamp() {
+  have docker || return 0
+  local g=false; if id -nG "${USER:-$(id -un)}" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then g=true; fi
+  stamp_note "docker: installed (dev tag)"
+  printf '[docker.dev]\ngroup = %s\n' "$g"
+}

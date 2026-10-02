@@ -88,3 +88,14 @@ module_status() {
   local cur; cur=$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")
   if [[ $cur == "$(_final)" && -d $ICONS/$(_final) ]]; then echo installed; else echo "partial (icon theme is '$cur')"; fi
 }
+# stamp: the theme you picked, bundled into the stamp if you installed it into your home (the system's own themes
+# come with the system: nothing to carry)
+module_stamp() {
+  have dconf || return 0
+  local t d b; t=$(dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null | tr -d "'"); [[ -n $t ]] || return 0
+  for b in "${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons"; do if [[ -d $b/$t ]]; then d=$b/$t; break; fi; done
+  if [[ -z ${d:-} ]]; then stamp_note "icons: $t (comes with the system: not stamped)"; return 0; fi
+  stamp_copy "$d" "themes/icons/$t" >/dev/null
+  stamp_note "icons: $t (bundled, $(du -sh "$d" 2>/dev/null | cut -f1))"
+  printf '[icons]\nsource = "themes/icons"\ntheme = "%s"\n' "$t"
+}

@@ -1,6 +1,8 @@
-# decal
+<p align="center"><img src="assets/logo.svg" width="200" alt="decal: an iridescent Tux sticker, one corner peeling"></p>
 
-Stick your setup onto any Linux machine, and peel it off cleanly.
+<h1 align="center">decal</h1>
+
+<p align="center">Stick your setup onto any Linux machine, and peel it off cleanly.</p>
 
 decal keeps your look and tools in one profile (boot splash, login screen,
 wallpaper, cursor, icons, GTK theme, GNOME settings and extensions, apps,
@@ -26,7 +28,7 @@ if there is one, updates and then runs your command on it (offline, it just carr
 remembered. Needs `bash`, `curl` or `wget`, `tar` and `python3`. A git checkout (`./decal`) works the same
 but never updates itself.
 
-A profile can be a folder (a USB stick is fine), a `.tar.gz` from `decal export`, a git URL, or
+A profile can be a folder (a USB stick is fine), a `.tar.gz` from `decal stamp`, a git URL, or
 `github:owner/repo[@branch]`, downloaded without git. For a private repo set `GITHUB_TOKEN` (a
 fine-grained token with read access to it: `curl … | GITHUB_TOKEN=… bash -s -- github:…`), be logged
 in with `gh`, or type the token when it asks.
@@ -41,7 +43,7 @@ in with `gh`, or type the token when it asks.
 ./decal --dry-run apply <profile>   # show what would happen
 ./decal --verbose apply <profile>   # show every command's output (normally only in the log)
 ./decal --force apply <profile>     # apply every module even if it's already up to date
-./decal export backup.tar.gz        # pack the active profile
+./decal stamp                       # save this machine's setup as a profile: ~/decal-$USER.tar.gz
 ./decal fetch                       # pre-download themes, fonts, ...
 ./decal capture gnome-settings      # print your current settings to copy into the profile
 ```
@@ -110,6 +112,36 @@ module needs. For `remove --only`, a module that is also in the profile without 
 its own settings and loses what the tag added (apps: flatpaks and shown launchers; terminal:
 brew tools, with `remove-brew = true`; brave: extensions); other modules leave it in place and say so.
 
+### Stamp: your setup, saved as a profile
+
+`decal stamp` reads what you've changed from the defaults on this machine and saves it as a profile
+that `decal apply` puts on any other:
+
+```bash
+decal stamp                    # -> ~/decal-$USER.tar.gz (the previous one kept as .old)
+decal stamp ~/backups/me.tgz   # or a .tar.gz / folder of your choice
+decal stamp -dr                # --dry-run: show what it would save, save nothing
+decal stamp -gh                # --github: also into a private repo, decal-$USER (or -gh owner/name; --public)
+```
+
+Only what's yours goes in, compared with the distro's own defaults:
+
+| | How decal knows it's yours |
+|---|---|
+| GNOME settings | your dconf values that differ from the distro's (its system databases) and the schema's, in the areas worth carrying (appearance, windows, input, power, shortcuts, app folders, dock, Files, terminal, weather); never app history or state |
+| Extensions | the ones that are on, the distro's you turned off, their settings changed from default, config files they point to, decal's panel logo |
+| Flatpaks | flatpak's install history: apps installed since the OS was, still here, and the distro's you removed |
+| Packages | layered on an Atomic image (`rpm-ostree` records exactly those) |
+| Default apps | your `mimeapps.list` |
+| Wallpaper, account picture, themes | only if changed; a theme you installed into your home is bundled, the system's aren't |
+| Brave | the per-device settings decal knows (no counters or history), Brave Origin, extensions you added from the Web Store |
+| Docker, Ollama (with models), Claude Code, uv | installed: under the `dev` tag |
+
+A module decal set up from your profile that is still in place goes in as your profile has it (tags and
+sources kept). Display scaling is never stamped (it differs per machine). `-gh` works without git: each
+stamp is one commit, and it ends with the line to put the setup on the next machine. The token (from
+`GITHUB_TOKEN`, `gh`, or asked for) needs permission to create a repo and write to it.
+
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an
 `https://` URL, or a path inside your profile. Downloads are cached in
@@ -118,10 +150,13 @@ hasn't been used for 30 days.
 
 Adding a module: `modules/<name>/module.sh` (`MODULE_DESC`, `module_add`,
 `module_remove`, `module_status`, optionally `module_capture`/`module_fetch`,
-`MODULE_NEEDS_ROOT=1`, `module_drop` with `MODULE_CAN_DROP=1` for `remove --only`) plus `schema.json` for its profile keys. Tests:
+`MODULE_NEEDS_ROOT=1`, `module_drop` with `MODULE_CAN_DROP=1` for `remove --only`, `module_stamp` printing its
+section of a stamp, with `STAMP_LIVE=1` to always read the machine and `STAMP_SKIP=1` to never be stamped) plus `schema.json` for its profile keys. Tests:
 `bash tests/run.sh`; distro e2e: `bash tests/containers/run.sh` (removes the images it
 pulled; `--keep-images` keeps them). Neither leaves files behind. Extensions that ship with decal
 (Decal Tweaks) are checked inside a throwaway headless GNOME Shell: `bash tests/shell/run.sh`.
+
+Logo: Tux, the Linux penguin, after Larry Ewing's original (drawn anew in `assets/logo.py`).
 
 ## Licence
 

@@ -32,10 +32,8 @@ git -C "$G" init -q; git -C "$G" -c user.name=t -c user.email=t@t add -A; git -C
 assert_contains "$(ls -d "$DECAL_PROFILE_HOME".old-*)" ".old-" "previous profile kept as a dated backup"
 printf '[p1]\nword = "g2"\n' > "$G/profile.toml"; git -C "$G" -c user.name=t -c user.email=t@t commit -qam 2
 : > "$LS_TEST_LOG"; "$S" apply "file://$G" >/dev/null 2>&1; assert_contains "$(cat "$LS_TEST_LOG")" "p1 add g2" "re-apply pulls"
-# export round-trips without .git
-"$S" export "$T_TMP/out.tar.gz" >/dev/null 2>&1
-assert_contains "$(tar -tzf "$T_TMP/out.tar.gz")" "profile.toml" "export has profile.toml"
-assert_not_contains "$(tar -tzf "$T_TMP/out.tar.gz")" ".git/" "export has no git metadata"
+# export is gone: decal stamp saves setups now (tests/test_stamp.sh)
+out=$("$S" export x.tar.gz 2>&1); assert_eq "$?" "1" "export is gone (decal stamp replaces it)"
 # fetch runs module_fetch for profiled modules
 : > "$LS_TEST_LOG"; "$S" fetch >/dev/null 2>&1; assert_eq "$(cat "$LS_TEST_LOG")" "p1 fetch" "fetch"
 # a failed fetch names the source and reason

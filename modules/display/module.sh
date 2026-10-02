@@ -27,3 +27,4 @@ module_status() {
   _s get > "$st" 2>/dev/null || { echo "partial (no GNOME display information)"; return 0; }
   if _s plan "$st" "$P_scale" 2>/dev/null | grep -q '"unchanged": true'; then echo installed; else echo "partial (not every monitor at $P_scale)"; fi
 }
+STAMP_SKIP=1   # scaling differs per machine: never stamped

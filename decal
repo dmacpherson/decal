@@ -23,7 +23,10 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
   remove <module...|all>     undo exactly what add did
   apply  <dir|file.tar.gz|git-url|github:owner/repo[@ref]>   make it the active profile, then add everything in it
                              (never removes anything; use remove, or [apps] remove-* lists)
-  export <out.tar.gz>        pack the active profile
+  stamp  [PATH] [-gh [REPO]] save this machine's setup (what's changed from default) as a profile:
+                             ~/decal-$USER.tar.gz, or PATH (a .tar.gz, or a folder); -dr / --dry-run shows it
+                             without saving; -gh / --github also puts it in a private GitHub repo (REPO, or
+                             decal-$USER), one commit per stamp (--public: a public repo)
   fetch  [module...]         pre-download sources (themes, fonts, ...)
   capture <module>           print current config to copy into your profile
   update                     update decal now (installs from install.sh also update themselves on every run;
@@ -37,7 +40,7 @@ ORIG_ARGS=("$@")
 args=(); OPT_PROFILE=""
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --dry-run) export LS_DRY_RUN=1 ;;
+    --dry-run|-dr) export LS_DRY_RUN=1 ;;
     -v|--verbose) export DECAL_VERBOSE=1 ;;
     -f|--force) export DECAL_FORCE=1 ;;
     --profile) OPT_PROFILE=${2:?--profile needs a directory}; shift ;;
@@ -140,6 +143,7 @@ run_module() {
     # remove/status work from recorded state: a broken profile falls back to schema defaults
     # drop (remove --only TAG): the module gets just the list items the tag adds
     local drop=(); if [[ $action == drop ]]; then drop=(--drop "$DECAL_ONLY"); fi
+    if [[ $action == stamp ]]; then drop=(--defaults); fi   # stamp reads the machine: schema defaults only
     if ! penv=$(pyprof shell "$name" "${drop[@]}" 2>"$LS_RUNTMP/perr"); then
       if [[ $action != remove && $action != status ]]; then cat "$LS_RUNTMP/perr" >&2; exit 3; fi
       warn "$(tail -1 "$LS_RUNTMP/perr") -- using defaults and what was recorded at add time"
@@ -230,6 +234,88 @@ run_fancy() {
   else printf '\033[31m✗\033[0m %s %s\n' "$action" "$m"; tail -n 15 "$out" | sed 's/^/    /'; fi
   return "$rc"
 }
+INSTALL_URL="https://dmacpherson.github.io/decal/install"
+# module_has NAME FUNC : the module defines FUNC
+module_has() { ( cd "$MODULES_DIR/$1" && export MODULE_DIR="$PWD"; set +u; source ./module.sh >/dev/null 2>&1; declare -F "$2" >/dev/null ); }
+# do_stamp [PATH] [-gh [REPO]] [--public] : this machine's setup, changed from default only, as a profile.
+# Each module's module_stamp reads the machine (prints its TOML, files go to $STAMP_DIR, notes via stamp_note).
+# A module decal set up from your profile that is still in place is taken from the profile as you wrote it
+# (tags, sources, comments aside) unless it sets STAMP_LIVE=1 (those compare the machine with the defaults).
+do_stamp() {
+  local dest="" gh=0 repo="" public=0 me m frag st rc from
+  while (( $# )); do
+    case $1 in
+      -gh|--github) gh=1
+        if [[ ${2:-} =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$ && ${2:-} != *.tar.gz && ${2:-} != *.tgz ]]; then repo=$2; shift; fi ;;
+      --github=*) gh=1; repo=${1#--github=} ;;
+      --public) public=1 ;;
+      -*) die "stamp: unknown option $1" ;;
+      *) [[ -z $dest ]] || die "stamp: one place to save it (got $dest and $1)"; dest=$1 ;;
+    esac; shift
+  done
+  me=${USER:-$(id -un)}
+  [[ -n $dest ]] || dest="$HOME/decal-$me.tar.gz"
+  [[ -n $repo ]] || repo="decal-$me"
+  export STAMP_DIR="$LS_RUNTMP/stamp/profile" STAMP_NOTES="$LS_RUNTMP/stamp/notes"
+  local body="$LS_RUNTMP/stamp/body.toml"; mkdir -p "$STAMP_DIR"; : > "$STAMP_NOTES"; : > "$body"
+  info "stamping this machine: only what's changed from the defaults"
+  for m in $(all_modules); do
+    [[ $(module_field "$m" STAMP_SKIP) != 1 ]] || continue
+    frag=""; from=0
+    if [[ -f $PROFILE_DIR/profile.toml && -r $APPLIED/$m && $(module_field "$m" STAMP_LIVE) != 1 ]] && DECAL_TAGS=all in_profile "$m"; then
+      st=$(DECAL_TAGS=all run_module status "$m" 2>/dev/null || true); [[ $st != installed* ]] || from=1
+    fi
+    if (( from )); then
+      frag=$(python3 "$LS_REPO/lib/stamp.py" section "$m" --profile "$PROFILE_DIR" --modules "$MODULES_DIR" --to "$STAMP_DIR") \
+        || die "stamp: could not copy [$m] from your profile"
+      if [[ -n $frag ]]; then echo "$m: your profile's settings (decal set it up; tags kept)" >> "$STAMP_NOTES"; fi
+    elif module_has "$m" module_stamp; then
+      set +e; frag=$(run_module stamp "$m" 2>"$LS_RUNTMP/err"); rc=$?; set -e
+      if (( rc != 0 )); then warn "stamp $m: $(tail -1 "$LS_RUNTMP/err")"; frag=""; fi
+    fi
+    if [[ -n $frag ]]; then printf '%s\n\n' "$frag" >> "$body"; fi
+  done
+  [[ -s $body ]] || die "nothing to stamp: this machine is at its defaults"
+  { printf '# decal profile, stamped by %s on %s: only what differed from the defaults.\n' "$me" "$(date +%F)"
+    printf '# Apply it anywhere: decal apply <this folder, its .tar.gz, or github:owner/repo>. Edit freely.\n\n'
+    cat "$body"; } > "$STAMP_DIR/profile.toml"
+  DECAL_TAGS="" python3 "$LS_REPO/lib/profile.py" check --profile "$STAMP_DIR" --modules "$MODULES_DIR" \
+    || die "the stamp isn't a valid profile (a decal bug: please report it); nothing was saved"
+  info "in this stamp:"; sed 's/^/    /' "$STAMP_NOTES" >&2
+  if [[ ${LS_DRY_RUN:-0} == 1 ]]; then printf '\n'; cat "$STAMP_DIR/profile.toml"; info "dry run: nothing saved"; return 0; fi
+  local tok=""
+  if (( gh )); then   # the token first: the README names the repo, and a wrong token shouldn't come after the work
+    tok=$(gh_token)
+    if [[ -z $tok ]]; then tok=$(gh_ask "a GitHub token to save your stamp (it needs to create a repo and write to it)") || die "no GitHub token: set GITHUB_TOKEN or log in with gh auth login"; fi
+    if [[ $repo != */* ]]; then
+      local who; who=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami) || die "GitHub didn't accept the token (the token needs permission to create repos and write their contents)"
+      repo="$who/$repo"
+    fi
+  fi
+  local src; if (( gh )); then src="github:$repo"; else src=$(basename "$dest"); fi
+  # shellcheck disable=SC2016  # Markdown backticks, not command substitution
+  { printf '# My Linux setup\n\nA [decal](https://github.com/dmacpherson/decal) profile: `decal stamp` saved what was changed from the defaults on %s.\n\n' "$(date +%F)"
+    # shellcheck disable=SC2016
+    printf '## Put it on a machine\n\n```bash\ncurl -fsSL %s | bash -s -- %s\n```\n\n' "$INSTALL_URL" "$src"
+    printf '## In it\n\n'; sed 's/^/- /' "$STAMP_NOTES"; } > "$STAMP_DIR/README.md"
+  if [[ $dest == *.tar.gz || $dest == *.tgz ]]; then
+    mkdir -p "$(dirname "$dest")"
+    if [[ -e $dest ]]; then mv -f "$dest" "$dest.old"; fi
+    tar -czf "$dest" -C "$STAMP_DIR" .
+  else   # a folder: a new one, or one an earlier stamp made
+    if [[ -e $dest && ! -e $dest/.decal-stamp && -n $(ls -A "$dest" 2>/dev/null) ]]; then die "$dest isn't empty and isn't an earlier stamp: not writing into it"; fi
+    rm -rf "$dest"; mkdir -p "$dest"; cp -a "$STAMP_DIR/." "$dest/"; : > "$dest/.decal-stamp"
+  fi
+  info "saved: $dest   (apply it anywhere: decal apply $dest)"
+  (( gh )) || return 0
+  local r
+  if (( public )); then warn "a public repo: anyone can see what's in it (pictures, app list, settings)"; fi
+  local pub=(); if (( public )); then pub=(--public); fi
+  r=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" push "$STAMP_DIR" "$repo" "${pub[@]}" --message "decal stamp $(date '+%F %H:%M')") \
+    || die "could not save the stamp to GitHub (it is saved at $dest)"
+  info "on GitHub: https://github.com/$r"
+  info "on another machine: curl -fsSL $INSTALL_URL | bash -s -- github:$r"
+}
 # tidy_cache : one version per source, nothing unused for 30 days (after a successful apply/fetch)
 tidy_cache() { if [[ ${LS_DRY_RUN:-0} != 1 ]]; then python3 "$LS_REPO/lib/fetch.py" --prune || warn "could not tidy the download cache"; fi; }
 find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single sub-folder)
@@ -240,20 +326,25 @@ find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single s
 }
 # gh_tarball OWNER/REPO REF OUT : a GitHub repo as a .tar.gz without git. Private repos need a token: GITHUB_TOKEN,
 # GH_TOKEN or a `gh auth login`; without one, in a terminal, it asks (read access to the repo is enough)
+gh_token() { local t=${GITHUB_TOKEN:-${GH_TOKEN:-}}; if [[ -z $t ]] && have gh; then t=$(gh auth token 2>/dev/null || true); fi; printf '%s' "$t"; }
+# gh_ask WHAT : read a token from the terminal (none: fails)
+gh_ask() {
+  { : < /dev/tty; } 2>/dev/null || return 1
+  info "$1"; printf 'token: ' > /dev/tty; local t; IFS= read -rs t < /dev/tty; printf '\n' > /dev/tty
+  [[ -n $t ]] && printf '%s' "$t"
+}
 gh_tarball() {
   local url="${DECAL_GITHUB_API:-https://api.github.com}/repos/$1/tarball${2:+/$2}" tok hdr="$LS_RUNTMP/gh-auth" code asked=0
   have curl || die "curl is needed to download $1"
-  tok=${GITHUB_TOKEN:-${GH_TOKEN:-}}
-  if [[ -z $tok ]] && have gh; then tok=$(gh auth token 2>/dev/null || true); fi
+  tok=$(gh_token)
   while :; do
     ( umask 077; if [[ -n $tok ]]; then printf 'Authorization: Bearer %s\n' "$tok"; fi > "$hdr" )   # not on the command line
     code=$(curl -sSL --connect-timeout 10 -H @"$hdr" -o "$3" -w '%{http_code}' "$url" 2>/dev/null) || code=${code:-000}
     rm -f "$hdr"
     [[ $code == 200 ]] && return 0
-    if [[ $code =~ ^(401|403|404)$ && $asked == 0 ]] && { : < /dev/tty; } 2>/dev/null; then
-      info "$1 needs a GitHub token (private repo?): a fine-grained token with read access to its contents"
-      printf 'token: ' > /dev/tty; IFS= read -rs tok < /dev/tty; printf '\n' > /dev/tty; asked=1
-      [[ -n $tok ]] && continue
+    if [[ $code =~ ^(401|403|404)$ && $asked == 0 ]]; then
+      asked=1
+      if tok=$(gh_ask "$1 needs a GitHub token (private repo?): a fine-grained token with read access to its contents"); then continue; fi
     fi
     case $code in
       401|403|404) die "github:$1 not found or not allowed (private? set GITHUB_TOKEN, or log in with gh auth login)" ;;
@@ -398,11 +489,7 @@ case $cmd in
     do_modules add "${mods[@]}"
     tidy_cache
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
-  export)
-    [[ $# -eq 1 ]] || usage
-    [[ -f $PROFILE_DIR/profile.toml ]] || die "no active profile at $PROFILE_DIR (run ./decal apply first)"
-    run tar -czf "$1" --exclude=.git -C "$(readlink -f "$PROFILE_DIR")" .
-    info "exported $(readlink -f "$PROFILE_DIR") -> $1" ;;
+  stamp) do_stamp "$@" ;;
   fetch)
     if [[ $# -gt 0 ]]; then names=$(resolve "$@") || exit 1; else names=$(profile_modules); fi
     mapfile -t mods < <(printf '%s\n' "$names" | sed '/^$/d')

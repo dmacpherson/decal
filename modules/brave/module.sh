@@ -88,3 +88,11 @@ module_status() {
   if _synced; then echo installed
   elif _running; then echo "partial (close Brave to apply)"; else echo not-installed; fi
 }
+# stamp: the per-device settings decal knows, Brave Origin, and the extensions you added from the Web Store
+STAMP_LIVE=1
+module_stamp() {
+  local p d; d=$(_dir) || return 0; p="$d/$P_profile/Preferences"; [[ -r $p ]] || return 0
+  if _running; then stamp_note "brave: open, so its settings on disk may be a little behind (close it for an exact stamp)"; fi
+  python3 "$LS_REPO/lib/stamp.py" brave --prefs "$p" --local-state "$d/Local State" --to "$STAMP_DIR" 2>"$STAMP_DIR/.brave-note"
+  stamp_note "brave: $(sed 's/^# //' "$STAMP_DIR/.brave-note")"; rm -f "$STAMP_DIR/.brave-note"
+}

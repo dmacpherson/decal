@@ -16,3 +16,12 @@ module_add() {
 module_remove() { [[ $LS_DRY_RUN == 1 ]] && { log "[dry-run] would restore saved settings"; return 0; }; _gs remove; }
 module_status() { if (( ${#P_file[@]} == 0 )); then echo not-installed; return 0; fi; _gs status | tail -1; }
 module_capture() { python3 "$LS_REPO/lib/dconf_tool.py" capture --base /; }
+# stamp: the settings you changed whose value isn't the distro's default (lib/stamp.py has the list of areas)
+STAMP_LIVE=1
+module_stamp() {
+  have dconf || return 0
+  local n; n=$(python3 "$LS_REPO/lib/stamp.py" dconf --out "$STAMP_DIR/gnome/settings.ini")
+  (( n > 0 )) || return 0
+  stamp_note "gnome-settings: $n settings changed from the defaults"
+  printf '[gnome-settings]\nfile = "gnome/settings.ini"\n'
+}

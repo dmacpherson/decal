@@ -102,3 +102,12 @@ module_status() {
   fi
   if (( ${#why[@]} )); then echo "partial (${why[*]})"; else echo installed; fi
 }
+# stamp: Ollama installed -> [ollama.dev] with the models you downloaded
+module_stamp() {
+  local o; o=$(_cli 2>/dev/null || true); [[ -n $o && -x $o ]] || return 0
+  local ms=() m
+  while read -r m _; do [[ -n $m && $m != NAME ]] && ms+=("${m%:latest}"); done < <("$o" list 2>/dev/null)
+  stamp_note "ollama: installed, ${#ms[@]} models (dev tag)"
+  echo "[ollama.dev]"
+  if (( ${#ms[@]} )); then echo "models = $(toml_list "${ms[@]}")"; fi
+}

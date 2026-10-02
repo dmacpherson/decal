@@ -27,3 +27,11 @@ module_remove() {
 module_status() {
   if [[ -z $P_picture ]] || _current; then echo installed; else echo not-installed; fi
 }
+# stamp: your account picture, if you set one
+module_stamp() {
+  have busctl || return 0
+  local f; f=$(_icon 2>/dev/null) || return 0
+  [[ -n $f && -r $f && -s $f && $f != "$HOME/.face" ]] || return 0
+  stamp_note "account: your account picture"
+  printf '[account]\npicture = "%s"\n' "$(stamp_copy "$f" account/picture)"
+}

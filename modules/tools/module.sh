@@ -55,3 +55,11 @@ module_status() {
   elif (( ${#missing[@]} )); then echo "partial (missing: ${missing[*]})"
   else echo installed; fi
 }
+# stamp: the tools decal knows, installed in your home -> [tools.dev]
+module_stamp() {
+  local t on=()
+  for t in "${!T_URL[@]}"; do if [[ -x $HOME/.local/bin/$t ]]; then on+=("$t"); fi; done
+  (( ${#on[@]} )) || return 0
+  stamp_note "tools: ${on[*]} (dev tag)"
+  printf '[tools.dev]\ninstall = %s\n' "$(toml_list "${on[@]}")"
+}

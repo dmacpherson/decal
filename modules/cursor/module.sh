@@ -83,3 +83,14 @@ module_status() {
   elif [[ $P_login == true && $(gdm_mode) != none ]] && ! gdm_has cursor cursor-theme "'$P_theme'"; then echo "partial (login screen not set)"
   else echo installed; fi
 }
+# stamp: the theme you picked, bundled into the stamp if you installed it into your home (the system's own themes
+# come with the system: nothing to carry)
+module_stamp() {
+  have dconf || return 0
+  local t d b; t=$(dconf read /org/gnome/desktop/interface/cursor-theme 2>/dev/null | tr -d "'"); [[ -n $t ]] || return 0
+  for b in "${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons"; do if [[ -d $b/$t ]]; then d=$b/$t; break; fi; done
+  if [[ -z ${d:-} ]]; then stamp_note "cursor: $t (comes with the system: not stamped)"; return 0; fi
+  stamp_copy "$d" "themes/cursor/$t" >/dev/null
+  stamp_note "cursor: $t (bundled, $(du -sh "$d" 2>/dev/null | cut -f1))"
+  printf '[cursor]\nsource = "themes/cursor"\ntheme = "%s"\n' "$t"
+}
