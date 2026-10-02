@@ -26,15 +26,35 @@ _uninstall() {
   if [[ $kind == cask ]]; then run brew uninstall --cask "$name"; else run brew uninstall "$name"; fi
   run rm -f "$REC"
 }
+# integrated GPU (laptops): Ollama leaves it alone unless OLLAMA_IGPU_ENABLE=1. auto = only when Vulkan (which
+# Ollama uses for it) sees an integrated GPU and no discrete one, so a desktop's CPU graphics don't get a share.
+_igpu() {
+  case $P_igpu in on) return 0 ;; off) return 1 ;; esac
+  local types
+  if types=$(vulkaninfo --summary 2>/dev/null | grep -oE 'PHYSICAL_DEVICE_TYPE_(INTEGRATED|DISCRETE)_GPU'); then
+    grep -q INTEGRATED <<<"$types" && ! grep -q DISCRETE <<<"$types"; return
+  fi
+  ! cat "${DECAL_SYS_DRM:-/sys/class/drm}"/card*/device/vendor 2>/dev/null | grep -qx 0x10de   # no vulkaninfo: anything but NVIDIA
+}
+_unit_text() {
+  printf '%s\n' "[Unit]" "Description=Ollama (decal)" "After=network-online.target" "" "[Service]" "ExecStart=$(_bin) serve"
+  if [[ $P_gpu == true ]] && _igpu; then echo "Environment=OLLAMA_IGPU_ENABLE=1"; fi
+  printf '%s\n' "Restart=on-failure" "" "[Install]" "WantedBy=default.target"
+}
 _service() {
   # someone else's Ollama service already serving (e.g. a system install): use that one
-  if systemctl --quiet is-active ollama.service 2>/dev/null || systemctl --user --quiet is-active ollama.service 2>/dev/null; then return 0; fi
+  if systemctl --quiet is-active ollama.service 2>/dev/null || systemctl --user --quiet is-active ollama.service 2>/dev/null; then
+    if [[ $P_gpu == true ]] && _igpu; then warn "Ollama runs as another service here: set OLLAMA_IGPU_ENABLE=1 in it to use the integrated GPU"; fi
+    return 0
+  fi
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] user service $UNIT_NAME: $(_bin) serve"; return 0; fi
-  mkdir -p "$(dirname "$UNIT")"
-  printf '%s\n' "[Unit]" "Description=Ollama (decal)" "After=network-online.target" "" "[Service]" \
-    "ExecStart=$(_bin) serve" "Restart=on-failure" "" "[Install]" "WantedBy=default.target" > "$UNIT"
+  local want had=0; want=$(_unit_text)
+  if [[ -e $UNIT && $(cat "$UNIT") == "$want" ]]; then systemctl --user enable --now "$UNIT_NAME"; return 0; fi
+  [[ -e $UNIT ]] && had=1
+  mkdir -p "$(dirname "$UNIT")"; printf '%s\n' "$want" > "$UNIT"
   systemctl --user daemon-reload
   systemctl --user enable --now "$UNIT_NAME"
+  if (( had )); then systemctl --user restart "$UNIT_NAME"; fi   # changed settings take effect now
 }
 # the profile's models not downloaded yet (all of them while the server isn't answering yet)
 _missing() {
@@ -75,6 +95,7 @@ module_status() {
   _have_ollama || { echo not-installed; return 0; }
   local why=() missing
   if [[ -e $UNIT ]] && ! systemctl --user --quiet is-active "$UNIT_NAME" 2>/dev/null; then why+=("service not running"); fi
+  if [[ -e $UNIT && $(cat "$UNIT") != "$(_unit_text)" ]]; then why+=("service settings out of date"); fi
   mapfile -t missing < <(_missing)
   if (( ${#missing[@]} )); then
     if _pulling; then why+=("downloading ${missing[*]}"); else why+=("missing ${missing[*]}"); fi

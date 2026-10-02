@@ -100,4 +100,5 @@ flatpak = true                    # also for Flatpak apps (e.g. Brave), via the 
 
 # [ollama]                        # local AI models; runs as you, models live in ~/.ollama
 # gpu = true                      # GPU build (Homebrew cask ollama-binary); false = CPU-only
+# igpu = "auto"                   # integrated GPU (laptops): auto = only when there's no discrete GPU; "on" / "off"
 # models = ["llama3.2"]           # downloaded in the background if missing (never deleted)

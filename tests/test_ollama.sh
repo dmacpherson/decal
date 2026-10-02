@@ -10,12 +10,38 @@ stub brew 'case "$1" in --prefix) echo "'"$B"'";;
 # the background model download job counts as running while $STUBS/pulling exists
 stub systemctl 'case "$*" in *is-active*decal-ollama-models*) [ -e "$STUBS/pulling" ]; exit;; *is-active*decal-ollama*) exit 0;; *is-active*) exit 3;; esac'
 stub systemd-run; stub curl 'exit 7'
+# GPUs as Vulkan sees them ($STUBS/gpus: DISCRETE / INTEGRATED lines); tests never look at this machine's hardware
+echo DISCRETE > "$STUBS/gpus"
+stub vulkaninfo 'while read -r t; do echo "deviceType = PHYSICAL_DEVICE_TYPE_${t}_GPU"; done < "$STUBS/gpus"'
+export DECAL_SYS_DRM="$T_TMP/drm"; mkdir -p "$DECAL_SYS_DRM"
 printf '[ollama]\nmodels = ["llama3.2"]\n' >> "$PROFILE_DIR/profile.toml"
 run_mod() { mod_run ollama "module_$1"; }
 out=$(run_mod add 2>&1); assert_eq "$?" "0" "add rc"
 assert_contains "$(calls)" "brew install --cask ollama-binary" "GPU build (Homebrew cask) installed"
 assert_contains "$(cat "$UNIT")" "ExecStart=$B/bin/ollama serve" "service runs Homebrew's stable ollama link (survives upgrades)"
 assert_contains "$(calls)" "systemctl --user enable --now decal-ollama.service" "service enabled for the user"
+assert_not_contains "$(cat "$UNIT")" "OLLAMA_IGPU_ENABLE" "a discrete GPU: integrated GPU left out"
+# a laptop with only an integrated GPU: Ollama is told to use it, and the running service restarts with it
+echo INTEGRATED > "$STUBS/gpus"
+assert_contains "$(run_mod status 2>/dev/null)" "service settings out of date" "status notices the service needs the iGPU setting"
+: > "$STUBS/calls"; run_mod add >/dev/null 2>&1
+assert_contains "$(cat "$UNIT")" "Environment=OLLAMA_IGPU_ENABLE=1" "integrated GPU only: OLLAMA_IGPU_ENABLE=1"
+assert_contains "$(calls)" "systemctl --user restart decal-ollama.service" "service restarted with the new setting"
+: > "$STUBS/calls"; run_mod add >/dev/null 2>&1; assert_not_contains "$(calls)" "restart" "unchanged: not restarted again"
+printf 'INTEGRATED\nDISCRETE\n' > "$STUBS/gpus"; run_mod add >/dev/null 2>&1
+assert_not_contains "$(cat "$UNIT")" "OLLAMA_IGPU_ENABLE" "integrated next to a discrete GPU: left out (desktop)"
+# no vulkaninfo answer: anything but NVIDIA counts as integrated
+stub vulkaninfo 'exit 1'; mkdir -p "$DECAL_SYS_DRM/card0/device"; echo 0x8086 > "$DECAL_SYS_DRM/card0/device/vendor"
+run_mod add >/dev/null 2>&1; assert_contains "$(cat "$UNIT")" "OLLAMA_IGPU_ENABLE=1" "no vulkaninfo, Intel only: on"
+echo 0x10de > "$DECAL_SYS_DRM/card0/device/vendor"; run_mod add >/dev/null 2>&1
+assert_not_contains "$(cat "$UNIT")" "OLLAMA_IGPU_ENABLE" "no vulkaninfo, NVIDIA: off"
+# the profile can force it either way
+sed -i 's/^models = \["llama3.2"\]$/&\nigpu = "on"/' "$PROFILE_DIR/profile.toml"; run_mod add >/dev/null 2>&1
+assert_contains "$(cat "$UNIT")" "OLLAMA_IGPU_ENABLE=1" "igpu = on"
+sed -i 's/^igpu = "on"$/igpu = "off"/' "$PROFILE_DIR/profile.toml"; echo INTEGRATED > "$STUBS/gpus"
+stub vulkaninfo 'while read -r t; do echo "deviceType = PHYSICAL_DEVICE_TYPE_${t}_GPU"; done < "$STUBS/gpus"'
+run_mod add >/dev/null 2>&1; assert_not_contains "$(cat "$UNIT")" "OLLAMA_IGPU_ENABLE" "igpu = off"
+sed -i '/^igpu = "off"$/d' "$PROFILE_DIR/profile.toml"; echo DISCRETE > "$STUBS/gpus"; run_mod add >/dev/null 2>&1
 assert_contains "$(calls)" "systemd-run --user --unit=decal-ollama-models" "models download in the background (add doesn't wait)"
 assert_contains "$(calls)" "pull-models.sh $B/bin/ollama llama3.2" "the missing model handed to the job"
 assert_not_contains "$(calls)" "ollama pull" "nothing downloaded in the foreground"

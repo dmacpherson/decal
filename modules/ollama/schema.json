@@ -1,4 +1,5 @@
 {"keys": {
   "gpu": {"type": "bool", "default": true},
+  "igpu": {"type": "enum", "values": ["auto", "on", "off"], "default": "auto"},
   "models": {"type": "strings", "default": []}
 }}
