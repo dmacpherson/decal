@@ -72,4 +72,17 @@ assert_nofile "$U/htop.desktop" "taken off the list: decal's copy removed"
 assert_eq "$(run_mod status)" "installed (defaults: set)" "all listed launchers shown"
 run_mod remove >/dev/null 2>&1
 assert_nofile "$U/btop.desktop" "remove deletes decal's copies"; assert_file "$U/mine.desktop" "but never yours"
+# tags: remove --only dev takes away just what [apps.dev] added; Discord and the rest stay
+sed -i 's/^show = \["btop", "mine"\]$/&\nflatpaks = ["com.discordapp.Discord"]/' "$PROFILE_DIR/profile.toml"
+printf '\n[apps.dev]\nflatpaks = ["dev.zed.Zed", "com.discordapp.Discord"]\nshow = ["htop"]\n' >> "$PROFILE_DIR/profile.toml"
+stub flatpak 'case "$*" in "info --system dev.zed.Zed"|"info --system com.discordapp.Discord"|"info --system com.brave.Browser") exit 0;; "info --system "*) exit 1;; esac; exit 0'
+DECAL_TAGS=dev run_mod add >/dev/null 2>&1
+assert_contains "$(cat "$DECAL_STATE/apps/managed")" "dev.zed.Zed" "with --tags dev: dev's flatpak installed and recorded"
+assert_file "$U/htop.desktop" "and dev's launcher shown"
+: > "$STUBS/calls"; DECAL_DROP=dev run_mod drop >/dev/null 2>&1
+assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y dev.zed.Zed" "drop: dev's flatpak uninstalled"
+assert_not_contains "$(calls)" "com.discordapp.Discord" "a flatpak that is in [apps] too is kept"
+assert_not_contains "$(cat "$DECAL_STATE/apps/managed")" "dev.zed.Zed" "and no longer recorded"
+assert_contains "$(cat "$DECAL_STATE/apps/managed")" "com.discordapp.Discord" "the rest still recorded"
+assert_nofile "$U/htop.desktop" "dev's launcher copy removed"; assert_file "$U/btop.desktop" "the untagged one kept"
 t_done

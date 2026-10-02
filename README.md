@@ -51,6 +51,39 @@ listed there, and typos are rejected before anything changes.
 | tools | Command-line tools from their official installers (uv), updated on every apply |
 | ollama | Ollama (local AI models) from Homebrew, GPU build (integrated GPUs too, on machines without a discrete one), running as your user, plus your models |
 
+### Tags: settings for some machines only
+
+Put settings for some machines in a `[section.tag]` table next to the section. Lists
+add on to the section's, other values replace its. A section that only has tag tables
+is only applied on machines given that tag. Nothing untagged changes.
+
+```toml
+[apps]
+flatpaks = ["com.discordapp.Discord"]
+
+[apps.dev]                          # dev machines also get these
+flatpaks = ["dev.zed.Zed"]
+
+[terminal.steamdeck]
+font = "FiraCode Nerd Font 12"      # replaces [terminal] font on the Deck
+
+[docker.dev]                        # docker only on dev machines
+group = true
+```
+
+```bash
+./decal add all                     # the untagged settings only
+./decal add all --tags dev          # plus [*.dev]; several: --tags dev,laptop; every tag: --tags all
+./decal add all --only dev          # just the modules with a [*.dev] table (with dev's settings)
+./decal remove all --only dev       # take dev away: [docker.dev]-only modules removed, dev's apps/brew tools uninstalled
+./decal tags                        # the tags your profile uses
+```
+
+`all` can't be a tag name, a tag no section has is rejected, and `status` names the tag a
+module needs. For `remove --only`, a module that is also in the profile without the tag keeps
+its own settings and loses what the tag added (apps: flatpaks and shown launchers; terminal:
+brew tools, with `remove-brew = true`); other modules leave it in place and say so.
+
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an
 `https://` URL, or a path inside your profile. Downloads are cached in
@@ -59,7 +92,7 @@ hasn't been used for 30 days.
 
 Adding a module: `modules/<name>/module.sh` (`MODULE_DESC`, `module_add`,
 `module_remove`, `module_status`, optionally `module_capture`/`module_fetch`,
-`MODULE_NEEDS_ROOT=1`) plus `schema.json` for its profile keys. Tests:
+`MODULE_NEEDS_ROOT=1`, `module_drop` with `MODULE_CAN_DROP=1` for `remove --only`) plus `schema.json` for its profile keys. Tests:
 `bash tests/run.sh`; distro e2e: `bash tests/containers/run.sh` (removes the images it
 pulled; `--keep-images` keeps them). Neither leaves files behind. Extensions that ship with decal
 (Decal Tweaks) are checked inside a throwaway headless GNOME Shell: `bash tests/shell/run.sh`.

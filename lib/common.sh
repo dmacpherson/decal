@@ -80,5 +80,8 @@ state_append() {
   { [[ -n $cur ]] && printf '%s\n' "$cur"; printf '%s\n' "$2"; } | sort -u | swrite "$f"
 }
 
+# state_drop FILE LINE : take LINE out of a (root-owned) state file
+state_drop() { [[ -r $1 ]] || return 0; local cur; cur=$(grep -vxF "$2" "$1" || true); { [[ -z $cur ]] || printf '%s\n' "$cur"; } | swrite "$1"; }
+
 # shellcheck source=lib/gdm.sh
 source "$LS_LIB/gdm.sh"

@@ -24,6 +24,8 @@ show = []                         # launchers your distro hides from the app gri
 [apps.defaults]                   # role = app id; installed from Flathub if missing
 browser = "com.brave.Browser"
 # roles: browser text-editor pdf images video music files mail
+# [apps.dev]                      # a tag: only with ./decal --tags dev (lists add on, other values replace)
+# flatpaks = ["dev.zed.Zed"]      # any section can have tags, e.g. [docker.dev], [terminal.laptop]
 
 # [gnome-settings]
 # file = "gnome/settings.ini"     # start with: ./decal capture gnome-settings > gnome/settings.ini

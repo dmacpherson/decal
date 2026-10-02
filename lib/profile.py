@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""profile.toml reader for decal: validate against modules/<m>/schema.json, emit shell vars."""
-import argparse, json, os, re, shlex, sys, tomllib
+"""profile.toml reader for decal: validate against modules/<m>/schema.json, emit shell vars.
+
+Tags: a sub-table of a section that isn't one of the module's own (e.g. [apps.dev] next to [apps.defaults]) holds
+extra settings for machines given that tag (./decal --tags dev). They are laid over the section: lists add on, other
+values replace. A section that only has tag sub-tables (e.g. just [docker.dev]) is only in the profile with that tag.
+DECAL_TAGS (comma-separated; "all" = every tag) picks the tags; none = the untagged settings only."""
+import argparse, copy, json, os, re, shlex, sys, tomllib
 
 
 class ProfileError(Exception):
@@ -31,6 +36,60 @@ def load_profile(pdir):
             return tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
         raise ProfileError(f"profile.toml: {e}")
+
+
+def own_tables(schema):
+    """The sub-tables a module's settings use themselves (login in "login.blur", defaults in "defaults.*")."""
+    return {k.split(".", 1)[0] for k in (schema or {}).get("keys", {}) if "." in k}
+
+
+def split_tags(sec, data, schema):
+    """A section -> (its untagged settings, {tag: settings}) in file order."""
+    own = own_tables(schema)
+    base, tags = {}, {}
+    for k, v in data.items():
+        if isinstance(v, dict) and k not in own:
+            if k == "all":
+                raise ProfileError(f"profile.toml: [{sec}.all]: 'all' is not a tag name (--tags all means every tag)")
+            tags[k] = v
+        else:
+            base[k] = v
+    return base, tags
+
+
+def merge(into, extra):
+    """Lay a tag's settings over a section: lists add on (no repeats), tables merge, other values replace."""
+    for k, v in extra.items():
+        cur = into.get(k)
+        if isinstance(cur, list) and isinstance(v, list):
+            into[k] = cur + [x for x in v if x not in cur]
+        elif isinstance(cur, dict) and isinstance(v, dict):
+            merge(cur, v)
+        else:
+            into[k] = copy.deepcopy(v)
+
+
+def wanted_tags():
+    return [x.strip() for x in os.environ.get("DECAL_TAGS", "").split(",") if x.strip()]
+
+
+def resolve(sec, data, schema, tags):
+    """The settings a section has with these tags -> (settings, present). tags: names, or ["all"]."""
+    base, mine = split_tags(sec, data, schema)
+    present = bool(base) or not mine          # an empty [section] is in the profile too
+    vals = copy.deepcopy(base)
+    for t in mine if "all" in tags else [t for t in tags if t in mine]:
+        merge(vals, mine[t]); present = True
+    return vals, present
+
+
+def all_tags(prof, modules):
+    seen = []
+    for sec, data in prof.items():
+        if isinstance(data, dict):
+            for t in split_tags(sec, data, load_schema(modules, sec))[1]:
+                if t not in seen: seen.append(t)
+    return seen
 
 
 def leaves(d, prefix=""):
@@ -166,11 +225,12 @@ def emit(vals, present):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["check", "sections", "shell"])
+    ap.add_argument("cmd", choices=["check", "sections", "shell", "tags"])
     ap.add_argument("module", nargs="?")
     ap.add_argument("--profile", required=True)
     ap.add_argument("--modules", required=True)
     ap.add_argument("--defaults", action="store_true", help="ignore the profile: schema defaults only (remove/status fallback)")
+    ap.add_argument("--drop", metavar="TAG", help="shell: only the list items TAG adds (remove --only TAG)")
     a = ap.parse_args()
     try:
         if a.cmd == "check" and not os.path.exists(os.path.join(a.profile, "profile.toml")):
@@ -185,20 +245,49 @@ def main():
                 raise ProfileError(f"profile.toml: unknown section [{sec}] (modules: {', '.join(with_schema)})")
             if not isinstance(data, dict):
                 raise ProfileError(f"profile.toml: [{sec}] must be a table")
+        tags = wanted_tags()
         if a.cmd == "check":
+            # every tag is checked, whichever are picked: the untagged settings, and each tag laid over them
             for sec, data in prof.items():
-                section_values(sec, load_schema(a.modules, sec), data, a.profile, True)
+                schema = load_schema(a.modules, sec)
+                base, mine = split_tags(sec, data, schema)
+                if base or not mine:
+                    section_values(sec, schema, base, a.profile, True)
+                for t in mine:
+                    section_values(f"{sec}.{t}", schema, resolve(sec, data, schema, [t])[0], a.profile, True)
+            for t in tags:
+                if t != "all" and t not in all_tags(prof, a.modules):
+                    known = ", ".join(all_tags(prof, a.modules)) or "none"
+                    raise ProfileError(f"no section of the profile has the tag '{t}' (tags in the profile: {known})")
         elif a.cmd == "sections":
             for n in names:
-                if n in prof:
+                if n in prof and resolve(n, prof[n], load_schema(a.modules, n), tags)[1]:
                     print(n)
+        elif a.cmd == "tags":
+            # tags MODULE: the tags that section has; tags: every tag in the profile
+            if a.module:
+                print("\n".join(split_tags(a.module, prof.get(a.module, {}), load_schema(a.modules, a.module))[1]))
+            else:
+                print("\n".join(all_tags(prof, a.modules)))
         else:
             schema = load_schema(a.modules, a.module)
             if schema is None:
                 print("declare -g P__in_profile=true")
                 return
-            present = a.module in prof
-            print(emit(section_values(a.module, schema, prof.get(a.module, {}), a.profile, present), present))
+            data = prof.get(a.module, {})
+            if a.drop:
+                # remove --only TAG: just what the tag adds to the section's lists (what to take away again)
+                base, mine = split_tags(a.module, data, schema)
+                which = list(mine) if a.drop == "all" else [t for t in [a.drop] if t in mine]
+                added = resolve(a.module, data, schema, which)[0]
+                drop = {k: [x for x in v if x not in base.get(k, [])] for k, v in added.items()
+                        if isinstance(v, list) and any(k in mine[t] for t in which)}
+                vals = section_values(a.module, schema, {}, a.profile, False)   # defaults, then the lists
+                vals.update({k: check(a.module, k, schema["keys"][k], v, a.profile) for k, v in drop.items()})
+                print(emit(vals, True))
+                return
+            vals, present = resolve(a.module, data, schema, tags) if a.module in prof else ({}, False)
+            print(emit(section_values(a.module, schema, vals, a.profile, present), present))
     except ProfileError as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(2)

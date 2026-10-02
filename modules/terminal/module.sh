@@ -247,6 +247,25 @@ EOF
   run rm -f "$LS_USER_STATE/terminal.remove-brew"
 }
 
+# remove --only TAG: P_brew holds only the formulae the tag added; uninstalled when decal installed them and
+# remove-brew allows it (the same rule as a full remove); the rest of the module stays
+MODULE_CAN_DROP=1
+module_drop() {
+  local b rb gone=(); rb=$(cat "$LS_USER_STATE/terminal.remove-brew" 2>/dev/null || true)
+  (( ${#P_brew[@]} )) || return 0
+  if [[ $rb != true && $P_remove_brew != true ]]; then
+    info "left installed: ${P_brew[*]} (decal uninstalls Homebrew tools only with remove-brew = true)"; return 0
+  fi
+  for b in "${P_brew[@]}"; do
+    if grep -qxF "$b" "$LS_USER_STATE/terminal.brew" 2>/dev/null; then gone+=("$b"); else info "$b: not installed by decal; left alone"; fi
+  done
+  (( ${#gone[@]} )) || return 0
+  step "uninstalling ${gone[*]}"
+  run brew uninstall "${gone[@]}"
+  if [[ $LS_DRY_RUN != 1 ]]; then
+    for b in "${gone[@]}"; do grep -vxF "$b" "$LS_USER_STATE/terminal.brew" > "$LS_USER_STATE/terminal.brew.new" || true; mv "$LS_USER_STATE/terminal.brew.new" "$LS_USER_STATE/terminal.brew"; done
+  fi
+}
 module_status() {
   _init
   local why=()

@@ -53,7 +53,8 @@ mod_run() {
     source "$REPO/lib/common.sh"; LS_REPO="$REPO"; source "$REPO/lib/platform.sh"; platform_load
     if declare -F mod_run_pre >/dev/null; then mod_run_pre; fi
     export MODULE_DIR="$REPO/modules/$m"; cd "$MODULE_DIR"
-    penv=$(python3 "$REPO/lib/profile.py" shell "$m" --profile "$PROFILE_DIR" --modules "$REPO/modules") || exit 3
+    # DECAL_DROP=TAG: the settings remove --only TAG gives module_drop
+    penv=$(python3 "$REPO/lib/profile.py" shell "$m" --profile "$PROFILE_DIR" --modules "$REPO/modules" ${DECAL_DROP:+--drop "$DECAL_DROP"}) || exit 3
     eval "$penv"
     source ./module.sh; "$@" )
 }

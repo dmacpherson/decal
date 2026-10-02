@@ -151,6 +151,23 @@ module_remove() {
   _unwanted_restore
   pkg_remove apps
 }
+# remove --only TAG: P_flatpaks / P_show hold only what the tag added; the rest of the module stays
+MODULE_CAN_DROP=1
+module_drop() {
+  local id f present=()
+  for id in "${P_flatpaks[@]}"; do
+    grep -qxF "$id" "$MANAGED" 2>/dev/null || { info "$id: not installed by decal; left alone"; continue; }
+    if _fp_present "$id"; then present+=("$id"); fi
+    if [[ $LS_DRY_RUN != 1 ]]; then state_drop "$MANAGED" "$id"; fi
+  done
+  if (( ${#present[@]} )); then
+    step "uninstalling ${present[*]}"
+    if [[ $P_purge_data == true ]]; then srun flatpak uninstall --system --noninteractive -y --delete-data "${present[@]}"
+    else srun flatpak uninstall --system --noninteractive -y "${present[@]}"; fi
+    srun flatpak uninstall --system --unused --noninteractive -y
+  fi
+  for id in "${P_show[@]}"; do f="$(_show_dir)/$id.desktop"; if _show_ours "$f"; then run rm -f "$f"; fi; done
+}
 module_status() {
   local id have_n=0 total=0 missing=() hidden=() base notes=()
   for id in "${P_flatpaks[@]}"; do total=$((total+1)); if _fp_present "$id"; then have_n=$((have_n+1)); else missing+=("$id"); fi; done

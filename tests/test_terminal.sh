@@ -89,6 +89,13 @@ sed -i 's/^app = "ptyxis"$/&\nnerd-font = "Hack"\nremove-brew = true/' "$PROFILE
 mod module_add >/dev/null 2>&1
 assert_nofile "$FD/FiraCodeNerdFont" "old nerd font removed when switching"; assert_file "$FD/HackNerdFont" "new nerd font kept"
 echo fastfetch >> "$DECAL_USER_STATE/terminal.brew"
+# tags: remove --only dev uninstalls the brew tools [terminal.dev] added (those decal installed), nothing else
+printf '\n[terminal.dev]\nbrew = ["gh", "fastfetch", "mine"]\n' >> "$PROFILE_DIR/profile.toml"; echo gh >> "$DECAL_USER_STATE/terminal.brew"
+: > "$STUBS/calls"; out=$(DECAL_DROP=dev mod module_drop 2>&1)
+assert_contains "$(calls)" "brew uninstall gh" "drop: dev's brew tool uninstalled"
+assert_not_contains "$(calls)" "uninstall fastfetch" "one in [terminal] too is kept"
+assert_contains "$out" "mine: not installed by decal; left alone" "one decal didn't install is left alone"
+assert_eq "$(cat "$DECAL_USER_STATE/terminal.brew")" "fastfetch" "and the record updated"
 python3 - "$PROFILE_DIR/profile.toml" <<'EOF'
 import re,sys; p=sys.argv[1]; s=open(p).read(); s=re.sub(r"(?ms)^\[terminal(\.[a-z]+)?\]\n.*?(?=^\[(?!terminal)|\Z)","",s); open(p,'w').write(s)
 EOF

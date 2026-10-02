@@ -10,10 +10,15 @@ source "$LS_REPO/lib/common.sh"
 
 usage() {
   cat >&2 <<'EOF'
-usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] <command> [module...]
+usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [--only T] <command> [module...]
   (add/apply skip modules already applied with unchanged settings; --force applies them anyway)
+  --tags dev,laptop          also the profile's [section.dev] / [section.laptop] settings; --tags all = every tag
+                             (without --tags: only the untagged settings)
+  --only dev                 just the modules with a [section.dev], with dev's settings (implies --tags dev);
+                             with remove: take away what dev adds (whole module if it is only there through dev)
   list                       modules and descriptions
   status [module...]         installed / partial / not-installed / stale / not in profile
+  tags                       the tags your profile uses, and which sections have them
   add    <module...|all>     apply (idempotent); all = every module in your profile
   remove <module...|all>     undo exactly what add did
   apply  <dir|file.tar.gz|git-url>   make it the active profile, then add everything in it
@@ -33,6 +38,8 @@ while [[ $# -gt 0 ]]; do
     -v|--verbose) export DECAL_VERBOSE=1 ;;
     -f|--force) export DECAL_FORCE=1 ;;
     --profile) OPT_PROFILE=${2:?--profile needs a directory}; shift ;;
+    --tags) DECAL_TAGS=${2:?--tags needs a tag list, e.g. --tags dev}; export DECAL_TAGS; shift ;;
+    --only) DECAL_ONLY=${2:?--only needs a tag}; export DECAL_ONLY; shift ;;
     -h|--help) usage ;;
     *) args+=("$1") ;;
   esac; shift
@@ -72,6 +79,24 @@ resolve() { # args -> validated module names (all expands)
   for m in "$@"; do [[ -f $MODULES_DIR/$m/module.sh ]] || die "unknown module: $m"; echo "$m"; done
 }
 pyprof() { python3 "$LS_REPO/lib/profile.py" "$@" --profile "$PROFILE_DIR" --modules "$MODULES_DIR"; }
+# tags (see lib/profile.py): DECAL_TAGS picks them for every profile read; --only TAG implies it
+if [[ -n ${DECAL_ONLY:-} ]]; then
+  [[ $DECAL_ONLY != *,* ]] || die "--only takes one tag (or all)"
+  [[ ,${DECAL_TAGS:-}, == *,"$DECAL_ONLY",* || ,${DECAL_TAGS:-}, == *,all,* ]] || DECAL_TAGS="${DECAL_TAGS:+$DECAL_TAGS,}$DECAL_ONLY"
+  export DECAL_TAGS
+fi
+module_tags() { DECAL_TAGS="" pyprof tags "$1" 2>/dev/null; }
+# check_tags : every tag asked for is in the profile (add/apply get this from the profile check)
+check_tags() {
+  [[ -n ${DECAL_TAGS:-} ]] || return 0
+  local t known; known=$(DECAL_TAGS="" pyprof tags 2>/dev/null) || return 0   # an unreadable profile: remove/status cope
+  for t in ${DECAL_TAGS:+${DECAL_TAGS//,/ }}; do
+    [[ $t == all ]] || grep -qxF "$t" <<<"$known" || die "no section of the profile has the tag '$t' (tags in the profile: $(paste -sd, - <<<"${known:-none}"))"
+  done
+}
+# has_tag NAME : the module has a section for --only's tag (any tag for --only all)
+has_tag() { local t; t=$(module_tags "$1"); [[ -n $t ]] && { [[ $DECAL_ONLY == all ]] || grep -qxF "$DECAL_ONLY" <<<"$t"; }; }
+only_filter() { local m; while IFS= read -r m; do [[ -z $m ]] || { [[ -z ${DECAL_ONLY:-} ]] || has_tag "$m"; } && echo "$m"; done; return 0; }
 in_profile() { pyprof shell "$1" 2>/dev/null | grep -qx 'declare -g P__in_profile=true'; }
 profile_modules() { local m; for m in $(all_modules); do in_profile "$m" && echo "$m"; done; return 0; }
 # module_field NAME VAR : read a variable from a module without running it (profile vars loaded)
@@ -87,7 +112,9 @@ run_module() {
     source "$LS_REPO/lib/platform.sh"
     platform_load
     # remove/status work from recorded state: a broken profile falls back to schema defaults
-    if ! penv=$(pyprof shell "$name" 2>"$LS_RUNTMP/perr"); then
+    # drop (remove --only TAG): the module gets just the list items the tag adds
+    local drop=(); if [[ $action == drop ]]; then drop=(--drop "$DECAL_ONLY"); fi
+    if ! penv=$(pyprof shell "$name" "${drop[@]}" 2>"$LS_RUNTMP/perr"); then
       if [[ $action != remove && $action != status ]]; then cat "$LS_RUNTMP/perr" >&2; exit 3; fi
       warn "$(tail -1 "$LS_RUNTMP/perr") -- using defaults and what was recorded at add time"
       penv=$(pyprof shell "$name" --defaults) || exit 3
@@ -146,7 +173,7 @@ do_modules() {
     if (( rc != 0 )); then [[ -z $keeper ]] || kill "$keeper" 2>/dev/null; die "$action $m failed (stopped; later modules not run)"; fi
     if [[ ${LS_DRY_RUN:-0} != 1 ]]; then
       if [[ $action == add ]]; then mkdir -p "$APPLIED"; fingerprint "$m" > "$APPLIED/$m" || rm -f "$APPLIED/$m"
-      elif [[ $action == remove ]]; then rm -f "$APPLIED/$m"; fi
+      elif [[ $action == remove || $action == drop ]]; then rm -f "$APPLIED/$m"; fi
     fi
   done
   [[ -z $keeper ]] || kill "$keeper" 2>/dev/null
@@ -236,16 +263,25 @@ case $cmd in
   list)
     for m in $(all_modules); do printf '%-18s %s\n' "$m" "$(module_field "$m" MODULE_DESC)"; done ;;
   status)
+    check_tags
     if [[ $# -gt 0 ]]; then names=$(resolve "$@") || exit 1; else names=$(all_modules); fi
-    mapfile -t mods <<<"$names"
+    mapfile -t mods < <(only_filter <<<"$names")
     for m in "${mods[@]}"; do
       set +e; res=$(run_module status "$m" 2>"$LS_RUNTMP/err"); rc=$?; set -e
       (( rc == 0 )) || res="error: $(tail -1 "$LS_RUNTMP/err")"
       if ! in_profile "$m"; then
-        if [[ $res == not-installed* ]]; then res="not in profile"; else res="$res (not in profile)"; fi
+        tg=$(module_tags "$m" | paste -sd, -)
+        if [[ -n $tg ]]; then where="tags: $tg"; else where="not in profile"; fi
+        if [[ $res == not-installed* ]]; then res="not in profile${tg:+ ($where)}"; else res="$res ($where)"; fi
       fi
       printf '%-18s %s\n' "$m" "$res"
     done ;;
+  tags)
+    tg=$(DECAL_TAGS="" pyprof tags) || exit 1
+    [[ -n $tg ]] || { info "your profile has no tags (add e.g. [apps.dev] to give dev machines extra settings)"; exit 0; }
+    while IFS= read -r t; do
+      printf '%-12s %s\n' "$t" "$(for m in $(all_modules); do module_tags "$m" | grep -qxF "$t" && printf '%s ' "$m"; done)"
+    done <<<"$tg" ;;
   capture)
     [[ $# -eq 1 ]] || usage
     m=$(resolve "$1")
@@ -257,21 +293,47 @@ case $cmd in
       pyprof check || die "fix $PROFILE_DIR/profile.toml first (nothing was changed)"
       if [[ $# -eq 1 && $1 == all ]]; then names=$(profile_modules); else names=$(resolve "$@") || exit 1; fi
     else
+      check_tags
       names=$(resolve "$@") || exit 1   # not "< <(resolve)": die in a process substitution can't stop us
     fi
-    mapfile -t mods < <(printf '%s\n' "$names" | sed '/^$/d')
+    if [[ -n ${DECAL_ONLY:-} && ! ($# -eq 1 && $1 == all) ]]; then
+      for m in $names; do has_tag "$m" || info "$m has no [$m.$DECAL_ONLY] section: skipped (--only $DECAL_ONLY)"; done
+    fi
+    mapfile -t mods < <(only_filter <<<"$names")
     if [[ $cmd == add ]]; then
-      for m in "${mods[@]}"; do in_profile "$m" || die "$m is not in your profile (add a [$m] section to $PROFILE_DIR/profile.toml)"; done
+      for m in "${mods[@]}"; do
+        in_profile "$m" && continue
+        tg=$(module_tags "$m" | paste -sd, -)
+        if [[ -n $tg ]]; then die "$m is only in your profile with a tag ($tg): add --tags ${tg%%,*}"; fi
+        die "$m is not in your profile (add a [$m] section to $PROFILE_DIR/profile.toml)"
+      done
+      do_modules add "${mods[@]}"
+    elif [[ -n ${DECAL_ONLY:-} ]]; then
+      # remove --only TAG: a module that is only in the profile through the tag goes; one that is there anyway
+      # keeps its own settings and only loses what the tag adds to its lists (if it can take that away)
+      whole=(); part=()
+      for m in "${mods[@]}"; do
+        if DECAL_TAGS="" in_profile "$m"; then part+=("$m"); else whole+=("$m"); fi
+      done
+      for m in "${part[@]}"; do
+        if [[ $(module_field "$m" MODULE_CAN_DROP) != 1 ]]; then
+          warn "$m: what $DECAL_ONLY adds to it is left in place (it has no way to take part of itself away)"
+          mapfile -t part < <(printf '%s\n' "${part[@]}" | grep -vxF "$m")
+        fi
+      done
+      mapfile -t whole < <(printf '%s\n' "${whole[@]}" | sed '/^$/d' | tac)
+      do_modules remove "${whole[@]}"
+      do_modules drop "${part[@]}"
     else
       mapfile -t mods < <(printf '%s\n' "${mods[@]}" | tac)
+      do_modules remove "${mods[@]}"
     fi
-    do_modules "$cmd" "${mods[@]}"
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
   apply)
     [[ $# -eq 1 ]] || usage
     set_profile "$1"; export PROFILE_DIR
     pyprof check || die "$PROFILE_DIR/profile.toml is invalid (nothing was added)"
-    mapfile -t mods < <(profile_modules)
+    mapfile -t mods < <(profile_modules | only_filter)
     do_modules add "${mods[@]}"
     tidy_cache
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
