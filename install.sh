@@ -6,7 +6,8 @@
 # newest version; decal also updates itself before add/apply/remove. PROFILE is anything `decal apply` takes: a
 # folder, a .tar.gz, a git URL, or github:owner/repo (private repos: GITHUB_TOKEN, `gh auth login`, or it asks).
 # DECAL_VERSION: latest (default: the newest release, checksum verified) | vX.Y.Z | a branch, e.g. main (newest commit).
-# Remembered, so updates stay on it. Options for decal itself: install.sh --update | --check (newer version? print it).
+# Remembered, so updates stay on it. Already installed and current: nothing is downloaded (DECAL_REINSTALL=1 does
+# anyway). Options for decal itself: install.sh --update | --check (newer version? print it).
 set -euo pipefail
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*" >&2; }
@@ -33,23 +34,10 @@ _resolve() {
   esac
 }
 
-main() {
-  REPO=${DECAL_REPO:-dmacpherson/decal}
-  # its own folder inside decal's data folder (~/.local/share/decal holds what modules keep, e.g. icons): replaced whole
-  local home=${DECAL_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/decal/app}
-  local bin=${DECAL_BIN:-$(cat "$home/.bin" 2>/dev/null || echo "$HOME/.local/bin")}   # where the last install linked it
-  local mode=install; case ${1:-} in --update) mode=update; shift ;; --check) mode=check; shift ;; esac
-  if (( ${DECAL_FAKE_EUID:-$EUID} == 0 )) && [[ ${DECAL_ALLOW_ROOT:-0} != 1 ]]; then die "run as your normal user, not root (decal uses sudo itself when it needs to)"; fi
-  local t; for t in tar python3; do have "$t" || die "$t is needed: install it with your package manager, then run this again"; done
-  local version=${DECAL_VERSION:-$(cat "$home/.channel" 2>/dev/null || echo latest)}
-  local cur; cur=$(cat "$home/VERSION" 2>/dev/null || true)
-  local tag url sumurl
-  read -r tag url sumurl < <(_resolve "$version" || true) || true
-  [[ -n ${tag:-} ]] || die "could not reach GitHub to find decal $version"
-  if [[ $mode == check ]]; then [[ $tag != "$cur" ]] && { echo "$tag"; return 0; }; return 1; fi
-  if [[ $tag == "$cur" && -x $home/decal && $mode == update ]]; then say "decal $tag is up to date"; return 0; fi
-
-  TMP_DL=$(mktemp -d); trap 'rm -rf "$TMP_DL"' EXIT   # global: the trap runs after main returns
+# _install TAG URL SUMURL CHANNEL HOME BIN : download, check, unpack, swap in, link
+_install() {
+  local tag=$1 url=$2 sumurl=$3 version=$4 home=$5 bin=$6
+  TMP_DL=$(mktemp -d); trap 'rm -rf "$TMP_DL"' EXIT   # global: the trap runs after the script's last line
   local tmp=$TMP_DL
   say "downloading decal $tag"
   _get "$url" "$tmp/decal.tar.gz" || die "download failed: $url"
@@ -70,7 +58,31 @@ main() {
   if [[ -e $home ]]; then mv "$home" "$home.old"; fi
   mv "$top" "$home"; rm -rf "$home.old"
   mkdir -p "$bin"; ln -sfn "$home/decal" "$bin/decal"
-  if [[ -n $cur && $cur != "$tag" ]]; then say "decal updated: $cur -> $tag"; else say "decal $tag installed in $home"; fi
+}
+
+main() {
+  REPO=${DECAL_REPO:-dmacpherson/decal}
+  # its own folder inside decal's data folder (~/.local/share/decal holds what modules keep, e.g. icons): replaced whole
+  local home=${DECAL_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/decal/app}
+  local bin=${DECAL_BIN:-$(cat "$home/.bin" 2>/dev/null || echo "$HOME/.local/bin")}   # where the last install linked it
+  local mode=install; case ${1:-} in --update) mode=update; shift ;; --check) mode=check; shift ;; esac
+  if (( ${DECAL_FAKE_EUID:-$EUID} == 0 )) && [[ ${DECAL_ALLOW_ROOT:-0} != 1 ]]; then die "run as your normal user, not root (decal uses sudo itself when it needs to)"; fi
+  local t; for t in tar python3; do have "$t" || die "$t is needed: install it with your package manager, then run this again"; done
+  local version=${DECAL_VERSION:-$(cat "$home/.channel" 2>/dev/null || echo latest)}
+  local cur; cur=$(cat "$home/VERSION" 2>/dev/null || true)
+  local tag url sumurl
+  read -r tag url sumurl < <(_resolve "$version" || true) || true
+  [[ -n ${tag:-} ]] || die "could not reach GitHub to find decal $version"
+  if [[ $mode == check ]]; then [[ $tag != "$cur" ]] && { echo "$tag"; return 0; }; return 1; fi
+  if [[ $tag == "$cur" && -x $home/decal && ${DECAL_REINSTALL:-0} != 1 ]]; then
+    # already there: nothing to download (DECAL_REINSTALL=1 fetches it again anyway)
+    if [[ $mode == update ]]; then say "decal $tag is up to date"; return 0; fi
+    say "decal $tag is already installed and up to date"
+    mkdir -p "$bin"; ln -sfn "$home/decal" "$bin/decal"
+  else
+    _install "$tag" "$url" "$sumurl" "$version" "$home" "$bin"
+    if [[ -n $cur && $cur != "$tag" ]]; then say "decal updated: $cur -> $tag"; else say "decal $tag installed in $home"; fi
+  fi
   case ":$PATH:" in *":$bin:"*) ;; *) say "add $bin to your PATH to run 'decal' directly (for now: $bin/decal)" ;; esac
   [[ $mode == install && $# -gt 0 ]] || return 0
   # piped into bash, stdin is the script: decal gets the terminal

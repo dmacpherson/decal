@@ -41,6 +41,12 @@ assert_file "$H/.installed" "marked as an install (it updates itself)"; assert_e
 assert_contains "$out" "add $BIN to your PATH" "says when ~/.local/bin isn't on PATH"
 assert_eq "$("$BIN/decal" version)" "decal v1.0.0 (latest)" "decal version"
 out=$(bash "$REPO/install.sh" --update 2>&1); assert_contains "$out" "decal v1.0.0 is up to date" "update when current: nothing downloaded"
+: > "$STUBS/calls"; out=$(bash "$REPO/install.sh" 2>&1); assert_eq "$?" "0" "installing again rc"
+assert_contains "$out" "decal v1.0.0 is already installed and up to date" "installing again: says so"
+assert_not_contains "$(calls)" "decal.tar.gz" "...and downloads nothing"
+rm "$BIN/decal"; bash "$REPO/install.sh" >/dev/null 2>&1; assert_eq "$(readlink "$BIN/decal")" "$H/decal" "...but puts back a missing link"
+: > "$STUBS/calls"; out=$(DECAL_REINSTALL=1 bash "$REPO/install.sh" 2>&1)
+assert_contains "$(calls)" "decal.tar.gz" "DECAL_REINSTALL=1: downloaded again"; assert_contains "$out" "installed in" "...and installed"
 # a damaged download changes nothing
 release v1.0.1; latest v1.0.1; echo "0000 decal.tar.gz" > "$T_TMP/bad"; serve "$DL/releases/download/v1.0.1/decal.tar.gz.sha256" "$T_TMP/bad"
 out=$(bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "checksum mismatch rc"
@@ -87,6 +93,9 @@ latest v1.2.0; rm -rf "$H"; P="$T_TMP/myprofile"; mkdir -p "$P"; printf '[eee-co
 DECAL_VERSION=latest bash "$REPO/install.sh" "$P" >/dev/null 2>&1 < /dev/null; assert_eq "$?" "0" "install + apply rc"
 assert_contains "$(cat "$LS_TEST_LOG")" "eee add one-liner" "the profile was applied"
 assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$P")" "and is the active profile"
+: > "$LS_TEST_LOG"; : > "$STUBS/calls"; printf '[eee-conf]\nword = "again"\n' > "$P/profile.toml"
+DECAL_VERSION=latest bash "$REPO/install.sh" "$P" >/dev/null 2>&1 < /dev/null
+assert_contains "$(cat "$LS_TEST_LOG")" "eee add again" "the one-liner again: applies the profile"; assert_not_contains "$(calls)" "decal.tar.gz" "...without downloading decal again"
 
 # github:owner/repo profiles: no git; private repos with a token (never on curl's command line)
 mkdir -p "$T_TMP/gh/me-prof-abc"; printf '[eee-conf]\nword = "from-github"\n' > "$T_TMP/gh/me-prof-abc/profile.toml"

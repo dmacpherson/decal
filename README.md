@@ -24,6 +24,8 @@ curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- github:you/y
 Installed this way, decal keeps itself current: every run first checks for a newer release and,
 if there is one, updates and then runs your command on it (offline, it just carries on;
 `--no-update` skips it once). `decal update` updates on demand, `decal version` shows what you have.
+Running the one-liner again is safe: an up-to-date decal isn't downloaded again (`DECAL_REINSTALL=1`
+forces it), an older one is updated, and a profile you give it is applied either way.
 `DECAL_VERSION=v1.2.0` (or `main`) before `bash` picks a release (or the newest commit) and is
 remembered. Needs `bash`, `curl` or `wget`, `tar` and `python3`. A git checkout (`./decal`) works the same
 but never updates itself.
