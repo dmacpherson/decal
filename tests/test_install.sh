@@ -102,6 +102,10 @@ assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$P")" "and is t
 DECAL_VERSION=latest bash "$REPO/install.sh" "$P" >/dev/null 2>&1 < /dev/null
 assert_contains "$(cat "$LS_TEST_LOG")" "eee add again" "the one-liner again: applies the profile"; assert_not_contains "$(calls)" "decal.tar.gz" "...without downloading decal again"
 
+# `stamp`: install, then stamp this machine (whatever follows goes to decal stamp)
+DECAL_VERSION=latest bash "$REPO/install.sh" stamp -dr > "$T_TMP/o" 2>&1 < /dev/null
+assert_contains "$(cat "$T_TMP/o")" "stamping this machine" "the one-liner with stamp: stamps"
+assert_contains "$(cat "$T_TMP/o")" "nothing to stamp" "...(these fixture modules have nothing to stamp)"
 # github:owner/repo profiles: no git; private repos with a token (never on curl's command line)
 mkdir -p "$T_TMP/gh/me-prof-abc"; printf '[eee-conf]\nword = "from-github"\n' > "$T_TMP/gh/me-prof-abc/profile.toml"
 tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-prof-abc

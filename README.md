@@ -4,75 +4,60 @@
 
 <p align="center">Stick your setup onto any Linux machine, and peel it off cleanly.</p>
 
-decal keeps your look and tools in one profile (boot splash, login screen,
-wallpaper, cursor, icons, GTK theme, GNOME settings and extensions, apps,
-terminal) and applies it module by module on Fedora Atomic (Bazzite,
-Silverblue…), Fedora/RHEL, Debian/Ubuntu and Arch. Every module can be removed
-again, undoing exactly what it did.
+decal saves how your Linux desktop looks and works (wallpaper, themes, GNOME settings and extensions,
+apps, terminal, and more) and puts it on any other machine in one line. Everything it changes can be
+taken off again, cleanly. Works on Bazzite and other Fedora Atomic images, Fedora, Debian/Ubuntu and Arch.
 
-## Install
+## Get started
 
-No git needed: one line downloads the newest release (checksum verified) to `~/.local/share/decal/app`
-and puts `decal` in `~/.local/bin`. Give it a profile and it applies it straight away:
+Install decal and open its menu:
 
 ```bash
-curl -fsSL https://dmacpherson.github.io/decal/install | bash                                   # install decal, open the menu
-curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- ~/my-profile --tags dev     # install + apply
-curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- github:you/your-profile     # profile from GitHub
+curl -fsSL https://dmacpherson.github.io/decal/install | bash
 ```
 
-Installed this way, decal keeps itself current: every run first checks for a newer release and,
-if there is one, updates and then runs your command on it (offline, it just carries on;
-`--no-update` skips it once). `decal update` updates on demand, `decal version` shows what you have.
-Running the one-liner again is safe: an up-to-date decal isn't downloaded again (`DECAL_REINSTALL=1`
-forces it), an older one is updated, and a profile you give it is applied either way.
-`DECAL_VERSION=v1.2.0` (or `main`) before `bash` picks a release (or the newest commit) and is
-remembered. Needs `bash`, `curl` or `wget`, `tar` and `python3`. A git checkout (`./decal`) works the same
-but never updates itself.
+From the menu you can apply a setup, stamp this machine, or take things off again. After this, just run
+`decal` to open it.
 
-A profile can be a folder (a USB stick is fine), a `.tar.gz` from `decal stamp`, a git URL, or
-`github:owner/repo[@branch]`, downloaded without git. For a private repo set `GITHUB_TOKEN` (a
-fine-grained token with read access to it: `curl … | GITHUB_TOKEN=… bash -s -- github:…`), be logged
-in with `gh`, or type the token when it asks.
+## Save your setup
 
-## Use
-
-Run `decal` on its own for the menu:
-
-```
-  1   Apply     stick it on      put a profile on this machine
-  2   Stamp     take a print     save this machine's setup as a profile
-  3   Remove    peel it off      undo what decal changed
-  4   Update    fresh sheet      (when a newer version is out)
-  5   Logs      the fine print   what the last run did
-```
-
-Each one picks what it covers (the profile's tags and its modules, with their status), shows what would
-change, and asks before it does anything. It runs the same commands as below and shows them, so nothing
-it does is hidden. The tags you last applied are ticked for you next time.
+Stamp this machine: decal saves what you've changed from the defaults to `~/decal-$USER.tar.gz`.
 
 ```bash
-./decal use ~/my-profile            # make it the active profile, without applying anything
-./decal apply ~/my-profile          # a folder, a .tar.gz, a git URL or github:owner/repo: becomes the active profile, then applied (never removes anything)
-./decal status                      # what's applied
-./decal add cursor icons            # apply some modules from the active profile
-./decal remove wallpaper            # undo exactly what add did
-./decal --dry-run apply <profile>   # show what would happen
-./decal --verbose apply <profile>   # show every command's output (normally only in the log)
-./decal --force apply <profile>     # apply every module even if it's already up to date
-./decal stamp                       # save this machine's setup as a profile: ~/decal-$USER.tar.gz
-./decal fetch                       # pre-download themes, fonts, ...
-./decal capture gnome-settings      # print your current settings to copy into the profile
+curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- stamp
 ```
 
-Run it as your normal user; it asks for sudo once when needed. A module that is
-already applied, with unchanged settings (and unchanged files they point to), is
-skipped without downloading anything; `--force` applies it anyway. In a terminal each
-module shows one progress line; the full output of every `add`, `remove` and
-`apply` is kept in `~/.local/state/decal/logs/` (`last.log` is the newest). The active
-profile lives at `~/.config/decal/profile`. Start from
-[`examples/profile/profile.toml`](examples/profile/profile.toml): every key is
-listed there, and typos are rejected before anything changes.
+Or stamp it straight into a private GitHub repo, `decal-$USER`, so you can apply it from anywhere:
+
+```bash
+curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- stamp --github
+```
+
+## Put a setup on a machine
+
+From your GitHub stamp (`decal stamp --github` prints this line with your name filled in):
+
+```bash
+curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- github:YOUR-NAME/decal-YOUR-NAME
+```
+
+From a stamp file you've copied over:
+
+```bash
+curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- ~/decal-$USER.tar.gz
+```
+
+A private repo needs a GitHub token: decal asks for one, or uses `gh` if you're logged in.
+
+## Take it off again
+
+Undo everything decal changed on this machine:
+
+```bash
+decal remove all
+```
+
+## What decal can set
 
 | Module | What it does |
 |---|---|
@@ -95,41 +80,36 @@ listed there, and typos are rejected before anything changes.
 | tools | Command-line tools from their official installers (uv), updated on every apply |
 | ollama | Ollama (local AI models) from Homebrew, GPU build (integrated GPUs too, on machines without a discrete one), running as your user, plus your models |
 
-### Tags: settings for some machines only
+## In depth
 
-Put settings for some machines in a `[section.tag]` table next to the section. Lists
-add on to the section's (a single value and a list add up too, e.g. a second settings
-`file`), other values replace its. A section that only has tag tables
-is only applied on machines given that tag. Nothing untagged changes.
+### Everyday commands
 
-```toml
-[apps]
-flatpaks = ["com.discordapp.Discord"]
-
-[apps.dev]                          # dev machines also get these
-flatpaks = ["dev.zed.Zed"]
-
-[terminal.steamdeck]
-font = "FiraCode Nerd Font 12"      # replaces [terminal] font on the Deck
-
-[docker.dev]                        # docker only on dev machines
-group = true
-```
+The menu runs these same commands and shows them before it does anything.
 
 ```bash
-./decal add all                     # the untagged settings only
-./decal add all --tags dev          # plus [*.dev]; several: --tags dev,laptop; every tag: --tags all
-./decal add all --only dev          # just the modules with a [*.dev] table (with dev's settings)
-./decal remove all --only dev       # take dev away: [docker.dev]-only modules removed, dev's apps/brew tools uninstalled
-./decal tags                        # the tags your profile uses
+decal use ~/my-profile            # make it the active profile, without applying anything
+decal apply ~/my-profile          # a folder, a .tar.gz, a git URL or github:owner/repo: becomes the active profile, then applied (never removes anything)
+decal status                      # what's applied
+decal add cursor icons            # apply some modules from the active profile
+decal remove wallpaper            # undo exactly what add did
+decal --dry-run apply <profile>   # show what would happen
+decal --verbose apply <profile>   # show every command's output (normally only in the log)
+decal --force apply <profile>     # apply every module even if it's already up to date
+decal stamp                       # save this machine's setup as a profile: ~/decal-$USER.tar.gz
+decal fetch                       # pre-download themes, fonts, ...
+decal capture gnome-settings      # print your current settings to copy into the profile
 ```
 
-`all` can't be a tag name, a tag no section has is rejected, and `status` names the tag a
-module needs. For `remove --only`, a module that is also in the profile without the tag keeps
-its own settings and loses what the tag added (apps: flatpaks and shown launchers; terminal:
-brew tools, with `remove-brew = true`; brave: extensions); other modules leave it in place and say so.
+Run it as your normal user; it asks for sudo once when needed. A module that is
+already applied, with unchanged settings (and unchanged files they point to), is
+skipped without downloading anything; `--force` applies it anyway. In a terminal each
+module shows one progress line; the full output of every `add`, `remove` and
+`apply` is kept in `~/.local/state/decal/logs/` (`last.log` is the newest). The active
+profile lives at `~/.config/decal/profile`. Start from
+[`examples/profile/profile.toml`](examples/profile/profile.toml): every key is
+listed there, and typos are rejected before anything changes.
 
-### Stamp: your setup, saved as a profile
+### What a stamp contains
 
 `decal stamp` reads what you've changed from the defaults on this machine and saves it as a profile
 that `decal apply` puts on any other:
@@ -160,13 +140,70 @@ sources kept). Display scaling is never stamped (it differs per machine). `-gh` 
 stamp is one commit, and it ends with the line to put the setup on the next machine. The token (from
 `GITHUB_TOKEN`, `gh`, or asked for) needs permission to create a repo and write to it.
 
+### Profiles
+
+A profile can be a folder (a USB stick is fine), a `.tar.gz` from `decal stamp`, a git URL, or
+`github:owner/repo[@branch]`, downloaded without git. For a private repo set `GITHUB_TOKEN` (a
+fine-grained token with read access to it: `curl … | GITHUB_TOKEN=… bash -s -- github:…`), be logged
+in with `gh`, or type the token when it asks.
+
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an
 `https://` URL, or a path inside your profile. Downloads are cached in
 `~/.cache/decal/sources`. Each successful `apply` or `fetch` keeps one version per source and drops what
 hasn't been used for 30 days.
 
-Adding a module: `modules/<name>/module.sh` (`MODULE_DESC`, `module_add`,
+### Tags: settings for some machines only
+
+Put settings for some machines in a `[section.tag]` table next to the section. Lists
+add on to the section's (a single value and a list add up too, e.g. a second settings
+`file`), other values replace its. A section that only has tag tables
+is only applied on machines given that tag. Nothing untagged changes.
+
+```toml
+[apps]
+flatpaks = ["com.discordapp.Discord"]
+
+[apps.dev]                          # dev machines also get these
+flatpaks = ["dev.zed.Zed"]
+
+[terminal.steamdeck]
+font = "FiraCode Nerd Font 12"      # replaces [terminal] font on the Deck
+
+[docker.dev]                        # docker only on dev machines
+group = true
+```
+
+```bash
+decal add all                     # the untagged settings only
+decal add all --tags dev          # plus [*.dev]; several: --tags dev,laptop; every tag: --tags all
+decal add all --only dev          # just the modules with a [*.dev] table (with dev's settings)
+decal remove all --only dev       # take dev away: [docker.dev]-only modules removed, dev's apps/brew tools uninstalled
+decal tags                        # the tags your profile uses
+```
+
+`all` can't be a tag name, a tag no section has is rejected, and `status` names the tag a
+module needs. For `remove --only`, a module that is also in the profile without the tag keeps
+its own settings and loses what the tag added (apps: flatpaks and shown launchers; terminal:
+brew tools, with `remove-brew = true`; brave: extensions); other modules leave it in place and say so.
+
+### Installing and updating
+
+The one-line installer downloads the newest release (checksum verified) to `~/.local/share/decal/app` and
+puts `decal` in `~/.local/bin`; no git needed. Installed this way, decal keeps itself current: every run first checks for a newer release and,
+if there is one, updates and then runs your command on it (offline, it just carries on;
+`--no-update` skips it once). `decal update` updates on demand, `decal version` shows what you have.
+Running the one-liner again is safe: an up-to-date decal isn't downloaded again (`DECAL_REINSTALL=1`
+forces it), an older one is updated, and a profile you give it is applied either way. After `bash -s --`
+it takes a profile to apply (with any `decal apply` options, e.g. `--tags dev`), or `stamp` and any
+`decal stamp` options; with nothing, it opens the menu (`DECAL_NO_MENU=1`: it just installs).
+`DECAL_VERSION=v1.2.0` (or `main`) before `bash` picks a release (or the newest commit) and is
+remembered. Needs `bash`, `curl` or `wget`, `tar` and `python3`. A git checkout (`./decal`) works the same
+but never updates itself.
+
+### Adding a module
+
+A module is `modules/<name>/module.sh` (`MODULE_DESC`, `module_add`,
 `module_remove`, `module_status`, optionally `module_capture`/`module_fetch`,
 `MODULE_NEEDS_ROOT=1`, `module_drop` with `MODULE_CAN_DROP=1` for `remove --only`, `module_stamp` printing its
 section of a stamp, with `STAMP_LIVE=1` to always read the machine and `STAMP_SKIP=1` to never be stamped) plus `schema.json` for its profile keys. Tests:

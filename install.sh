@@ -2,6 +2,7 @@
 # decal installer, no git needed:
 #   curl -fsSL https://dmacpherson.github.io/decal/install | bash                     # install / update, open the menu
 #   curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- PROFILE [--tags dev]   # ...then apply PROFILE
+#   curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- stamp [ARGS]           # ...then stamp this machine
 # Downloads decal to ~/.local/share/decal/app and links ~/.local/bin/decal. Run it again (or `decal update`) for the
 # newest version; decal also updates itself before add/apply/remove. PROFILE is anything `decal apply` takes: a
 # folder, a .tar.gz, a git URL, or github:owner/repo (private repos: GITHUB_TOKEN, `gh auth login`, or it asks).
@@ -92,8 +93,10 @@ main() {
     if (( tty )) && [[ -z ${DECAL_NO_MENU:-} ]]; then exec "$home/decal" --no-update ui < /dev/tty; fi
     return 0
   fi
-  if [[ ! -t 0 ]] && (( tty )); then exec "$home/decal" --no-update apply "$@" < /dev/tty; fi
-  exec "$home/decal" --no-update apply "$@"
+  # `stamp [...]`: install, then stamp this machine; anything else is a profile to apply
+  local cmd=(apply); if [[ $1 == stamp ]]; then cmd=(stamp); shift; fi
+  if [[ ! -t 0 ]] && (( tty )); then exec "$home/decal" --no-update "${cmd[@]}" "$@" < /dev/tty; fi
+  exec "$home/decal" --no-update "${cmd[@]}" "$@"
 }
 
 main "$@"   # last line: a cut-off download runs nothing
