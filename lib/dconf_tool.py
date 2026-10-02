@@ -56,7 +56,7 @@ def read_ini(path, base, subst):
     cp = configparser.RawConfigParser(strict=False, interpolation=None, delimiters=("=",),
                                       comment_prefixes=("#",), inline_comment_prefixes=None)
     cp.optionxform = str
-    cp.read(path, encoding="utf-8")
+    cp.read(path, encoding="utf-8")   # several files: in order, a later one wins
     base = base.rstrip("/") + "/"
     for sec in cp.sections():
         d = base if sec.strip("/") == "" else base + sec.strip("/") + "/"
@@ -171,7 +171,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["apply", "remove", "status", "capture"])
     ap.add_argument("--base", required=True)
-    ap.add_argument("--ini"); ap.add_argument("--prev")
+    ap.add_argument("--ini", action="append", default=[]); ap.add_argument("--prev")
     ap.add_argument("--merge", action="append", default=[])
     ap.add_argument("--subst", action="append", default=[])
     ap.add_argument("--extensions", action="store_true")

@@ -103,8 +103,9 @@ _disable_undo() {
 }
 _dt() { python3 "$LS_REPO/lib/dconf_tool.py" "$@"; }
 _settings() {  # _settings CMD [args] : run dconf_tool on the profile's extension settings (if any)
-  [[ -n $P_file ]] || return 0
-  _dt "$1" --base /org/gnome/shell/extensions/ --ini "$P_file" --extensions \
+  (( ${#P_file[@]} )) || return 0
+  local f ini=(); for f in "${P_file[@]}"; do ini+=(--ini "$f"); done   # several files: in order, a later one wins
+  _dt "$1" --base /org/gnome/shell/extensions/ "${ini[@]}" --extensions \
     --prev "$LS_USER_STATE/gnome-extensions.prev.json" --subst "@HOME@=$HOME" --subst "@LOGO_PATH@=$(_logo_path)" --subst "@TERMINAL_CMD@=$(terminal_cmd)" "${@:2}"
 }
 # known to the running shell, or installed but waiting for the next login (the shell only scans at login)
@@ -206,7 +207,7 @@ module_status() {
   for u in $(_uuids); do
     if _loaded "$u"; then :; elif _on_disk "$u"; then pending+=("$u"); else missing+=("$u"); fi
   done
-  if [[ -n $P_file ]]; then s=$(_settings status | tail -1); else s=installed; fi
+  if (( ${#P_file[@]} )); then s=$(_settings status | tail -1); else s=installed; fi
   if (( ${#pending[@]} )); then wait="${#pending[@]} active after you log out and back in"; fi
   if [[ $s == not-installed ]]; then echo "not-installed"
   elif (( ${#missing[@]} )) || [[ $s != installed ]]; then echo "partial (${#missing[@]} not installed${wait:+; $wait}; settings: $s)"

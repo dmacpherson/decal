@@ -40,8 +40,8 @@ listed there, and typos are rejected before anything changes.
 | display | Scaling for every monitor (e.g. 150%), arrangement kept, saved like GNOME Settings does |
 | branding | Login-screen logo |
 | account | Your account picture (login screen, lock screen, user menu), no sudo |
-| brave | Brave settings its Sync keeps per device (look, toolbar, new tab page, search engines) and Brave Origin, applied while Brave is closed |
-| terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable |
+| brave | Brave settings its Sync keeps per device (look, toolbar, new tab page, search engines) and Brave Origin, applied while Brave is closed; extensions from the Web Store |
+| terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable; Bazzite's welcome message off if you like |
 | cursor | Cursor pack (Material Bibata by default), also on the login screen |
 | icons | Icon theme from any source, optionally another theme's folders on top |
 | gtk-theme | GTK theme for GTK3 apps (optionally forced onto libadwaita apps), Flatpak apps included |
@@ -54,7 +54,8 @@ listed there, and typos are rejected before anything changes.
 ### Tags: settings for some machines only
 
 Put settings for some machines in a `[section.tag]` table next to the section. Lists
-add on to the section's, other values replace its. A section that only has tag tables
+add on to the section's (a single value and a list add up too, e.g. a second settings
+`file`), other values replace its. A section that only has tag tables
 is only applied on machines given that tag. Nothing untagged changes.
 
 ```toml
@@ -82,7 +83,7 @@ group = true
 `all` can't be a tag name, a tag no section has is rejected, and `status` names the tag a
 module needs. For `remove --only`, a module that is also in the profile without the tag keeps
 its own settings and loses what the tag added (apps: flatpaks and shown launchers; terminal:
-brew tools, with `remove-brew = true`); other modules leave it in place and say so.
+brew tools, with `remove-brew = true`; brave: extensions); other modules leave it in place and say so.
 
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an

@@ -28,7 +28,7 @@ browser = "com.brave.Browser"
 # flatpaks = ["dev.zed.Zed"]      # any section can have tags, e.g. [docker.dev], [terminal.laptop]
 
 # [gnome-settings]
-# file = "gnome/settings.ini"     # start with: ./decal capture gnome-settings > gnome/settings.ini
+# file = "gnome/settings.ini"     # start with: ./decal capture gnome-settings > gnome/settings.ini; a list = several, later wins
 
 # [gnome-extensions]
 # enable = ["blur-my-shell@aunetx"]
@@ -49,6 +49,7 @@ login-logo = ""                   # "" hides the login-screen logo, or a path to
 # [brave]                         # Brave settings its Sync doesn't carry (look, toolbar, new tab page, search engines)
 # preferences = "brave/preferences.json"   # a partial Brave Preferences tree; only those values are set, remove restores them
 # local-state = "brave/local-state.json"   # same for the browser-wide Local State, e.g. Brave Origin (free on Linux)
+# extensions = ["nngceckbapebfimnlniiiahkandclblb"]   # Chrome Web Store ids (from the extension's store URL); Brave installs them on its next start
 
 [terminal]
 app = "ptyxis"                    # ptyxis kitty alacritty foot wezterm ghostty
@@ -57,7 +58,8 @@ theme = "cyberpunk"
 font = "FiraCode Nerd Font 10"
 cursor = "underline"              # block ibeam underline
 opacity = 1                       # background opacity, 0-1 (1 = solid)
-brew = ["fastfetch"]              # extra Homebrew formulae
+brew = ["btop"]                   # extra Homebrew formulae
+motd = true                       # false: no welcome message in new terminals (Bazzite and other Universal Blue images)
 [terminal.features]
 prompt = true                     # Starship
 nerd-font = true

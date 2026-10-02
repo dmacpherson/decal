@@ -1,1 +1,1 @@
-{"keys": {"file": {"type": "path"}}, "required": ["file"]}
+{"keys": {"file": {"type": "paths"}}, "required": ["file"]}

@@ -90,6 +90,17 @@ _uupd_handles_brew() {
   python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); sys.exit(1 if c.get("modules",{}).get("brew",{}).get("disable") else 0)' \
     "$(sys_path /etc/uupd/config.json)"
 }
+# motd = false: no welcome message in new terminals on Universal Blue images (Bazzite, Aurora, Bluefin); the same
+# switch as `ujust toggle-user-motd` (/etc/profile.d/user-motd.sh skips it while ~/.config/no-show-user-motd exists)
+MOTD_OFF="$HOME/.config/no-show-user-motd"
+_has_motd() { [[ -e $(sys_path /etc/profile.d/user-motd.sh) ]]; }
+_motd_add() {
+  _has_motd || return 0
+  if [[ $P_motd == false && ! -e $MOTD_OFF ]]; then
+    run mkdir -p "$(dirname "$MOTD_OFF")"; run touch "$MOTD_OFF"; [[ $LS_DRY_RUN == 1 ]] || : > "$LS_USER_STATE/terminal.motd-off"
+  elif [[ $P_motd == true ]]; then _motd_remove; fi
+}
+_motd_remove() { if [[ -e $LS_USER_STATE/terminal.motd-off ]]; then run rm -f "$MOTD_OFF" "$LS_USER_STATE/terminal.motd-off"; fi; }   # only if decal hid it
 _updater_add() {
   if _uupd_handles_brew; then log "updates: uupd upgrades brew with the system (nothing to add)"; return 0; fi
   [[ $LS_DRY_RUN == 1 ]] && { log "[dry-run] install user timer decal-brew-upgrade"; return 0; }
@@ -208,6 +219,7 @@ module_add() {
   # 7. default terminal, updates
   if _on default-terminal; then _set_default_terminal; else _restore_default_terminal; fi
   if _on auto-update; then _updater_add; else _updater_remove; fi
+  _motd_add
 }
 
 module_remove() {
@@ -216,6 +228,7 @@ module_remove() {
   if [[ -n $cur ]]; then _load_adapter "$cur"; term_unconfigure; run rm -f "$LS_USER_STATE/terminal.current"; fi
   _restore_default_terminal
   _updater_remove
+  _motd_remove
   run rm -f "$HOOK"
   if grep -qF "$MARK_BEGIN" "$HOME/.bashrc" 2>/dev/null && [[ $LS_DRY_RUN != 1 ]]; then
     python3 - "$HOME/.bashrc" "$MARK_BEGIN" "$MARK_END" <<'EOF'
@@ -278,6 +291,7 @@ module_status() {
   { [[ $(cat "$LS_USER_STATE/terminal.current" 2>/dev/null) == "$TERMINAL" ]] && term_configured; } || why+=("$TERMINAL not configured")
   if _on default-terminal; then [[ $(head -1 "$XDG_TERMS" 2>/dev/null) == "$TERM_DESKTOP" ]] || why+=("not the default terminal"); fi
   if _on auto-update; then [[ $(_updater_desc) != "updates: none" ]] || why+=("no updater"); fi
+  if [[ $P_motd == false ]] && _has_motd && [[ ! -e $MOTD_OFF ]]; then why+=("welcome message still shown"); fi
   if (( ${#why[@]} == 0 )); then echo "installed ($TERMINAL, $(_updater_desc))"
   elif [[ ! -e $HOOK && ! -d $CFG ]]; then echo not-installed
   else local IFS=","; echo "partial (${why[*]})" | sed "s/,/, /g"; fi

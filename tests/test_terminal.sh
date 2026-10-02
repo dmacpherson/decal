@@ -83,6 +83,16 @@ assert_nofile "$HOME/.local/share/blesh" "autosuggest off -> our ble.sh removed"
 assert_nofile "$XDG_CONFIG_HOME/xdg-terminals.list" "default-terminal off -> restored (was absent)"
 assert_contains "$(cat "$CFGD/bashrc.sh")" "starship init bash" "other features still there"
 mod module_remove 2>/dev/null
+# motd = false: Universal Blue's welcome message off (ujust toggle-user-motd's file); only on images that have it
+sed -i 's/^app = "ptyxis"$/&\nmotd = false/' "$PROFILE_DIR/profile.toml"
+mod module_add >/dev/null 2>&1; assert_nofile "$HOME/.config/no-show-user-motd" "no Universal Blue motd: nothing done"
+mkdir -p "$DECAL_ROOT/etc/profile.d"; : > "$DECAL_ROOT/etc/profile.d/user-motd.sh"
+assert_contains "$(mod module_status 2>/dev/null)" "welcome message still shown" "status: motd still on"
+mod module_add >/dev/null 2>&1; assert_file "$HOME/.config/no-show-user-motd" "motd = false: welcome message turned off"
+mod module_remove >/dev/null 2>&1; assert_nofile "$HOME/.config/no-show-user-motd" "remove turns it back on"
+: > "$HOME/.config/no-show-user-motd"; mod module_add >/dev/null 2>&1; mod module_remove >/dev/null 2>&1
+assert_file "$HOME/.config/no-show-user-motd" "turned off by you before decal: left off"
+rm -f "$HOME/.config/no-show-user-motd"; sed -i '/^motd = false$/d' "$PROFILE_DIR/profile.toml"
 # switching fonts removes the old one; remove works from what add recorded even after the section is deleted
 FD="$HOME/.local/share/fonts/decal"; mkdir -p "$FD/FiraCodeNerdFont" "$FD/HackNerdFont"
 sed -i 's/^app = "ptyxis"$/&\nnerd-font = "Hack"\nremove-brew = true/' "$PROFILE_DIR/profile.toml"

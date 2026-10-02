@@ -1,7 +1,7 @@
 {"keys": {
   "enable": {"type": "strings"},
   "disable": {"type": "strings", "default": []},
-  "file": {"type": "path", "default": ""},
+  "file": {"type": "paths", "default": []},
   "files.*": {"type": "path"},
   "logo": {"type": "path", "default": ""},
   "logo-color": {"type": "color", "default": "#deddda"},

@@ -41,6 +41,21 @@ assert_eq "$(q default_search_provider_data.template_url_data.short_name)" '"Bra
 assert_eq "$(q brave.origin.free_tier_accepted "$L")" "false" "Origin back to how it was"
 assert_eq "$(q brave.origin.purchase_validated "$L")" "null" "flag decal added taken out"
 assert_nofile "$DECAL_USER_STATE/brave.prev.json" "record removed"
+# extensions: a file each in Brave's "External Extensions" folder; Brave installs them from the Web Store on its next start
+X="$(dirname "$B")/External Extensions"; A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; C=cccccccccccccccccccccccccccccccc
+printf 'extensions = ["%s", "not-an-id"]\n[brave.me]\nextensions = ["%s"]\n' "$A" "$C" >> "$PROFILE_DIR/profile.toml"
+touch "$STUBS/running"; out=$(run_mod add 2>&1)
+assert_eq "$(cat "$X/$A.json")" '{"external_update_url": "https://clients2.google.com/service/update2/crx"}' "extension added (even while Brave runs)"
+assert_contains "$out" "not-an-id is not a Chrome Web Store extension id" "a bad id: warned"; rm "$STUBS/running"
+assert_nofile "$X/$C.json" "a tag's extension: not without the tag"
+DECAL_TAGS=me run_mod add >/dev/null 2>&1; assert_file "$X/$C.json" "with the tag: added"
+echo '{"external_update_url": "mine"}' > "$X/mine.json"
+DECAL_DROP=me run_mod drop >/dev/null 2>&1
+assert_nofile "$X/$C.json" "remove --only me: the tag's extension taken out (Brave uninstalls it)"; assert_file "$X/$A.json" "the section's kept"
+rm "$X/$A.json"; assert_eq "$(run_mod status)" "partial (extensions not added)" "a missing extension shows up"
+run_mod add >/dev/null 2>&1; run_mod remove >/dev/null 2>&1
+assert_nofile "$X/$A.json" "remove takes decal's extensions out"; assert_file "$X/mine.json" "never one decal didn't add"
+sed -i '/^extensions = /d; /^\[brave.me\]/d' "$PROFILE_DIR/profile.toml"
 # Brave never opened: nothing to merge into yet
 rm -rf "$B"; out=$(run_mod add 2>&1); assert_eq "$?" "0" "never-opened Brave: no failure"
 assert_contains "$out" "open it once" "says to open Brave once"

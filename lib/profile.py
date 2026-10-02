@@ -58,10 +58,14 @@ def split_tags(sec, data, schema):
 
 
 def merge(into, extra):
-    """Lay a tag's settings over a section: lists add on (no repeats), tables merge, other values replace."""
+    """Lay a tag's settings over a section: lists add on (no repeats), tables merge, other values replace.
+    A single value and a list add up too (file = "a.ini" with a tag's file = ["b.ini"] -> both)."""
     for k, v in extra.items():
         cur = into.get(k)
-        if isinstance(cur, list) and isinstance(v, list):
+        if isinstance(cur, list) != isinstance(v, list) and all(isinstance(x, (list, str)) for x in (cur, v)):
+            cur, v = (cur if isinstance(cur, list) else [cur]), (v if isinstance(v, list) else [v])
+            into[k] = cur + [x for x in v if x not in cur]
+        elif isinstance(cur, list) and isinstance(v, list):
             into[k] = cur + [x for x in v if x not in cur]
         elif isinstance(cur, dict) and isinstance(v, dict):
             merge(cur, v)
@@ -110,7 +114,7 @@ def get(d, dotted):
 
 
 def empty_for(t):
-    return [] if t in ("strings", "string-or-strings", "install") else ""
+    return [] if t in ("strings", "string-or-strings", "install", "paths") else ""
 
 
 def check(sec, key, spec, v, pdir):
@@ -155,6 +159,10 @@ def check(sec, key, spec, v, pdir):
         p = v if os.path.isabs(v) else os.path.join(pdir, v)
         if not os.path.exists(p): bad(f"file not found ({p})")
         return os.path.abspath(p)
+    if t == "paths":   # one file or a list of them (a tag's list adds files on)
+        vs = [v] if isinstance(v, str) else v
+        if not (isinstance(vs, list) and all(isinstance(x, str) for x in vs)): bad("expected a path or a list of paths")
+        return [check(sec, key, dict(spec, type="path"), x, pdir) for x in vs]
     if t in ("path-or-url", "source"):
         if not isinstance(v, str): bad("expected a string")
         if v == "": return ""
@@ -195,7 +203,7 @@ def section_values(sec, schema, data, pdir, present):
         v = get(data, k) if present else None
         if v is None:
             d = spec.get("default", empty_for(spec["type"]))
-            if spec["type"] in ("string-or-strings", "install") and isinstance(d, str):
+            if spec["type"] in ("string-or-strings", "install", "paths") and isinstance(d, str):
                 d = [d]
             vals[k] = d
         else:

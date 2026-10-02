@@ -21,4 +21,12 @@ assert_eq "$(v S0)" "not-installed" "before"; assert_eq "$(v ACC)" "'purple'" "a
 assert_contains "$(v FAV)" "com.brave.Browser.desktop" "dock applied"; assert_eq "$(v S1)" "installed" "after add"
 assert_eq "$(v TERM)" "'ptyxis --new-window'" "@TERMINAL_CMD@ resolved from terminal config"
 assert_eq "$(v ACC2)" "" "reset on remove"; assert_eq "$(v S2)" "not-installed" "after remove"
+# a tag adds a second file: both applied, the later one wins where both set a key
+printf '[org/gnome/desktop/interface]\naccent-color='"'"'pink'"'"'\nclock-format='"'"'12h'"'"'\n' > "$PROFILE_DIR/gnome/mine.ini"
+printf '\n[gnome-settings.me]\nfile = ["gnome/mine.ini"]\n' >> "$PROFILE_DIR/profile.toml"
+out=$(DECAL_TAGS=me dbus-run-session -- bash -c body 2>/dev/null)
+assert_eq "$(v ACC)" "'pink'" "tag's file wins over the section's"; assert_contains "$(v FAV)" "com.brave.Browser.desktop" "section's file still applied"
+assert_eq "$(v S1)" "installed" "status covers both files"
+out=$(dbus-run-session -- bash -c body 2>/dev/null)
+assert_eq "$(v ACC)" "'purple'" "without the tag: only the section's file"
 t_done
