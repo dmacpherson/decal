@@ -25,7 +25,9 @@ release() {  # release TAG
   serve "$DL/releases/download/$1/decal.tar.gz" "$d/decal.tar.gz"; serve "$DL/releases/download/$1/decal.tar.gz.sha256" "$d/decal.tar.gz.sha256"
 }
 latest() { serve_text "$API/releases/latest" "{\"tag_name\": \"$1\"}"; }
-H="$XDG_DATA_HOME/decal"; BIN="$HOME/.local/bin"
+H="$XDG_DATA_HOME/decal/app"; BIN="$HOME/.local/bin"
+# decal's own data (module files) lives next to the install and must survive installs and updates
+mkdir -p "$XDG_DATA_HOME/decal/icons"; echo logo > "$XDG_DATA_HOME/decal/icons/logo.svg"
 mkdir -p "$T_TMP/mods"; cp -a "$REPO/tests/fixtures/modules/eee-conf" "$REPO/tests/fixtures/modules/aaa-ok" "$T_TMP/mods/"
 export DECAL_MODULES_DIR="$T_TMP/mods" DECAL_PLATFORM=fedora LS_TEST_LOG="$T_TMP/log"; : > "$LS_TEST_LOG"
 export DECAL_PROFILE_HOME="$T_TMP/active"
@@ -74,6 +76,10 @@ latest v1.2.0; out=$("$O/bin/decal" list 2>&1)
 assert_contains "$out" "decal v1.2.0 is out (you have v1.1.0)" "an install elsewhere: compared with itself"
 assert_eq "$(cat "$O/decal/MARK")" "v1.2.0" "and updated in place"; assert_eq "$(readlink "$O/bin/decal")" "$O/decal/decal" "link kept where it was"
 out=$("$O/bin/decal" list 2>&1); assert_not_contains "$out" "is out" "then up to date"
+assert_eq "$(cat "$XDG_DATA_HOME/decal/icons/logo.svg")" "logo" "decal's data folder untouched by installs and updates"
+mkdir -p "$T_TMP/notdecal"; echo mine > "$T_TMP/notdecal/file"
+out=$(DECAL_HOME="$T_TMP/notdecal" bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "a folder that isn't an install: refused"
+assert_eq "$(cat "$T_TMP/notdecal/file")" "mine" "and left as it was"
 out=$(DECAL_FAKE_EUID=0 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "root refused"; assert_contains "$out" "not root" "says why"
 
 # install + apply in one go: the arguments go to decal apply

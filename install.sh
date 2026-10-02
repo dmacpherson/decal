@@ -2,7 +2,7 @@
 # decal installer, no git needed:
 #   curl -fsSL https://dmacpherson.github.io/decal/install | bash                     # install / update decal
 #   curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- PROFILE [--tags dev]   # ...then apply PROFILE
-# Downloads decal to ~/.local/share/decal and links ~/.local/bin/decal. Run it again (or `decal update`) for the
+# Downloads decal to ~/.local/share/decal/app and links ~/.local/bin/decal. Run it again (or `decal update`) for the
 # newest version; decal also updates itself before add/apply/remove. PROFILE is anything `decal apply` takes: a
 # folder, a .tar.gz, a git URL, or github:owner/repo (private repos: GITHUB_TOKEN, `gh auth login`, or it asks).
 # DECAL_VERSION: latest (default: the newest release, checksum verified) | vX.Y.Z | a branch, e.g. main (newest commit).
@@ -35,7 +35,8 @@ _resolve() {
 
 main() {
   REPO=${DECAL_REPO:-dmacpherson/decal}
-  local home=${DECAL_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/decal}
+  # its own folder inside decal's data folder (~/.local/share/decal holds what modules keep, e.g. icons): replaced whole
+  local home=${DECAL_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/decal/app}
   local bin=${DECAL_BIN:-$(cat "$home/.bin" 2>/dev/null || echo "$HOME/.local/bin")}   # where the last install linked it
   local mode=install; case ${1:-} in --update) mode=update; shift ;; --check) mode=check; shift ;; esac
   if (( ${DECAL_FAKE_EUID:-$EUID} == 0 )) && [[ ${DECAL_ALLOW_ROOT:-0} != 1 ]]; then die "run as your normal user, not root (decal uses sudo itself when it needs to)"; fi
@@ -61,7 +62,10 @@ main() {
   [[ -n $top && -f $top/decal ]] || die "the download doesn't contain decal"
   echo "$tag" > "$top/VERSION"; echo "$version" > "$top/.channel"; echo "$bin" > "$top/.bin"
   : > "$top/.installed"   # installed by this script: decal updates itself (a git checkout never does)
-  # swap in: the old copy stays until the new one is in place
+  # swap in: the old copy stays until the new one is in place; never a folder that isn't an install of this script
+  if [[ -e $home && ! -e $home/.installed ]] && [[ -n $(ls -A "$home" 2>/dev/null) ]]; then
+    die "$home exists and isn't a decal install: not replacing it (set DECAL_HOME to install elsewhere)"
+  fi
   mkdir -p "$(dirname "$home")"; rm -rf "$home.old"
   if [[ -e $home ]]; then mv "$home" "$home.old"; fi
   mv "$top" "$home"; rm -rf "$home.old"

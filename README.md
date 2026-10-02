@@ -10,7 +10,7 @@ again, undoing exactly what it did.
 
 ## Install
 
-No git needed: one line downloads the newest release (checksum verified) to `~/.local/share/decal`
+No git needed: one line downloads the newest release (checksum verified) to `~/.local/share/decal/app`
 and puts `decal` in `~/.local/bin`. Give it a profile and it applies it straight away:
 
 ```bash
