@@ -328,7 +328,7 @@ do_stamp() {
   if (( public )); then warn "a public repo: anyone can see what's in it (pictures, app list, settings)"; fi
   local pub=(); if (( public )); then pub=(--public); fi
   r=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" push "$STAMP_DIR" "$repo" "${pub[@]}" --message "decal stamp $(date '+%F %H:%M')") \
-    || { if (( signed )); then local u; u=$(python3 "$LS_REPO/lib/auth.py" install-url --need write 2>/dev/null) && info "Decal Write needs access to $repo: $u"; fi
+    || { if (( signed )); then local u; u=$(python3 "$LS_REPO/lib/auth.py" install-url --need write 2>/dev/null) && info "Decal Profile Write needs access to $repo: $u"; fi
          die "could not save the stamp to GitHub (it is saved at $dest)"; }
   info "on GitHub: https://github.com/$r"
   info "on another machine: curl -fsSL $INSTALL_URL | bash -s -- github:$r"

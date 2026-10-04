@@ -169,25 +169,26 @@ decal never saves a key it got by signing in. Two GitHub Apps do the signing in:
 
 | App | Can | Its keys |
 |---|---|---|
-| Decal | read the contents of the repos you install it on | last until you revoke them |
-| Decal Write | read and write contents, create repos | expire after 8 hours |
+| Decal Profile | read the contents of the repos you install it on | last until you revoke them |
+| Decal Profile Write | read and write contents, create repos | expire after 8 hours |
 
-To revoke: GitHub → Settings → Applications → Authorized GitHub Apps → Decal → Revoke (this stops every key it
-gave out, on every machine and stick). To take its access away from a repo: Installed GitHub Apps → Decal → Configure.
+To revoke: GitHub → Settings → Applications → Authorized GitHub Apps → Decal Profile → Revoke (this stops every key it
+gave out, on every machine and stick). To take its access away from a repo: Installed GitHub Apps → Decal Profile → Configure.
 
 #### Registering the apps (maintainers and forks)
 
 Done once, by hand, at GitHub → Settings → Developer settings → GitHub Apps → New GitHub App. For each app:
 
-- Name: `Decal` / `Decal Write`; Homepage URL: the decal repo.
+- Name: `Decal Profile` / `Decal Profile Write` (slugs `decal-profile`, `decal-profile-write`); Homepage URL:
+  the decal repo.
 - Identifying and authorizing users: no callback URL; **Enable Device Flow** on; "Request user authorization
-  during installation" off. **Expire user authorization tokens:** off for Decal, on for Decal Write.
+  during installation" off. **Expire user authorization tokens:** off for Decal Profile, on for Decal Profile Write.
 - Webhook: Active off.
-- Repository permissions: Decal: Contents read-only. Decal Write: Contents read and write, Administration read and
+- Repository permissions: Decal Profile: Contents read-only. Decal Profile Write: Contents read and write, Administration read and
   write. No account or organisation permissions.
 - Where can this GitHub App be installed: Any account.
 
-Then put each app's Client ID and URL slug in `APPS` in `lib/auth.py` (`"Iv23…:decal"`), or, for a fork without
+Then put each app's Client ID and URL slug in `APPS` in `lib/auth.py` (`"Iv23…:decal-profile"`), or, for a fork without
 editing code, set `DECAL_GITHUB_APP_READ` / `DECAL_GITHUB_APP_WRITE` to the same `CLIENT_ID:slug`.
 
 ### Tags: settings for some machines only

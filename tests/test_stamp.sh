@@ -85,7 +85,7 @@ out=$(GITHUB_TOKEN=wrong setsid -w "$S" stamp -gh 2>&1 < /dev/null); assert_eq "
 assert_contains "$out" "the token needs permission" "...and says what the token needs"
 assert_contains "$out" "GitHub didn't accept the token" "...before doing anything"
 assert_not_contains "$(ps -eo args)" "s3cret" "token not on any command line"
-# no key: stamp -gh signs in with Decal Write (a repo that doesn't exist yet is fine), the key used for this run only
+# no key: stamp -gh signs in with Decal Profile Write (a repo that doesn't exist yet is fine), the key used for this run only
 echo ok > "$G/device_script"; : > "$G/device_log"; printf '1\n' > "$T_TMP/keys"
 out=$(env -u GITHUB_TOKEN -u GH_TOKEN DECAL_GITHUB="$DECAL_GITHUB_API" DECAL_GITHUB_APP_WRITE=Iv-write:decal-write \
   DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$S" stamp -gh tester/signed-in 2>&1)

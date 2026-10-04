@@ -82,17 +82,17 @@ assert_contains "$S" "1) Sign in with GitHub" "the choice offers signing in"
 assert_contains "$S" "2. Enter WDJB-MJHT" "the code"
 assert_contains "$S" "On your phone" "the phone column"
 assert_contains "$S" "Signed in." "says it worked"
-assert_contains "$(cat "$G/device_log")" "code client_id=Iv-read" "reading uses the Decal app"
+assert_contains "$(cat "$G/device_log")" "code client_id=Iv-read" "reading uses the Decal Profile app"
 assert_eq "$(grep -c '^poll' "$G/device_log")" "3" "polled until approved"
 assert_eq "$(find "$HOME" -type f -newer "$T_TMP/before" | wc -l)" "0" "nothing saved under HOME"
 printf 'ok\n' > "$G/device_script"
 ask '1\n' me/prof --need write >/dev/null
-assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "writing uses the Decal Write app"
+assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "writing uses the Decal Profile Write app"
 
 # the app isn't installed on the repo yet: the install link, then it carries on by itself (no new code)
 printf 'ok\n' > "$G/device_script"; echo "me/prof 3" > "$G/hidden"; fake_up
 assert_eq "$(ask '1\n' me/prof --need read)" "s3cret" "not installed yet: the key once it is"
-assert_contains "$(cat "$T_TMP/screen")" "Decal can't see me/prof yet: install it on that repo" "says what to do"
+assert_contains "$(cat "$T_TMP/screen")" "Decal Profile can't see me/prof yet: install it on that repo" "says what to do"
 assert_contains "$(cat "$T_TMP/screen")" "$DECAL_GITHUB/apps/decal/installations/new" "with the install link"
 assert_eq "$(grep -c '^code' "$G/device_log")" "1" "one code only"
 # never visible (misspelled?): gives up on its own

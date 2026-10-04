@@ -20,7 +20,8 @@ Success looks like:
 
 ## Naming
 
-User-facing names use **Decal**; commands and files use **decal** (see the GitHub App names below).
+User-facing names use **Decal**; commands and files use **decal**. The GitHub Apps are **Decal Profile** and
+**Decal Profile Write** ("Decal" itself is taken by a GitHub account).
 
 ## How decal gets a key
 
@@ -30,8 +31,8 @@ It then tries, in order:
 1. **A key that's already there:** `GITHUB_TOKEN`, then `GH_TOKEN`, then `gh auth token`. (On a USB stick, parts 3
    and 4 add the stick's saved read key here.)
 2. **Otherwise it asks**, on the terminal (also when started from the menu, as today):
-   - **Sign in with GitHub** (default): the sign-in screen below, using the **Decal** app for read and the
-     **Decal Write** app for write.
+   - **Sign in with GitHub** (default): the sign-in screen below, using the **Decal Profile** app for read and the
+     **Decal Profile Write** app for write.
    - **Make a token myself:** asks how long it should last (30 days / 90 days (default) / 1 year / never expires),
      opens GitHub's new fine-grained token page pre-filled (name `Decal`, that expiry, `contents=read` or
      `contents=write&administration=write`, since a first stamp creates the repo), says which repo to pick under "Only select repositories" (GitHub can't pre-fill that), and
@@ -48,7 +49,7 @@ private `github:` profile (read) and `decal stamp --github` (write).
 
 ## The two GitHub Apps
 
-| | **Decal** | **Decal Write** |
+| | **Decal Profile** | **Decal Profile Write** |
 |---|---|---|
 | Used for | applying, browsing, keys saved on sticks | stamping, saving back, making new profiles |
 | Repository permissions | Contents: read (Metadata: read is implied) | Contents: read & write, Administration: read & write |
@@ -56,7 +57,7 @@ private `github:` profile (read) and `decal stamp --github` (write).
 | Installed on | repos the person picks (normally just their profile) | all repos, or picked ones |
 | Settings | Public; device flow on; no callback URL; webhook off | same |
 
-Administration write is what creating a repo needs. If Decal Write is installed on picked repos only, a newly
+Administration write is what creating a repo needs. If Decal Profile Write is installed on picked repos only, a newly
 created repo isn't covered; decal then sends the person to GitHub's new-repo page with the name filled in and to the
 app's install page for that repo, instead of creating it itself. (Making new profiles is part 2; part 1 only needs
 `stamp --github` to handle "repo exists but the app can't see it" with that install link.)
@@ -102,12 +103,12 @@ Shown on the terminal. Two columns, so someone can sign in on this machine or wi
 
 | Situation | What decal does |
 |---|---|
-| Approved, but the app isn't installed on the repo (the repo answers 404 to the new key) | "Decal can't see decal-profile yet: install it on that repo", the app's install link (account preselected where GitHub allows), then re-checks every few seconds and carries on once it can see the repo. No new code needed. |
+| Approved, but the app isn't installed on the repo (the repo answers 404 to the new key) | "Decal Profile can't see decal-profile yet: install it on that repo", the app's install link (account preselected where GitHub allows), then re-checks every few seconds and carries on once it can see the repo. No new code needed. |
 | Code expired (GitHub's 15 minutes) | "The code expired" and a new code is shown. |
 | Denied on GitHub, or Esc | Back to the key choice (sign in / make a token / cancel). |
 | No internet / GitHub unreachable | Says so plainly and stops before changing anything. |
 | Pasted token rejected | Says which: not a valid token (401) / no access to this repo (404) / expired, and asks again. |
-| Write needed but the key can only read | Says the key can only read and offers to sign in with Decal Write. |
+| Write needed but the key can only read | Says the key can only read and offers to sign in with Decal Profile Write. |
 | Repo doesn't exist (and the key is good) | Says the name may be misspelled or the repo deleted. |
 | `slow_down` from GitHub | Polls less often, as GitHub asks. |
 | No terminal (non-interactive run) | Fails as today: set `GITHUB_TOKEN` or log in with `gh auth login`. |
@@ -131,7 +132,7 @@ Shown on the terminal. Two columns, so someone can sign in on this machine or wi
   can show the install link.
 - **`.gitattributes`**: `docs/ export-ignore`, so specs stay out of the release download.
 - **README**: In depth gains "Signing in to GitHub" (what the two apps can do, how to revoke: GitHub → Settings →
-  Applications → Decal → Revoke) and the maintainer registration checklist.
+  Applications → Decal Profile → Revoke) and the maintainer registration checklist.
 
 ## Testing
 

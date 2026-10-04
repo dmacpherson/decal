@@ -4,7 +4,7 @@
   auth.py get REPO --need read|write [--may-create]   ask on the terminal; prints the key on stdout
   auth.py check REPO --need read|write [--may-create] check the key in GITHUB_TOKEN (exit codes: OK, BAD_KEY, ...)
   auth.py token-url --need read|write --days N|none   the pre-filled "new token" page
-  auth.py install-url --need read|write               the Decal (Write) app's install page
+  auth.py install-url --need read|write               the Decal Profile (Write) app's install page
 
 A key from signing in is only printed, never saved. DECAL_GITHUB / DECAL_GITHUB_API point elsewhere (tests);
 DECAL_GITHUB_APP_READ / DECAL_GITHUB_APP_WRITE ("CLIENT_ID:slug") use other apps (forks, tests)."""
@@ -15,7 +15,7 @@ import qrcodegen  # noqa: E402  (vendored next to this file)
 
 WEB = os.environ.get("DECAL_GITHUB", "https://github.com").rstrip("/")
 API = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
-# "CLIENT_ID:slug" of the Decal and Decal Write GitHub Apps (public IDs; device flow needs no secret)
+# "CLIENT_ID:slug" of the Decal Profile and Decal Profile Write GitHub Apps (public IDs; device flow needs no secret)
 APPS = {"read": "", "write": ""}
 DAYS = [("30 days", "30"), ("90 days", "90"), ("1 year", "365"), ("never expires", "none")]
 OK, BAD_KEY, CANT_SEE, READ_ONLY, OFFLINE = 0, 10, 11, 12, 13
@@ -225,7 +225,7 @@ def wait_for_access(tty, repo, need, token, may_create):
             tty.say(f"decal still can't see {repo}: check the name (it may be misspelled), or that the app is installed on it")
             return None
         if not told:
-            name = "Decal" if need == "read" else "Decal Write"
+            name = "Decal Profile" if need == "read" else "Decal Profile Write"
             tty.say("", f"{name} can't see {repo} yet: install it on that repo (or check the name)",
                     f"  {install_url(need)}", "", "Waiting for it...   Esc cancel")
             told = True
@@ -377,7 +377,7 @@ def main():
     elif a.cmd == "install-url":
         u = install_url(a.need)
         if not u:
-            sys.exit("error: no Decal app configured")
+            sys.exit("error: no Decal Profile app configured")
         print(u)
     elif a.cmd == "get":
         if not a.repo:
