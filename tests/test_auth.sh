@@ -50,4 +50,23 @@ python3 "$A" token-url --need read --days 400 >/dev/null 2>&1; assert_eq "$?" "2
 assert_eq "$(DECAL_GITHUB_APP_READ=Iv1.abc:decal python3 "$A" install-url --need read)" "https://github.com/apps/decal/installations/new" "install page"
 assert_eq "$(DECAL_GITHUB_APP_WRITE=Iv1.w:decal-write py 'print(auth.app("write"))')" "('Iv1.w', 'decal-write')" "write app from the environment"
 assert_eq "$(DECAL_GITHUB_APP_READ=junk py 'print(auth.app("read"))')" "None" "a malformed setting: no app"
+# a fake GitHub (localhost): checking a key
+G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"; echo me/prof > "$G/seed"
+fake_up() {  # (re)start the fake GitHub: it reads seed/hidden when it starts
+  if [[ -n ${GHPID:-} ]]; then kill "$GHPID" 2>/dev/null; wait "$GHPID" 2>/dev/null; fi
+  rm -f "$G/port"; python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
+  for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
+  export DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")"
+}
+fake_up
+chk() { GITHUB_TOKEN=$1 python3 "$A" check "${@:2}" >/dev/null 2>&1; echo $?; }
+assert_eq "$(chk s3cret me/prof --need read)" "0" "check: a good key reads"
+assert_eq "$(chk s3cret me/prof --need write)" "0" "check: ...and writes"
+assert_eq "$(chk wrong me/prof --need read)" "10" "check: a rejected key"
+assert_eq "$(chk s3cret me/nope --need read)" "11" "check: a repo the key can't see"
+assert_eq "$(chk s3cret me/nope --need write --may-create)" "0" "check: a repo to be created is fine"
+assert_eq "$(chk s3cret decal-tester --need write --may-create)" "0" "check: no owner yet (stamp): the key is checked"
+: > "$G/readonly"; assert_eq "$(chk s3cret me/prof --need write)" "12" "check: a read-only key when writing"; rm "$G/readonly"
+assert_eq "$(GITHUB_TOKEN=s3cret DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$A" check me/prof --need read >/dev/null 2>&1; echo $?)" "13" "check: GitHub unreachable"
+kill "$GHPID" 2>/dev/null
 t_done

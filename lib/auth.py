@@ -8,7 +8,7 @@
 
 A key from signing in is only printed, never saved. DECAL_GITHUB / DECAL_GITHUB_API point elsewhere (tests);
 DECAL_GITHUB_APP_READ / DECAL_GITHUB_APP_WRITE ("CLIENT_ID:slug") use other apps (forks, tests)."""
-import argparse, os, sys, urllib.parse
+import argparse, json, os, sys, urllib.error, urllib.parse, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qrcodegen  # noqa: E402  (vendored next to this file)
@@ -18,6 +18,50 @@ API = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
 # "CLIENT_ID:slug" of the Decal and Decal Write GitHub Apps (public IDs; device flow needs no secret)
 APPS = {"read": "", "write": ""}
 DAYS = [("30 days", "30"), ("90 days", "90"), ("1 year", "365"), ("never expires", "none")]
+OK, BAD_KEY, CANT_SEE, READ_ONLY, OFFLINE = 0, 10, 11, 12, 13
+WHY = {BAD_KEY: "GitHub didn't accept that key (mistyped, revoked or expired)",
+       CANT_SEE: "that key can't see {repo}: it doesn't exist, or the key wasn't given access to it",
+       READ_ONLY: "that key can only read {repo}; saving needs one that can write",
+       OFFLINE: "couldn't reach GitHub: check the internet connection"}
+
+
+class Offline(Exception):
+    pass
+
+
+def api_get(path, token):
+    req = urllib.request.Request(API + path, headers={"Accept": "application/vnd.github+json",
+                                                      "Authorization": "Bearer " + token,
+                                                      "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        return e.code, {}
+    except (urllib.error.URLError, OSError) as e:
+        raise Offline(str(e))
+
+
+def check(repo, need, token, may_create=False):
+    """OK when TOKEN can read (or write) REPO; with MAY_CREATE a missing repo is fine (stamp creates it)."""
+    try:
+        code, _ = api_get("/user", token)
+        if code == 401:
+            return BAD_KEY
+        if "/" not in repo:   # stamp before it knows the owner: the key works, the repo comes later
+            return OK if code == 200 else BAD_KEY
+        code, info = api_get(f"/repos/{repo}", token)
+        if code == 401:
+            return BAD_KEY
+        if code == 404 and may_create:
+            return OK
+        if code != 200:
+            return CANT_SEE
+        if need == "write" and not info.get("permissions", {}).get("push", False):
+            return READ_ONLY
+        return OK
+    except Offline:
+        return OFFLINE
 
 
 def app(need):
@@ -79,18 +123,23 @@ def days_arg(v):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["token-url", "install-url"])
+    ap.add_argument("cmd", choices=["check", "token-url", "install-url"])
+    ap.add_argument("repo", nargs="?")
     ap.add_argument("--need", choices=["read", "write"], default="read")
+    ap.add_argument("--may-create", action="store_true")
     ap.add_argument("--days", type=days_arg, default="90")
     a = ap.parse_args()
     if a.cmd == "token-url":
         print(token_url(a.need, a.days))
-    else:
+    elif a.cmd == "install-url":
         u = install_url(a.need)
         if not u:
             sys.exit("error: no Decal app configured")
         print(u)
-
+    else:
+        if not a.repo:
+            ap.error("check needs a repo")
+        sys.exit(check(a.repo, a.need, os.environ.get("GITHUB_TOKEN", ""), a.may_create))
 
 if __name__ == "__main__":
     main()
