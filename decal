@@ -253,7 +253,7 @@ module_has() { ( cd "$MODULES_DIR/$1" && export MODULE_DIR="$PWD"; set +u; sourc
 # A module decal set up from your profile that is still in place is taken from the profile as you wrote it
 # (tags, sources, comments aside) unless it sets STAMP_LIVE=1 (those compare the machine with the defaults).
 do_stamp() {
-  local dest="" gh=0 repo="" public=0 me m frag st rc from only=()
+  local dest="" gh=0 repo="" public=0 signed=0 me m frag st rc from only=()
   while (( $# )); do
     case $1 in
       -gh|--github) gh=1
@@ -299,7 +299,10 @@ do_stamp() {
   local tok=""
   if (( gh )); then   # the token first: the README names the repo, and a wrong token shouldn't come after the work
     tok=$(gh_token)
-    if [[ -z $tok ]]; then tok=$(gh_ask "a GitHub token to save your stamp (it needs to create a repo and write to it)") || die "no GitHub token: set GITHUB_TOKEN or log in with gh auth login"; fi
+    if [[ -z $tok ]]; then
+      gh_auth "$repo" write --may-create || die "no GitHub key: sign in when asked, set GITHUB_TOKEN, or log in with gh auth login"
+      tok=$GITHUB_TOKEN; signed=1
+    fi
     if [[ $repo != */* ]]; then
       local who; who=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami) || die "GitHub didn't accept the token (the token needs permission to create repos and write their contents)"
       repo="$who/$repo"
@@ -325,7 +328,8 @@ do_stamp() {
   if (( public )); then warn "a public repo: anyone can see what's in it (pictures, app list, settings)"; fi
   local pub=(); if (( public )); then pub=(--public); fi
   r=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" push "$STAMP_DIR" "$repo" "${pub[@]}" --message "decal stamp $(date '+%F %H:%M')") \
-    || die "could not save the stamp to GitHub (it is saved at $dest)"
+    || { if (( signed )); then local u; u=$(python3 "$LS_REPO/lib/auth.py" install-url --need write 2>/dev/null) && info "Decal Write needs access to $repo: $u"; fi
+         die "could not save the stamp to GitHub (it is saved at $dest)"; }
   info "on GitHub: https://github.com/$r"
   info "on another machine: curl -fsSL $INSTALL_URL | bash -s -- github:$r"
 }
@@ -337,15 +341,16 @@ find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single s
   if [[ ${#subs[@]} -eq 1 && -f ${subs[0]}profile.toml ]]; then echo "${subs[0]%/}"; return 0; fi
   return 1
 }
-# gh_tarball OWNER/REPO REF OUT : a GitHub repo as a .tar.gz without git. Private repos need a token: GITHUB_TOKEN,
-# GH_TOKEN or a `gh auth login`; without one, in a terminal, it asks (read access to the repo is enough)
+# gh_tarball OWNER/REPO REF OUT : a GitHub repo as a .tar.gz without git. Private repos need a key: GITHUB_TOKEN,
+# GH_TOKEN or a `gh auth login`; without one, in a terminal, it asks (sign in with GitHub, or a token you make)
 gh_token() { local t=${GITHUB_TOKEN:-${GH_TOKEN:-}}; if [[ -z $t ]] && have gh; then t=$(gh auth token 2>/dev/null || true); fi; printf '%s' "$t"; }
-# gh_ask WHAT : read a token from the terminal (none: fails)
-gh_ask() {
-  { : < /dev/tty; } 2>/dev/null || return 1
-  # all on the terminal itself: decal's log pipe would print the explanation after the prompt
-  printf '\033[1;36m==>\033[0m %s\ntoken (typing is hidden): ' "$1" > /dev/tty; local t; IFS= read -rs t < /dev/tty; printf '\n' > /dev/tty
-  [[ -n $t ]] && printf '%s' "$t"
+# gh_auth REPO read|write [--may-create] : ask on the terminal for a key (lib/auth.py: sign in with a code or QR,
+# or paste a token); exported as GITHUB_TOKEN for the rest of this run, never saved. No terminal or cancelled: fails
+gh_auth() {
+  if [[ -z ${DECAL_TTY_IN:-} ]]; then { : < /dev/tty; } 2>/dev/null || return 1; fi
+  local t; t=$(python3 "$LS_REPO/lib/auth.py" get "$1" --need "$2" "${@:3}") || return 1
+  [[ -n $t ]] || return 1
+  export GITHUB_TOKEN=$t
 }
 gh_tarball() {
   local url="${DECAL_GITHUB_API:-https://api.github.com}/repos/$1/tarball${2:+/$2}" tok hdr="$LS_RUNTMP/gh-auth" code asked=0
@@ -358,7 +363,7 @@ gh_tarball() {
     [[ $code == 200 ]] && return 0
     if [[ $code =~ ^(401|403|404)$ && $asked == 0 ]]; then
       asked=1
-      if tok=$(gh_ask "$1 needs a GitHub token (private repo?): a fine-grained token with read access to its contents"); then continue; fi
+      if gh_auth "$1" read; then tok=$GITHUB_TOKEN; continue; fi
     fi
     case $code in
       401|403|404) die "github:$1 not found or not allowed (private? set GITHUB_TOKEN, or log in with gh auth login)" ;;

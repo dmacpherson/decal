@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/lib.sh"
 t_setup
+stub gh 'exit 1'; unset DISPLAY WAYLAND_DISPLAY
 # install.sh, decal's self-update and github: profiles against a fake GitHub (a curl stub serving files; no network)
 WEB="$T_TMP/web"; mkdir -p "$WEB"; export WEB
 key() { printf '%s' "$1" | sed 's#[/:@]#_#g'; }
@@ -124,4 +125,18 @@ assert_eq "$(find "$T_TMP" -maxdepth 1 -name 'active.old-*' | wc -l)" "0" "no ba
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply github:me/prof 2>&1 < /dev/null)
 assert_eq "$?" "1" "private repo without a token (no terminal to ask in): fails"
 assert_contains "$out" "github:me/prof not found or not allowed (private? set GITHUB_TOKEN" "and says how to fix it"
+# no key: decal asks, signs in (the fake GitHub's Decal app), and uses that key for this run only
+G="$T_TMP/ghapi"; mkdir -p "$G"; echo s3cret > "$G/token"; echo me/prof > "$G/seed"; echo ok > "$G/device_script"
+python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
+for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
+FAKE="http://127.0.0.1:$(cat "$G/port")"
+serve "$FAKE/repos/me/prof/tarball" "$T_TMP/gh.tar.gz"; echo "Bearer s3cret" > "$WEB/$(key "$FAKE/repos/me/prof/tarball").token"   # curl stub
+printf '1\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"
+out=$(env -u GITHUB_TOKEN -u GH_TOKEN DECAL_GITHUB="$FAKE" DECAL_GITHUB_API="$FAKE" DECAL_GITHUB_APP_READ=Iv-read:decal \
+  DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" apply github:me/prof 2>&1)
+assert_eq "$?" "0" "private profile, no key: signed in and applied"
+assert_contains "$(cat "$T_TMP/screen")" "2. Enter WDJB-MJHT" "the sign-in screen was shown"
+assert_contains "$(cat "$G/device_log")" "client_id=Iv-read" "with the read app"
+assert_eq "$(grep -rl s3cret "$HOME" 2>/dev/null | wc -l)" "0" "the key isn't saved anywhere under HOME"
+kill "$GHPID" 2>/dev/null
 t_done
