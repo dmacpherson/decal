@@ -2,3 +2,4 @@ tests/ export-ignore
 .github/ export-ignore
 .gitleaksignore export-ignore
 assets/ export-ignore
+docs/ export-ignore
