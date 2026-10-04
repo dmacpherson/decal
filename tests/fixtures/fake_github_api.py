@@ -4,7 +4,7 @@ python3 fake_github_api.py STATE_DIR. Serves on 127.0.0.1 (port written to STATE
 (STATE_DIR/token). Repos live in memory; each ref update writes STATE_DIR/<owner>_<repo>.json with the commit's files
 (path -> text) and count. Optional STATE_DIR files: seed (repos that exist: owner/name per line), hidden (owner/name N:
 404 for the next N lookups, N=forever never), readonly (no push permission), device_script (one of pending, slow,
-expired, denied, ok per poll), device_fail (the code request fails). Device requests are logged to device_log."""
+expired, denied, ok per poll; hold: pending for good), device_fail (the code request fails). Device requests are logged to device_log."""
 import base64, hashlib, json, os, sys, urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -37,6 +37,8 @@ for line in state("hidden") or []:
 def next_poll():
     lines = state("device_script") or []
     word = lines[0].strip() if lines else "ok"
+    if word == "hold":   # pending until the test changes the script
+        return "pending"
     with open(os.path.join(STATE, "device_script"), "w") as f:
         f.write("\n".join(lines[1:]))
     return word or "ok"

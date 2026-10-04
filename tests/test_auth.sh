@@ -68,5 +68,105 @@ assert_eq "$(chk s3cret me/nope --need write --may-create)" "0" "check: a repo t
 assert_eq "$(chk s3cret decal-tester --need write --may-create)" "0" "check: no owner yet (stamp): the key is checked"
 : > "$G/readonly"; assert_eq "$(chk s3cret me/prof --need write)" "12" "check: a read-only key when writing"; rm "$G/readonly"
 assert_eq "$(GITHUB_TOKEN=s3cret DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$A" check me/prof --need read >/dev/null 2>&1; echo $?)" "13" "check: GitHub unreachable"
+# asking: a terminal stand-in (a file of keystrokes in, a file out), the fake server's two apps
+export DECAL_GITHUB_APP_READ=Iv-read:decal DECAL_GITHUB_APP_WRITE=Iv-write:decal-write DECAL_AUTH_RECHECK=0 COLUMNS=100
+ask() {  # ask KEYS ARGS... : run auth.py get with KEYS as the typing; key on stdout, screen in $T_TMP/screen
+  printf "$1" > "$T_TMP/keys"; : > "$G/device_log"
+  DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" python3 "$A" get "${@:2}"
+}
+touch "$T_TMP/before"
+printf 'pending\nslow\nok\n' > "$G/device_script"
+assert_eq "$(ask '1\n' me/prof --need read)" "s3cret" "sign in: the key, after pending and slow_down"
+S=$(cat "$T_TMP/screen")
+assert_contains "$S" "1) Sign in with GitHub" "the choice offers signing in"
+assert_contains "$S" "2. Enter WDJB-MJHT" "the code"
+assert_contains "$S" "On your phone" "the phone column"
+assert_contains "$S" "Signed in." "says it worked"
+assert_contains "$(cat "$G/device_log")" "code client_id=Iv-read" "reading uses the Decal app"
+assert_eq "$(grep -c '^poll' "$G/device_log")" "3" "polled until approved"
+assert_eq "$(find "$HOME" -type f -newer "$T_TMP/before" | wc -l)" "0" "nothing saved under HOME"
+printf 'ok\n' > "$G/device_script"
+ask '1\n' me/prof --need write >/dev/null
+assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "writing uses the Decal Write app"
+
+# the app isn't installed on the repo yet: the install link, then it carries on by itself (no new code)
+printf 'ok\n' > "$G/device_script"; echo "me/prof 3" > "$G/hidden"; fake_up
+assert_eq "$(ask '1\n' me/prof --need read)" "s3cret" "not installed yet: the key once it is"
+assert_contains "$(cat "$T_TMP/screen")" "Decal can't see me/prof yet: install it on that repo" "says what to do"
+assert_contains "$(cat "$T_TMP/screen")" "$DECAL_GITHUB/apps/decal/installations/new" "with the install link"
+assert_eq "$(grep -c '^code' "$G/device_log")" "1" "one code only"
+# never visible (misspelled?): gives up on its own
+echo "me/prof forever" > "$G/hidden"; fake_up
+printf 'ok\nok\n' > "$G/device_script"
+out=$(DECAL_AUTH_WAIT=0 ask '1\n3\n' me/prof --need read); assert_eq "$?" "1" "never visible: no key"
+assert_contains "$(cat "$T_TMP/screen")" "still can't see me/prof: check the name" "says the name may be wrong"
+rm "$G/hidden"; fake_up
+
+# the code expires: a new one; denied: back to the choice; Esc: back to the choice
+printf 'expired\nok\n' > "$G/device_script"
+assert_eq "$(ask '1\n' me/prof --need read)" "s3cret" "expired: signed in with a new code"
+assert_contains "$(cat "$T_TMP/screen")" "The code expired" "says so"; assert_eq "$(grep -c '^code' "$G/device_log")" "2" "two codes"
+printf 'denied\n' > "$G/device_script"
+out=$(ask '1\n3\n' me/prof --need read); assert_eq "$?" "1" "denied, then cancel: no key"
+assert_contains "$(cat "$T_TMP/screen")" "Sign-in was denied on GitHub." "says it was denied"
+assert_eq "$(grep -c 'Sign in with GitHub' "$T_TMP/screen")" "2" "back to the choice after denying"
+printf 'pending\n' > "$G/device_script"
+out=$(ask '1\n\x1b3\n' me/prof --need read); assert_eq "$?" "1" "Esc while waiting, then cancel"
+: > "$G/device_fail"
+out=$(ask '1\n3\n' me/prof --need read); assert_eq "$?" "1" "the code request fails: no key"
+assert_contains "$(cat "$T_TMP/screen")" "GitHub didn't start a sign-in" "plain words, no traceback"
+assert_not_contains "$(cat "$T_TMP/screen")" "Traceback" "no traceback on screen"
+rm "$G/device_fail"
+
+# make a token myself: expiry, the page, a wrong paste, then a good one (spaces trimmed); t while waiting gets here too
+assert_eq "$(ask '2\n\nwrong\n  s3cret  \n' me/prof --need read)" "s3cret" "a pasted token, after a wrong one"
+S=$(cat "$T_TMP/screen")
+assert_contains "$S" "90 days   (default)" "expiry choice"
+assert_contains "$S" "expires_in=90&contents=read" "the pre-filled page, 90 days"
+assert_contains "$S" 'choose "Only select repositories" and pick prof' "which repo to pick"
+assert_contains "$S" "GitHub didn't accept that key" "the wrong paste explained"
+assert_contains "$(ask '2\n4\ns3cret\n' me/prof --need write --may-create; cat "$T_TMP/screen")" "expires_in=none&contents=write&administration=write" "never expires; writing"
+assert_contains "$(cat "$T_TMP/screen")" 'choose "All repositories"' "a repo decal may create: all repositories"
+printf 'pending\n' > "$G/device_script"
+assert_eq "$(ask '1\nt\ns3cret\n' me/prof --need read)" "s3cret" "t while waiting: paste a token instead"
+assert_eq "$(DECAL_GITHUB_APP_READ= ask '1\n\ns3cret\n' me/prof --need read)" "s3cret" "no app configured: 1 is make a token"
+assert_not_contains "$(cat "$T_TMP/screen")" "Sign in with GitHub" "...and signing in isn't offered"
+
+# no terminal: fails with how to fix it; Ctrl+C: exits 130, no traceback
+out=$(DECAL_TTY_IN=/nonexistent python3 "$A" get me/prof --need read 2>&1); assert_eq "$?" "1" "no terminal: fails"
+assert_contains "$out" "set GITHUB_TOKEN or log in with gh auth login" "...and says how to fix it"
+mkfifo "$T_TMP/fifo"; ( sleep 30 > "$T_TMP/fifo" ) & HOLD=$!
+# (bash starts background jobs with Ctrl+C ignored; put Python's handler back, as a foreground run has it)
+DECAL_TTY_IN="$T_TMP/fifo" DECAL_TTY_OUT="$T_TMP/screen" python3 -c 'import runpy, signal, sys
+signal.signal(signal.SIGINT, signal.default_int_handler); sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' \
+  "$A" get me/prof --need read > /dev/null 2> "$T_TMP/err" & P=$!
+sleep 1; kill -INT "$P"; wait "$P"; assert_eq "$?" "130" "Ctrl+C: exit 130"
+assert_not_contains "$(cat "$T_TMP/err")" "Traceback" "Ctrl+C: no traceback"; kill "$HOLD" 2>/dev/null
+# a real terminal (a pty): key-at-a-time mode while waiting, Esc back to the choice, echo restored afterwards
+echo hold > "$G/device_script"
+out=$(DECAL_AUTH_RECHECK=0 python3 - "$A" <<'PY'
+import os, pty, select, sys, termios, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ.pop("DECAL_TTY_IN", None); os.environ.pop("DECAL_TTY_OUT", None)
+    os.execvp("python3", ["python3", sys.argv[1], "get", "me/prof", "--need", "read"])
+def until(text, secs=10):
+    buf, end = b"", time.time() + secs
+    while time.time() < end and text.encode() not in buf:
+        if select.select([fd], [], [], max(0, end - time.time()))[0]:
+            try: buf += os.read(fd, 4096)
+            except OSError: break
+    return text.encode() in buf
+ok = until("Choose [1]: "); os.write(fd, b"1\n")
+ok = ok and until("Waiting for GitHub"); time.sleep(0.5); waiting_echo = bool(termios.tcgetattr(fd)[3] & termios.ECHO)
+os.write(fd, b"\x1b"); ok = ok and until("Choose [1]: "); os.write(fd, b"3\n")
+if not ok:
+    os.kill(pid, 9)   # stuck: fail instead of hanging
+_, st = os.waitpid(pid, 0)
+print("ok" if ok else "stuck", "echo-while-waiting" if waiting_echo else "no-echo-while-waiting",
+      "echo-after" if termios.tcgetattr(fd)[3] & termios.ECHO else "no-echo-after", os.waitstatus_to_exitcode(st))
+PY
+)
+assert_eq "$out" "ok no-echo-while-waiting echo-after 1" "real terminal: Esc works, echo off while waiting and back on after"
 kill "$GHPID" 2>/dev/null
 t_done
