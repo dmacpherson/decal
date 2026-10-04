@@ -1,0 +1,16 @@
+
+//--------------------------------- Added by decal --------------------------------
+// Re-centre every frame: the screen can change size after the splash starts (firmware resolution until the
+// graphics driver loads, common on older laptops), which left the animation off in a corner.
+fun decal_refresh_callback ()
+  {
+    refresh_callback();
+    global.screen.w = Window.GetWidth(0);
+    global.screen.h = Window.GetHeight(0);
+    global.screen.half.w = Window.GetWidth(0) / 2;
+    global.screen.half.h = Window.GetHeight(0) / 2;
+    flyingman_sprite.SetX(Window.GetX() + (Window.GetWidth(0) / 2 - flyingman_image[0].GetWidth() / 2));
+    flyingman_sprite.SetY(Window.GetY() + (Window.GetHeight(0) / 2 - flyingman_image[0].GetHeight() / 2));
+  }
+
+Plymouth.SetRefreshFunction (decal_refresh_callback);

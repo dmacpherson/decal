@@ -14,11 +14,22 @@ _themes_root() {
   ls_fetch "$P_source" "${a[@]}" || die "could not fetch plymouth themes from $P_source"
 }
 module_fetch() { _themes_root >/dev/null; }
+# _recenter SRC : SRC, or a copy whose script re-centres the animation every frame when the theme positions it only
+# once at start (adi1090x's themes): a screen that changes size during boot otherwise leaves it in a corner
+_recenter() {
+  local s="$1/$P_theme.script" d
+  if ! grep -qF 'flyingman_sprite.SetX(' "$s" 2>/dev/null || ! grep -qx 'Plymouth.SetRefreshFunction (refresh_callback);' "$s"; then
+    echo "$1"; return 0
+  fi
+  d=$(mktemp -d "${LS_RUNTMP:-${TMPDIR:-/tmp}}/plymouth.XXXXXX")/$P_theme
+  cp -a "$1" "$d"; cat "$MODULE_DIR/recenter.script" >> "$d/$P_theme.script"; echo "$d"
+}
 
 module_add() {
   step "downloading boot splash themes"
   local src; src="$(_themes_root)/$P_theme"
   [[ $LS_DRY_RUN == 1 || -d $src ]] || die "plymouth theme '$P_theme' not found in $P_source${P_path:+ ($P_path)}"
+  [[ -d $src ]] && src=$(_recenter "$src")
   # mutable systems: new packages or theme files mean a rebuilt initramfs (on Fedora Atomic any
   # change stages a new deployment, which rebuilds it anyway)
   local p dest; dest=$(sys_path "/usr/share/plymouth/themes/$P_theme")

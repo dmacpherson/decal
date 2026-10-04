@@ -52,4 +52,18 @@ cp -r "$PROFILE_DIR/demo-plymouth/angular" "$DECAL_ROOT/usr/share/plymouth/theme
 assert_eq "$(dirty_run fedora)" "dirty=0" "mutable, same files and config: no rebuild"
 echo changed >> "$PROFILE_DIR/demo-plymouth/angular/angular.script"
 assert_eq "$(dirty_run fedora)" "dirty=1" "mutable, theme files changed: rebuild"
+# adi1090x-style themes position the animation once at start: decal installs a copy that re-centres every frame
+# (a screen that changes size during boot left it in a corner); other themes are installed as they are
+printf '%s\n' 'flyingman_sprite = Sprite();' 'flyingman_sprite.SetX(Window.GetX() + (Window.GetWidth(0) / 2 - flyingman_image[0].GetWidth() / 2));' \
+  'fun refresh_callback () { progress++; }' 'Plymouth.SetRefreshFunction (refresh_callback);' > "$PROFILE_DIR/demo-plymouth/angular/angular.script"
+orig=$(cat "$PROFILE_DIR/demo-plymouth/angular/angular.script")
+: > "$STUBS/calls"
+( mod_run_pre() { pkg_install() { :; }; files_installed() { return 0; }; initramfs_require() { :; }
+    files_install() { echo "files_install $2" >> "$STUBS/calls"; cp -a "$2" "$T_TMP/installed"; }; }
+  DECAL_PLATFORM=fedora mod_run plymouth module_add ) >/dev/null 2>&1
+assert_not_contains "$(calls)" "files_install $PROFILE_DIR/demo-plymouth/angular" "adi theme: a patched copy is installed, not the source"
+assert_contains "$(cat "$T_TMP/installed/angular.script")" "Plymouth.SetRefreshFunction (decal_refresh_callback);" "re-centring refresh added"
+assert_contains "$(cat "$T_TMP/installed/angular.script")" "$orig" "the theme's own script kept"
+assert_file "$T_TMP/installed/angular.plymouth" "the rest of the theme copied"
+assert_eq "$(cat "$PROFILE_DIR/demo-plymouth/angular/angular.script")" "$orig" "the fetched source is untouched"
 t_done
