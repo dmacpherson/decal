@@ -47,7 +47,8 @@ From a stamp file you've copied over:
 curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- ~/decal-$USER.tar.gz
 ```
 
-A private repo needs a GitHub token: decal asks for one, or uses `gh` if you're logged in. Only some
+A private repo needs a GitHub key: decal lets you sign in (with a code, or a QR code on your phone), or uses `gh`
+if you're logged in. Only some
 modules? Put their names after the profile, e.g. `… bash -s -- github:YOUR-NAME/decal-YOUR-NAME ollama`.
 
 ## Take it off again
@@ -146,13 +147,48 @@ stamp is one commit, and it ends with the line to put the setup on the next mach
 A profile can be a folder (a USB stick is fine), a `.tar.gz` from `decal stamp`, a git URL, or
 `github:owner/repo[@branch]`, downloaded without git. For a private repo set `GITHUB_TOKEN` (a
 fine-grained token with read access to it: `curl … | GITHUB_TOKEN=… bash -s -- github:…`), be logged
-in with `gh`, or type the token when it asks.
+in with `gh`, or sign in when it asks (see [Signing in to GitHub](#signing-in-to-github)).
 
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an
 `https://` URL, or a path inside your profile. Downloads are cached in
 `~/.cache/decal/sources`. Each successful `apply` or `fetch` keeps one version per source and drops what
 hasn't been used for 30 days.
+
+### Signing in to GitHub
+
+A private profile needs a GitHub key. decal uses `GITHUB_TOKEN`, `GH_TOKEN` or your `gh` login if you have one;
+otherwise it asks:
+
+- **Sign in with GitHub:** open the link (or scan the QR code with your phone), enter the code, click Authorize.
+  The first time, GitHub asks you to install the app on your profile repo; pick just that repo.
+- **Make a token myself:** decal opens GitHub's new-token page filled in (read-only, or read and write for
+  `stamp --github`); choose how long it lasts, pick your profile repo, generate, paste.
+
+decal never saves a key it got by signing in. Two GitHub Apps do the signing in:
+
+| App | Can | Its keys |
+|---|---|---|
+| Decal | read the contents of the repos you install it on | last until you revoke them |
+| Decal Write | read and write contents, create repos | expire after 8 hours |
+
+To revoke: GitHub → Settings → Applications → Authorized GitHub Apps → Decal → Revoke (this stops every key it
+gave out, on every machine and stick). To take its access away from a repo: Installed GitHub Apps → Decal → Configure.
+
+#### Registering the apps (maintainers and forks)
+
+Done once, by hand, at GitHub → Settings → Developer settings → GitHub Apps → New GitHub App. For each app:
+
+- Name: `Decal` / `Decal Write`; Homepage URL: the decal repo.
+- Identifying and authorizing users: no callback URL; **Enable Device Flow** on; "Request user authorization
+  during installation" off. **Expire user authorization tokens:** off for Decal, on for Decal Write.
+- Webhook: Active off.
+- Repository permissions: Decal: Contents read-only. Decal Write: Contents read and write, Administration read and
+  write. No account or organisation permissions.
+- Where can this GitHub App be installed: Any account.
+
+Then put each app's Client ID and URL slug in `APPS` in `lib/auth.py` (`"Iv23…:decal"`), or, for a fork without
+editing code, set `DECAL_GITHUB_APP_READ` / `DECAL_GITHUB_APP_WRITE` to the same `CLIENT_ID:slug`.
 
 ### Tags: settings for some machines only
 
