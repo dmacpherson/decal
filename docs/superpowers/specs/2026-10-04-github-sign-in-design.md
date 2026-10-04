@@ -34,7 +34,7 @@ It then tries, in order:
      **Decal Write** app for write.
    - **Make a token myself:** asks how long it should last (30 days / 90 days (default) / 1 year / never expires),
      opens GitHub's new fine-grained token page pre-filled (name `Decal`, that expiry, `contents=read` or
-     `contents=write`), says which repo to pick under "Only select repositories" (GitHub can't pre-fill that), and
+     `contents=write&administration=write`, since a first stamp creates the repo), says which repo to pick under "Only select repositories" (GitHub can't pre-fill that), and
      reads the pasted token (hidden typing).
    - Cancel.
 3. **It checks the key** can do what's needed on that repo before carrying on (see Errors).
