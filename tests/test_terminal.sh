@@ -112,4 +112,20 @@ EOF
 : > "$STUBS/calls"; mod module_remove >/dev/null 2>&1
 assert_nofile "$FD/HackNerdFont" "remove without the section still removes the installed font"
 assert_contains "$(calls)" "brew uninstall fastfetch" "remove-brew recorded at add time is honoured"
+# no Homebrew (most distros): decal installs it into a prefix it hands you, so the installer never needs sudo, then uses it
+mkdir -p "$HOME/.local/share/blesh" "$FD/FiraCodeNerdFont"; : > "$HOME/.local/share/blesh/ble.sh"   # downloads present
+rm -f "$STUBS/brew"; : > "$STUBS/calls"; stub rpm 'exit 1'; stub dnf
+export DECAL_BREW_PREFIX="$T_TMP/linuxbrew/.linuxbrew"
+mod_run_pre() { ls_fetch() { printf '%s\n' "echo \"installer NONINTERACTIVE=\${NONINTERACTIVE:-}\" >> $STUBS/calls" \
+  "mkdir -p $DECAL_BREW_PREFIX/bin; cp $T_TMP/fakebrew $DECAL_BREW_PREFIX/bin/brew" > "$T_TMP/inst.sh"; echo "$T_TMP/inst.sh"; }; }
+printf '%s\n' '#!/usr/bin/env bash' "echo \"brew \$*\" >> $STUBS/calls" '[ "$1" = shellenv ] && echo "export PATH=\"'"$DECAL_BREW_PREFIX"'/bin:\$PATH\""; exit 0' > "$T_TMP/fakebrew"; chmod +x "$T_TMP/fakebrew"
+mod module_add >/dev/null 2>&1; assert_eq "$?" "0" "add succeeds without Homebrew"
+assert_contains "$(calls)" "dnf install -y git" "git installed for Homebrew"
+assert_contains "$(calls)" "installer NONINTERACTIVE=1" "Homebrew installer run non-interactively"
+assert_contains "$(calls)" "brew bundle --file" "the new brew installs the tools"
+assert_file "$DECAL_USER_STATE/terminal.homebrew" "recorded that decal installed Homebrew"
+assert_contains "$(cat "$XDG_CONFIG_HOME/decal/terminal/bashrc.sh")" "/home/linuxbrew/.linuxbrew/bin/brew shellenv" "new shells find Homebrew"
+: > "$STUBS/calls"; mod module_add >/dev/null 2>&1
+assert_not_contains "$(calls)" "installer" "installed but not on PATH: not installed again"
+unset -f mod_run_pre; unset DECAL_BREW_PREFIX
 t_done

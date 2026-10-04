@@ -131,9 +131,28 @@ _gen_bashrc() {
   echo "# Don't edit: change the profile and run ./decal add terminal"
   # shellcheck disable=SC2016
   echo '[[ $- == *i* ]] || return 0'
+  # Homebrew decal installed isn't on PATH yet where the distro doesn't set it up (Bazzite does)
+  # shellcheck disable=SC2016
+  echo 'command -v brew >/dev/null || { [ -x /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"; }'
   if _on autosuggest; then cat "$MODULE_DIR/features/autosuggest-load.sh"; fi
   local f; for f in "${TOOL_FEATURES[@]}"; do if _on "$f"; then cat "$MODULE_DIR/features/$f.sh"; fi; done
   if _on autosuggest; then cat "$MODULE_DIR/features/autosuggest-attach.sh"; fi
+}
+# _brew_ensure : Homebrew on PATH, installed when missing (Bazzite ships it; most distros don't). decal makes the
+# prefix and hands it to you, so the installer never needs sudo (its "sudo -k" would end decal's sudo session)
+_brew_ensure() {
+  have brew && return 0
+  local prefix=${DECAL_BREW_PREFIX:-/home/linuxbrew/.linuxbrew} inst
+  if [[ ! -x $prefix/bin/brew ]]; then
+    [[ $LS_DRY_RUN == 1 ]] && { log "[dry-run] install Homebrew to $prefix"; return 0; }
+    step "installing Homebrew"
+    pkg_install terminal git
+    srun mkdir -p "$prefix"; srun chown "$(id -un):$(id -gn)" "$(dirname "$prefix")" "$prefix"
+    inst=$(ls_fetch https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh) || die "could not download the Homebrew installer"
+    NONINTERACTIVE=1 bash "$inst" || die "the Homebrew installer failed"
+    mkdir -p "$LS_USER_STATE"; : > "$LS_USER_STATE/terminal.homebrew"
+  fi
+  eval "$("$prefix/bin/brew" shellenv)"
 }
 _gen_brewfile() {
   local f b
@@ -186,7 +205,7 @@ module_add() {
   step "installing Homebrew tools"
   bf=$(_gen_brewfile)
   if [[ -n $bf ]]; then
-    have brew || die "Homebrew not found. Install it first: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+    _brew_ensure
     if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] brew bundle: $(tr '\n' ' ' <<<"$bf")"
     else
       before=$(brew list --formula -1 2>/dev/null | sort)
