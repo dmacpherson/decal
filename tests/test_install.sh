@@ -112,14 +112,14 @@ mkdir -p "$T_TMP/gh/me-prof-abc"; printf '[eee-conf]\nword = "from-github"\n' > 
 tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-prof-abc
 serve https://api.github.com/repos/me/prof/tarball "$T_TMP/gh.tar.gz"; echo "Bearer s3cret" > "$WEB/$(key https://api.github.com/repos/me/prof/tarball).token"
 : > "$LS_TEST_LOG"; : > "$STUBS/calls"
-out=$(GITHUB_TOKEN=s3cret "$REPO/decal" apply github:me/prof 2>&1); assert_eq "$?" "0" "github: apply rc"
+out=$(GITHUB_TOKEN=s3cret "$REPO/decal" --yes apply github:me/prof 2>&1); assert_eq "$?" "0" "github: apply rc"
 assert_contains "$(cat "$LS_TEST_LOG")" "eee add from-github" "github: profile applied"
 assert_contains "$(cat "$STUBS/headers")" "Authorization: Bearer s3cret" "token sent as a header"
 assert_not_contains "$(calls)" "s3cret" "token not on the command line"
 assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "source recorded"
 printf '[eee-conf]\nword = "newer"\n' > "$T_TMP/gh/me-prof-abc/profile.toml"; tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-prof-abc
 serve https://api.github.com/repos/me/prof/tarball "$T_TMP/gh.tar.gz"
-GITHUB_TOKEN=s3cret "$REPO/decal" apply github:me/prof >/dev/null 2>&1
+GITHUB_TOKEN=s3cret "$REPO/decal" --yes apply github:me/prof >/dev/null 2>&1
 assert_contains "$(cat "$DECAL_PROFILE_HOME/profile.toml")" "newer" "applied again: the newer copy"
 assert_eq "$(find "$T_TMP" -maxdepth 1 -name 'active.old-*' | wc -l)" "0" "no backup of a download from the same source"
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply github:me/prof 2>&1 < /dev/null)
@@ -133,10 +133,36 @@ FAKE="http://127.0.0.1:$(cat "$G/port")"
 serve "$FAKE/repos/me/prof/tarball" "$T_TMP/gh.tar.gz"; echo "Bearer s3cret" > "$WEB/$(key "$FAKE/repos/me/prof/tarball").token"   # curl stub
 printf '1\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"
 out=$(env -u GITHUB_TOKEN -u GH_TOKEN DECAL_GITHUB="$FAKE" DECAL_GITHUB_API="$FAKE" DECAL_GITHUB_APP_READ=Iv-read:decal \
-  DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" apply github:me/prof 2>&1)
+  DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" --yes apply github:me/prof 2>&1)
 assert_eq "$?" "0" "private profile, no key: signed in and applied"
 assert_contains "$(cat "$T_TMP/screen")" "2. Enter WDJB-MJHT" "the sign-in screen was shown"
 assert_contains "$(cat "$G/device_log")" "client_id=Iv-read" "with the read app"
 assert_eq "$(grep -rl s3cret "$HOME" 2>/dev/null | wc -l)" "0" "the key isn't saved anywhere under HOME"
 kill "$GHPID" 2>/dev/null
+# any source: a GitHub link and owner/name are the same github: source; the source is remembered
+: > "$LS_TEST_LOG"
+GITHUB_TOKEN=s3cret "$REPO/decal" --yes apply https://github.com/me/prof >/dev/null 2>&1; assert_eq "$?" "0" "a GitHub link applies"
+assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "...as github:me/prof"
+assert_eq "$(head -1 "$DECAL_USER_STATE/recent" | cut -f1)" "github:me/prof" "...and is remembered as recently used"
+# not yours: a stranger's repo without a terminal and without --yes stops, before anything changes
+mkdir -p "$T_TMP/gh2/stranger-prof-1"; printf '[eee-conf]\nword = "stranger"\n' > "$T_TMP/gh2/stranger-prof-1/profile.toml"
+tar -czf "$T_TMP/gh2.tar.gz" -C "$T_TMP/gh2" stranger-prof-1; serve https://api.github.com/repos/stranger/prof/tarball "$T_TMP/gh2.tar.gz"
+: > "$LS_TEST_LOG"
+out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply stranger/prof 2>&1 < /dev/null); assert_eq "$?" "1" "someone else's profile, no terminal: stops"
+assert_contains "$out" "this profile is from stranger/prof, not you" "...says whose it is"
+assert_contains "$out" "decal --yes apply github:stranger/prof" "...and how to apply it anyway"
+assert_eq "$(cat "$LS_TEST_LOG")" "" "...nothing added"
+assert_contains "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "...and the active profile is unchanged"
+# with a terminal: p previews (nothing changes), then y applies
+printf 'p\ny\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"
+out=$(env -u GITHUB_TOKEN -u GH_TOKEN DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" apply stranger/prof 2>&1)
+assert_eq "$?" "0" "someone else's profile, previewed then confirmed: applied"
+assert_eq "$(grep -o 'p preview' "$T_TMP/screen" | wc -l)" "2" "...asked, previewed, asked again"
+assert_contains "$(cat "$LS_TEST_LOG")" "eee add stranger" "...then added (the fixture logs during the preview too)"
+# now it's recently used: no question next time
+: > "$LS_TEST_LOG"
+setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply stranger/prof >/dev/null 2>&1 < /dev/null
+assert_eq "$?" "0" "recently used: no question"
+# install.sh passes --yes with the profile it was given
+grep -q 'cmd=(apply --yes)' "$REPO/install.sh"; assert_eq "$?" "0" "the installer applies with --yes"
 t_done

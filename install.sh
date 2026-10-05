@@ -5,7 +5,8 @@
 #   curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- stamp [ARGS]           # ...then stamp this machine
 # Downloads decal to ~/.local/share/decal/app and links ~/.local/bin/decal. Run it again (or `decal update`) for the
 # newest version; decal also updates itself before add/apply/remove. PROFILE is anything `decal apply` takes: a
-# folder, a .tar.gz, a git URL, or github:owner/repo (private repos: GITHUB_TOKEN, `gh auth login`, or it asks).
+# folder, a .tar.gz/.zip, owner/repo or a GitHub link, an https link to an archive, a git URL (private GitHub repos:
+# GITHUB_TOKEN, `gh auth login`, or decal signs you in).
 # DECAL_VERSION: latest (default: the newest release, checksum verified) | vX.Y.Z | a branch, e.g. main (newest commit).
 # Remembered, so updates stay on it. Already installed and current: nothing is downloaded (DECAL_REINSTALL=1 does
 # anyway). Options for decal itself: install.sh --update | --check (newer version? print it).
@@ -94,7 +95,7 @@ main() {
     return 0
   fi
   # `stamp [...]`: install, then stamp this machine; anything else is a profile to apply
-  local cmd=(apply); if [[ $1 == stamp ]]; then cmd=(stamp); shift; fi
+  local cmd=(apply --yes); if [[ $1 == stamp ]]; then cmd=(stamp); shift; fi   # --yes: the person typed the source
   if [[ ! -t 0 ]] && (( tty )); then exec "$home/decal" --no-update "${cmd[@]}" "$@" < /dev/tty; fi
   exec "$home/decal" --no-update "${cmd[@]}" "$@"
 }

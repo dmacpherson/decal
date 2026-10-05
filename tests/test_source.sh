@@ -24,6 +24,7 @@ assert_eq "$(r https://example.com/page)" $'url\thttps://example.com/page\t' "an
 assert_eq "$(r https://gitlab.com/me/prof.git)" $'git\thttps://gitlab.com/me/prof.git\t' "a .git link: git"
 assert_eq "$(r git+https://example.com/p)" $'git\tgit+https://example.com/p\t' "git+ link"
 assert_eq "$(r git@example.com:me/p.git)" $'git\tgit@example.com:me/p.git\t' "ssh shorthand"
+assert_eq "$(r file:///srv/p.git)" $'git\tfile:///srv/p.git\t' "a file:// git URL"
 out=$(r http://example.com/p.tar.gz); assert_contains "$out" "use an https:// link" "plain http refused"
 assert_eq "$(DECAL_ALLOW_HTTP_LOCAL=1 python3 "$SRC" resolve http://127.0.0.1:8/p.zip)" $'url\thttp://127.0.0.1:8/p.zip\t' "tests may use http to 127.0.0.1"
 # local paths win, and say so when it could have been GitHub
@@ -88,6 +89,7 @@ for i in $(seq 12); do python3 "$SRC" remember "github:x/r$i"; done
 assert_eq "$(wc -l < "$DECAL_USER_STATE/recent")" "10" "recent: 10 kept"
 y() { python3 "$SRC" yours "$@"; echo $?; }
 assert_eq "$(y "$T_TMP/w/p.tar.gz")" "0" "yours: a local path"
+assert_eq "$(y file:///srv/p.git)" "0" "yours: a git repo on this machine"
 assert_eq "$(y github:x/r12)" "0" "yours: recently used"
 assert_eq "$(y github:me/prof --login me)" "0" "yours: your GitHub account's"
 assert_eq "$(y github:me/prof --login Me)" "0" "...any letter case"

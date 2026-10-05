@@ -100,4 +100,10 @@ A="$T_TMP/twomods"; mkdir -p "$A"; printf '[p1]\nword = "one"\n[p2]\nword = "two
 "$S" apply "$A" p2 >/dev/null 2>&1; assert_eq "$?" "0" "apply SOURCE MODULE rc"
 assert_eq "$(cat "$LS_TEST_LOG")" "p2 add two" "apply SOURCE MODULE: just that module"
 assert_eq "$(readlink -f "$DECAL_PROFILE_HOME")" "$(readlink -f "$A")" "...and the profile is the active one"
+# a .zip profile, and a link to one is refused over plain http
+mkdir -p "$T_TMP/z"; printf '[p2]\nword = "zip"\n' > "$T_TMP/z/profile.toml"
+(cd "$T_TMP/z" && python3 -c 'import zipfile; z=zipfile.ZipFile("../p.zip","w"); z.write("profile.toml"); z.close()')
+"$S" apply "$T_TMP/p.zip" >/dev/null 2>&1; assert_eq "$?" "0" "a .zip profile applies"
+assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "$T_TMP/p.zip" "...its source recorded"
+out=$("$S" apply http://example.com/p.zip 2>&1); assert_eq "$?" "1" "http link: refused"; assert_contains "$out" "use an https:// link" "...says why"
 t_done

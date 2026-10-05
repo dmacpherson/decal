@@ -22,8 +22,9 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
   tags                       the tags your profile uses, and which sections have them
   add    <module...|all>     apply (idempotent); all = every module in your profile
   remove <module...|all>     undo exactly what add did
-  apply  <dir|file.tar.gz|git-url|github:owner/repo[@ref]> [module...]   make it the active profile, then add
-                             everything in it (or just those modules)
+  apply  <source> [module...]  make it the active profile, then add everything in it (or just those modules).
+                             source: a folder, a .tar.gz/.tgz/.zip, owner/repo or any GitHub link, an https://
+                             link to an archive, a git URL. Someone else's profile: decal asks first (--yes skips)
                              (never removes anything; use remove, or [apps] remove-* lists)
   use    <profile source>    make it the active profile without applying anything
   stamp  [MODULE...] [PATH] [-gh [REPO]] save this machine's setup (what's changed from default) as a profile:
@@ -50,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     --tags) DECAL_TAGS=${2:?--tags needs a tag list, e.g. --tags dev}; export DECAL_TAGS; shift ;;
     --only) DECAL_ONLY=${2:?--only needs a tag}; export DECAL_ONLY; shift ;;
     --no-update) export DECAL_NO_UPDATE=1 ;;
+    -y|--yes) export DECAL_YES=1 ;;
     -h|--help) usage ;;
     *) args+=("$1") ;;
   esac; shift
@@ -379,59 +381,95 @@ gh_tarball() {
     esac
   done
 }
-# set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: stage in a temp dir)
-# The new profile is validated before the active one is touched; a replaced real folder is kept as a dated backup.
+# stage_profile SOURCE : SOURCE as a validated folder holding profile.toml, in STAGE_DIR (a folder source as is;
+# anything else downloaded/unpacked into a temp folder); STAGE_KIND and STAGE_SRC (canonical) set too. Not run in
+# a subshell: a sign-in it needs lasts the whole run.
+stage_profile() {
+  local r note tmp rc
+  r=$(python3 "$LS_REPO/lib/source.py" resolve "$1") || exit 1   # the reason is already on stderr
+  IFS=$'\t' read -r STAGE_KIND STAGE_SRC note <<<"$r"
+  if [[ -n $note ]]; then info "$note"; fi
+  case $STAGE_KIND in
+    dir)
+      [[ -f $STAGE_SRC/profile.toml ]] || die "$STAGE_SRC has no profile.toml"
+      STAGE_DIR=$(cd "$STAGE_SRC" && pwd -P); STAGE_SRC=$STAGE_DIR ;;
+    archive)
+      tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
+      python3 "$LS_REPO/lib/source.py" unpack "$STAGE_SRC" "$tmp/x" || die "could not unpack $STAGE_SRC"
+      STAGE_DIR=$(find_profile_root "$tmp/x") || die "$STAGE_SRC contains no profile.toml" ;;
+    github)
+      [[ $STAGE_SRC =~ ^github:([^@]+)(@(.+))?$ ]] || die "not a GitHub source: $STAGE_SRC"
+      tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
+      gh_tarball "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}" "$tmp/p.tar.gz"
+      python3 "$LS_REPO/lib/source.py" unpack "$tmp/p.tar.gz" "$tmp/x" || die "could not unpack $STAGE_SRC"
+      STAGE_DIR=$(find_profile_root "$tmp/x") || die "$STAGE_SRC has no profile.toml" ;;
+    url)
+      tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX"); rc=0
+      python3 "$LS_REPO/lib/source.py" fetch "$STAGE_SRC" "$tmp/x" >/dev/null || rc=$?
+      if (( rc == 0 )); then
+        STAGE_DIR=$(find_profile_root "$tmp/x") || die "$STAGE_SRC: the archive has no profile.toml"
+      elif (( rc == 3 )) && have git && git clone -q "$STAGE_SRC" "$tmp/p" 2>/dev/null && [[ -f $tmp/p/profile.toml ]]; then
+        STAGE_KIND=git; STAGE_DIR=$tmp/p
+      else
+        (( rc != 3 )) || die "$STAGE_SRC isn't a decal profile (not an archive with a profile.toml, nor a git repo with one)"
+        exit 1   # source.py said why
+      fi ;;
+    git)
+      tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
+      git clone -q "${STAGE_SRC#git+}" "$tmp/p" || die "git clone failed: ${STAGE_SRC#git+}"
+      [[ -f $tmp/p/profile.toml ]] || die "${STAGE_SRC#git+} has no profile.toml"
+      STAGE_DIR=$tmp/p ;;
+  esac
+  python3 "$LS_REPO/lib/profile.py" check --profile "$STAGE_DIR" --modules "$MODULES_DIR" \
+    || die "$STAGE_SRC: the profile is invalid (the active profile was not changed)"
+}
+# set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: only staged). A replaced real
+# folder is kept as a dated backup, except a newer download of the same GitHub repo or link.
 set_profile() {
-  local src=$1 t=$PROFILE_HOME stage tmp url
-  _valid() { python3 "$LS_REPO/lib/profile.py" check --profile "$1" --modules "$MODULES_DIR" || die "$src: the profile is invalid (the active profile was not changed)"; }
+  local t=$PROFILE_HOME
+  stage_profile "$1"
   _aside() {  # move the active profile out of the way (a symlink is just dropped)
     local b
     if [[ -L $t ]]; then rm -f "$t"
     elif [[ -e $t ]]; then b="$t.old-$(date +%Y%m%d-%H%M%S)"; [[ ! -e $b ]] || b+="-$$"; mv "$t" "$b"; info "previous profile kept at $b"; fi
     mkdir -p "$(dirname "$t")"
   }
-  if [[ -d $src ]]; then
-    [[ -f $src/profile.toml ]] || die "$src has no profile.toml"
-    src=$(cd "$src" && pwd -P)
-    _valid "$src"
-    if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$src; return 0; fi
-    if [[ -e $t && $(readlink -f "$t") == "$src" ]]; then PROFILE_DIR=$t; info "$src is already the active profile"; return 0; fi
-    _aside; ln -s "$src" "$t"
-  elif [[ $src == *.tar.gz || $src == *.tgz ]]; then
-    [[ -f $src ]] || die "not found: $src"
-    tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX"); tar -xzf "$src" -C "$tmp" || die "could not unpack $src"
-    stage=$(find_profile_root "$tmp") || die "$src contains no profile.toml"
-    _valid "$stage"
-    if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$stage; return 0; fi
-    _aside; mv "$stage" "$t"
-  elif [[ $src =~ ^github:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(@(.+))?$ ]]; then
-    # no git needed: GitHub's archive of the repo (a branch, tag or commit after @; the default branch without)
-    tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
-    gh_tarball "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}" "$tmp/p.tar.gz"
-    mkdir "$tmp/x"; tar -xzf "$tmp/p.tar.gz" -C "$tmp/x" || die "could not unpack $src"
-    stage=$(find_profile_root "$tmp/x") || die "$src has no profile.toml"
-    _valid "$stage"
-    if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$stage; return 0; fi
-    echo "$src" > "$stage/.decal-source"
-    # the same source again: just the newer copy (no backup of a download)
-    if [[ -d $t && ! -L $t && $(cat "$t/.decal-source" 2>/dev/null) == "$src" ]]; then rm -rf "$t"; else _aside; fi
-    mv "$stage" "$t"
-  elif [[ $src =~ ^(git\+)?(https://|ssh://|file://|git@) ]]; then
-    url=${src#git+}
-    tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX"); git clone -q "$url" "$tmp/p" || die "git clone failed: $url"
-    [[ -f $tmp/p/profile.toml ]] || die "$url has no profile.toml"
-    _valid "$tmp/p"
-    if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$tmp/p; return 0; fi
-    if [[ -d $t/.git && ! -L $t && $(git -C "$t" remote get-url origin 2>/dev/null) == "$url" ]]; then
-      git -C "$t" pull -q --ff-only || die "git pull failed in $t"
-    else
-      _aside; mv "$tmp/p" "$t"
-    fi
-  else
-    die "unknown profile source: $src (a folder, a .tar.gz, a git URL, or github:owner/repo)"
-  fi
+  if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$STAGE_DIR; return 0; fi
+  case $STAGE_KIND in
+    dir)
+      if [[ -e $t && $(readlink -f "$t") == "$STAGE_DIR" ]]; then PROFILE_DIR=$t; info "$STAGE_DIR is already the active profile"; return 0; fi
+      _aside; ln -s "$STAGE_DIR" "$t" ;;
+    git)
+      if [[ -d $t/.git && ! -L $t && $(git -C "$t" remote get-url origin 2>/dev/null) == "${STAGE_SRC#git+}" ]]; then
+        git -C "$t" pull -q --ff-only || die "git pull failed in $t"
+      else _aside; mv "$STAGE_DIR" "$t"; fi ;;
+    *)   # archive, github, url: an unpacked copy
+      echo "$STAGE_SRC" > "$STAGE_DIR/.decal-source"
+      if [[ $STAGE_KIND != archive && -d $t && ! -L $t && $(cat "$t/.decal-source" 2>/dev/null) == "$STAGE_SRC" ]]; then rm -rf "$t"; else _aside; fi
+      mv "$STAGE_DIR" "$t" ;;
+  esac
   PROFILE_DIR=$t
   info "active profile: $t -> $(readlink -f "$t")"
+}
+# trust SOURCE : a profile that isn't yours (lib/source.py yours): say whose it is, offer a preview, ask.
+# --yes / DECAL_YES=1 skips the question; no terminal: stops with how to go on.
+trust() {
+  local src=$1 login="" tok a fd
+  if [[ ${DECAL_YES:-} == 1 ]]; then return 0; fi   # asked not to ask (the installer: you typed the source)
+  if [[ $src == github:* ]]; then tok=$(gh_token); if [[ -n $tok ]]; then login=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami 2>/dev/null || true); fi; fi
+  if python3 "$LS_REPO/lib/source.py" yours "$src" --login "$login"; then return 0; fi
+  warn "this profile is from ${src#github:}, not you: it can install software and change system settings"
+  if [[ -z ${DECAL_TTY_IN:-} ]] && ! { : < /dev/tty; } 2>/dev/null; then die "not applied: to apply it anyway, run decal --yes apply $src"; fi
+  exec {fd}<"${DECAL_TTY_IN:-/dev/tty}"
+  while :; do
+    printf 'p preview what it would change · y apply it · n stop [p]: ' >> "${DECAL_TTY_OUT:-/dev/tty}"
+    IFS= read -r a <&"$fd" || a=n
+    case ${a:-p} in
+      p|P) DECAL_NO_UPDATE=1 DECAL_YES=1 DECAL_PROFILE=$STAGE_DIR "$LS_REPO/decal" --dry-run add all || true ;;
+      y|Y) exec {fd}<&-; return 0 ;;
+      *) die "not applied" ;;
+    esac
+  done
 }
 
 LS_RUNTMP="$(mktemp -d "${TMPDIR:-/tmp}/decal.XXXXXX")"; export LS_RUNTMP
@@ -513,7 +551,9 @@ case $cmd in
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
   apply)
     [[ $# -ge 1 ]] || usage
+    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then stage_profile "$1"; trust "$STAGE_SRC"; fi
     set_profile "$1"; export PROFILE_DIR; shift
+    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi
     pyprof check || die "$PROFILE_DIR/profile.toml is invalid (nothing was added)"
     if (( $# )); then   # apply SOURCE MODULE...: that profile, just those modules (as decal add would)
       set +e; DECAL_PROFILE=$PROFILE_DIR "$LS_REPO/decal" add "$@"; rc=$?; set -e
@@ -527,7 +567,9 @@ case $cmd in
   stamp) do_stamp "$@" ;;
   use)
     [[ $# -eq 1 ]] || usage
-    set_profile "$1"; info "active profile: $PROFILE_DIR (nothing applied yet: decal add all, or the menu)" ;;
+    set_profile "$1"
+    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi
+    info "active profile: $PROFILE_DIR (nothing applied yet: decal add all, or the menu)" ;;
   ui)
     [[ -t 0 && -t 1 ]] || die "the menu needs a terminal"
     exec python3 "$LS_REPO/lib/ui.py" ;;

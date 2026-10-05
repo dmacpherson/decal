@@ -49,7 +49,7 @@ def resolve(text):
     if m:
         repo = m.group(2)[:-4] if m.group(2).endswith(".git") else m.group(2)
         return "github", f"github:{m.group(1)}/{repo}" + (f"@{m.group(3)}" if m.group(3) else ""), ""
-    if t.startswith(("git+", "ssh://", "git@")) or (t.startswith("https://") and t.split("?")[0].endswith(".git")):
+    if t.startswith(("git+", "ssh://", "git@", "file://")) or (t.startswith("https://") and t.split("?")[0].endswith(".git")):
         return "git", t, ""
     if t.startswith(("https://", "http://")):
         if not allowed(t):
@@ -170,7 +170,7 @@ def remember(source):
 
 
 def yours(source, login=""):
-    if source.startswith("/") or any(s == source for s, _ in recent()):
+    if source.startswith(("/", "file://", "git+file://")) or any(s == source for s, _ in recent()):
         return True
     m = re.fullmatch(rf"github:({NAME})/{NAME}(@\S+)?", source)
     return bool(m and login and m.group(1).lower() == login.lower())
