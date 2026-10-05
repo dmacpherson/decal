@@ -35,4 +35,62 @@ assert_eq "$(HOME=$T_TMP/w r '~/p.tar.gz')" $'archive\t'"$T_TMP/w/p.tar.gz"$'\t'
 out=$(r notes.txt); assert_contains "$out" "not a folder or a .tar.gz/.tgz/.zip" "another kind of file: refused"
 out=$(r nothing-here); assert_contains "$out" "not found here, and not a link or owner/name" "nothing matches: says so"
 cd "$REPO" || exit 1
+# unpacking: the two real shapes (GitHub's archive with a pax header and one top folder; a stamp with ./profile.toml)
+U="$T_TMP/u"; mkdir -p "$U/gh/me-prof-abc123" "$U/st"
+printf '[p]\n' > "$U/gh/me-prof-abc123/profile.toml"; printf '[p]\n' > "$U/st/profile.toml"; echo hi > "$U/st/wall.txt"
+tar --format=pax -czf "$U/gh.tar.gz" -C "$U/gh" me-prof-abc123; tar -czf "$U/st.tgz" -C "$U/st" .
+(cd "$U/st" && python3 -c 'import zipfile; z=zipfile.ZipFile("../st.zip","w"); z.write("profile.toml"); z.write("wall.txt"); z.close()')
+python3 "$SRC" unpack "$U/gh.tar.gz" "$U/o1"; assert_file "$U/o1/me-prof-abc123/profile.toml" "GitHub-style tarball unpacked"
+python3 "$SRC" unpack "$U/st.tgz" "$U/o2"; assert_eq "$(cat "$U/o2/wall.txt")" "hi" "stamp tarball (./ names) unpacked"
+python3 "$SRC" unpack "$U/st.zip" "$U/o3"; assert_file "$U/o3/profile.toml" "zip unpacked"
+# unsafe archives: refused, nothing written outside the target
+mk_tar='import io,tarfile,sys
+t=tarfile.open(sys.argv[1],"w:gz")
+def f(n,data=b"x"):
+  i=tarfile.TarInfo(n); i.size=len(data); t.addfile(i,io.BytesIO(data))'
+python3 -c "$mk_tar"'
+f("../escaped.txt"); t.close()' "$U/dotdot.tgz"; out=$(python3 "$SRC" unpack "$U/dotdot.tgz" "$U/t1" 2>&1); rc=$?
+assert_eq "$rc" "1" "../ member: refused"; assert_contains "$out" "points outside the archive" "...says why"; assert_nofile "$U/escaped.txt" "...nothing written outside"
+python3 -c "$mk_tar"'
+f("/tmp/abs-decal-test.txt"); t.close()' "$U/abs.tgz"; out=$(python3 "$SRC" unpack "$U/abs.tgz" "$U/t2" 2>&1)
+assert_contains "$out" "an absolute path" "absolute path: refused"; assert_nofile /tmp/abs-decal-test.txt "...not written"
+python3 -c "$mk_tar"'
+i=tarfile.TarInfo("link"); i.type=tarfile.SYMTYPE; i.linkname="/etc/passwd"; t.addfile(i); t.close()' "$U/sym.tgz"
+out=$(python3 "$SRC" unpack "$U/sym.tgz" "$U/t3" 2>&1); assert_contains "$out" "links and special files aren't allowed" "symlink: refused"
+python3 -c "$mk_tar"'
+i=tarfile.TarInfo("hard"); i.type=tarfile.LNKTYPE; i.linkname="x"; t.addfile(i); t.close()' "$U/hard.tgz"
+out=$(python3 "$SRC" unpack "$U/hard.tgz" "$U/t4" 2>&1); assert_contains "$out" "links and special files aren't allowed" "hardlink: refused"
+python3 -c "$mk_tar"'
+i=tarfile.TarInfo("dev"); i.type=tarfile.CHRTYPE; t.addfile(i); t.close()' "$U/dev.tgz"
+out=$(python3 "$SRC" unpack "$U/dev.tgz" "$U/t5" 2>&1); assert_contains "$out" "links and special files aren't allowed" "device: refused"
+python3 -c 'import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("../../zip-escaped.txt","x"); z.close()' "$U/slip.zip"
+out=$(python3 "$SRC" unpack "$U/slip.zip" "$U/t6" 2>&1); assert_contains "$out" "points outside the archive" "zip slip: refused"
+head -c 3000 /dev/zero > "$U/big"; tar -czf "$U/big.tgz" -C "$U" big
+out=$(DECAL_UNPACK_LIMIT=1000 python3 "$SRC" unpack "$U/big.tgz" "$U/t7" 2>&1); assert_contains "$out" "more than" "over the size limit: refused"
+echo "not an archive" > "$U/plain.tgz"; out=$(python3 "$SRC" unpack "$U/plain.tgz" "$U/t8" 2>&1)
+assert_contains "$out" "not a .tar.gz or .zip archive" "not an archive: says so"
+
+# fetch over a local web server (tests only: http to 127.0.0.1)
+mkdir -p "$U/www"; cp "$U/st.zip" "$U/www/p.zip"; echo "<html>hi</html>" > "$U/www/page"
+(cd "$U/www" && exec python3 -u -m http.server 0 --bind 127.0.0.1 > "$U/http.log" 2>&1) & WPID=$!
+for _ in $(seq 50); do PORT=$(grep -o 'port [0-9]*' "$U/http.log" | grep -o '[0-9]*'); [[ -n $PORT ]] && break; sleep 0.1; done
+W="http://127.0.0.1:$PORT"
+assert_eq "$(DECAL_ALLOW_HTTP_LOCAL=1 python3 "$SRC" fetch "$W/p.zip" "$U/f1")" "archive" "fetch: an archive link is unpacked"
+assert_file "$U/f1/profile.toml" "...into the folder"
+DECAL_ALLOW_HTTP_LOCAL=1 python3 "$SRC" fetch "$W/page" "$U/f2" >/dev/null 2>&1; assert_eq "$?" "3" "fetch: not an archive: exit 3 (try git)"
+out=$(python3 "$SRC" fetch "$W/p.zip" "$U/f3" 2>&1); assert_contains "$out" "use an https:// link" "fetch: plain http refused"
+kill "$WPID" 2>/dev/null
+
+# recently used, and whose it is
+python3 "$SRC" remember github:friend/setup; python3 "$SRC" remember "$T_TMP/w/p.tar.gz"; python3 "$SRC" remember github:friend/setup
+assert_eq "$(cut -f1 "$DECAL_USER_STATE/recent" | tr '\n' ' ')" "github:friend/setup $T_TMP/w/p.tar.gz " "recent: newest first, no duplicates"
+for i in $(seq 12); do python3 "$SRC" remember "github:x/r$i"; done
+assert_eq "$(wc -l < "$DECAL_USER_STATE/recent")" "10" "recent: 10 kept"
+y() { python3 "$SRC" yours "$@"; echo $?; }
+assert_eq "$(y "$T_TMP/w/p.tar.gz")" "0" "yours: a local path"
+assert_eq "$(y github:x/r12)" "0" "yours: recently used"
+assert_eq "$(y github:me/prof --login me)" "0" "yours: your GitHub account's"
+assert_eq "$(y github:me/prof --login Me)" "0" "...any letter case"
+assert_eq "$(y github:stranger/prof --login me)" "1" "not yours: someone else's repo"
+assert_eq "$(y https://example.com/p.zip)" "1" "not yours: a link"
 t_done
