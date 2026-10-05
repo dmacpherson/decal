@@ -16,7 +16,7 @@ import qrcodegen  # noqa: E402  (vendored next to this file)
 WEB = os.environ.get("DECAL_GITHUB", "https://github.com").rstrip("/")
 API = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
 # "CLIENT_ID:slug" of the Decal Profile and Decal Profile Write GitHub Apps (public IDs; device flow needs no secret)
-APPS = {"read": "", "write": ""}
+APPS = {"read": "Iv23li49m8npqJvYxiW8:decal-profile", "write": "Iv23lia2BX1vjfZuUstJ:decal-profile-write"}
 DAYS = [("30 days", "30"), ("90 days", "90"), ("1 year", "365"), ("never expires", "none")]
 OK, BAD_KEY, CANT_SEE, READ_ONLY, OFFLINE = 0, 10, 11, 12, 13
 WHY = {BAD_KEY: "GitHub didn't accept that key (mistyped, revoked or expired)",
