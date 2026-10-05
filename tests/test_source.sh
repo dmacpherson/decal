@@ -82,6 +82,22 @@ out=$(python3 "$SRC" unpack --links inside "$U/esc.tgz" "$U/t9" 2>&1); assert_co
 python3 -c "$mk_tar"'
 i=tarfile.TarInfo("abs"); i.type=tarfile.SYMTYPE; i.linkname="/etc/passwd"; t.addfile(i); t.close()' "$U/abs2.tgz"
 out=$(python3 "$SRC" unpack --links inside "$U/abs2.tgz" "$U/t10" 2>&1); assert_contains "$out" "points outside the archive" "an absolute link: refused"
+# a chain of links can't walk out: x -> ., then x/y -> .. (looks inside on paper), then a file written through y
+mkdir -p "$U/up/t11"
+python3 -c "$mk_tar"'
+i=tarfile.TarInfo("x"); i.type=tarfile.SYMTYPE; i.linkname="."; t.addfile(i)
+i=tarfile.TarInfo("x/y"); i.type=tarfile.SYMTYPE; i.linkname=".."; t.addfile(i)
+f("y/evil.txt")
+i=tarfile.TarInfo("h"); i.type=tarfile.LNKTYPE; i.linkname="y/secret.txt"; t.addfile(i); t.close()' "$U/chain.tgz"
+echo SECRET > "$U/up/secret.txt"
+out=$(python3 "$SRC" unpack --links inside "$U/chain.tgz" "$U/up/t11" 2>&1); assert_eq "$?" "1" "a link chain out: refused"
+assert_nofile "$U/up/evil.txt" "...nothing written outside"; assert_nofile "$U/up/t11/h" "...nothing copied in from outside"
+python3 -c "$mk_tar"'
+i=tarfile.TarInfo("l"); i.type=tarfile.SYMTYPE; i.linkname="."; t.addfile(i)
+i=tarfile.TarInfo("l/l/l/m"); i.type=tarfile.SYMTYPE; i.linkname="../../.."; t.addfile(i)
+f("m/.bashrc"); t.close()' "$U/chain2.tgz"
+mkdir -p "$U/deep/a/b/c"; out=$(python3 "$SRC" unpack --links inside "$U/chain2.tgz" "$U/deep/a/b/c" 2>&1)
+assert_nofile "$U/deep/.bashrc" "the reviewer's chain: nothing written above"
 
 # fetch over a local web server (tests only: http to 127.0.0.1)
 mkdir -p "$U/www"; cp "$U/st.zip" "$U/www/p.zip"; echo "<html>hi</html>" > "$U/www/page"

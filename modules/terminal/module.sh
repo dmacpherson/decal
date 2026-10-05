@@ -21,6 +21,8 @@ _preset() {  # _preset KIND NAME : a layout/theme from the profile (terminal/KIN
   if [[ -e ${PROFILE_DIR:-/nonexistent}/terminal/$1/$2 ]]; then echo "$PROFILE_DIR/terminal/$1/$2"; else echo "$MODULE_DIR/$1/$2"; fi; }
 _init() {
   TERMINAL=$P_app LAYOUT=$P_layout THEME=$P_theme NERD_FONT=$P_nerd_font FONT=$P_font CURSOR=$P_cursor OPACITY=$P_opacity
+  # written into terminal config files (kitty, wezterm's Lua, …): a font name and size only
+  [[ $FONT =~ ^[A-Za-z0-9][A-Za-z0-9\ ._+-]*\ [0-9]{1,3}(\.[0-9]{1,2})?$ ]] || die "not a font and size: $FONT"
   FONT_FAMILY="${FONT% *}"; FONT_SIZE="${FONT##* }"
   FONT_DIR="$HOME/.local/share/fonts/decal/${NERD_FONT}NerdFont"
   LAYOUT_FILE=$(_preset layouts "$LAYOUT.toml"); THEME_DIR=$(_preset themes "$THEME"); PALETTE="$THEME_DIR/colors.palette"
@@ -61,8 +63,8 @@ _term_install() {
     preinstalled) ;;
     pkg) pkg_install terminal "$a" ;;
     flatpak)
-      if ! flatpak info --system "$a" >/dev/null 2>&1; then
-        srun flatpak remote-add --system --if-not-exists flathub "$FLATHUB"
+      if ! flatpak info --system -- "$a" >/dev/null 2>&1; then
+        srun flatpak remote-add --system --if-not-exists -- flathub "$FLATHUB"
         srun flatpak install --system --noninteractive -y -- flathub "$a"
         state_append "$LS_STATE/terminal/flatpaks" "$a"
       fi ;;

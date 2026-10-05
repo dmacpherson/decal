@@ -47,10 +47,10 @@ _flatpak_theme() {
   have flatpak || return 0
   local want="org.gtk.Gtk3theme.$P_theme" cur; cur=$(cat "$FPREC" 2>/dev/null || true)
   if [[ -n $cur && $cur != "$want" ]]; then _flatpak_theme_remove; fi
-  if flatpak info --system "$want" >/dev/null 2>&1; then return 0; fi
-  if flatpak remote-info --system flathub "$want" >/dev/null 2>&1; then
+  if flatpak info --system -- "$want" >/dev/null 2>&1; then return 0; fi
+  if flatpak remote-info --system -- flathub "$want" >/dev/null 2>&1; then
     step "installing $want for Flatpak apps"
-    srun flatpak install --system --noninteractive -y flathub "$want"
+    srun flatpak install --system --noninteractive -y -- flathub "$want"
     printf '%s\n' "$want" | swrite "$FPREC"
   else
     warn "Flatpak apps (e.g. Brave) won't use $P_theme: Flathub has no $want"
@@ -59,7 +59,7 @@ _flatpak_theme() {
 _flatpak_theme_remove() {
   local id; id=$(cat "$FPREC" 2>/dev/null || true)
   [[ -n $id ]] || return 0
-  srun flatpak uninstall --system --noninteractive -y "$id" || true
+  srun flatpak uninstall --system --noninteractive -y -- "$id" || true
   srun rm -f "$FPREC"
 }
 module_fetch() { _src >/dev/null; }

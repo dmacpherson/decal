@@ -38,11 +38,11 @@ assert_contains "$(calls)" "ls_fetch github-release:o/r --asset adw-gtk3*.tar.xz
 # Flatpak apps (e.g. Brave) can't see themes in ~/.local/share: the theme's Flathub package makes it visible to them
 rm -rf "$DECAL_USER_STATE"/gtk-theme* "$DECAL_STATE/gtk-theme"
 sed -i 's/^source = "github-release:o\/r"$/source = "demo-gtk"/; /^asset = /d; s/^theme = "Other-GTK"$/theme = "Demo-GTK"/' "$PROFILE_DIR/profile.toml"
-stub flatpak 'case "$*" in "remote-info --system flathub org.gtk.Gtk3theme.Demo-GTK") exit 0;; "info --system org.gtk.Gtk3theme.Demo-GTK") exit 1;; install*|uninstall*) exit 0;; esac; exit 1'
+stub flatpak 'case "$*" in "remote-info --system -- flathub org.gtk.Gtk3theme.Demo-GTK") exit 0;; "info --system -- org.gtk.Gtk3theme.Demo-GTK") exit 1;; install*|uninstall*) exit 0;; esac; exit 1'
 : > "$STUBS/calls"; run_mod add >/dev/null 2>&1; assert_eq "$?" "0" "add with the Flatpak package rc"
-assert_contains "$(calls)" "flatpak install --system --noninteractive -y flathub org.gtk.Gtk3theme.Demo-GTK" "theme's Flatpak package installed"
+assert_contains "$(calls)" "flatpak install --system --noninteractive -y -- flathub org.gtk.Gtk3theme.Demo-GTK" "theme's Flatpak package installed"
 : > "$STUBS/calls"; run_mod remove >/dev/null 2>&1
-assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y org.gtk.Gtk3theme.Demo-GTK" "and removed with the module"
+assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y -- org.gtk.Gtk3theme.Demo-GTK" "and removed with the module"
 stub flatpak 'exit 1'
 out=$(run_mod add 2>&1)
 assert_contains "$out" "Flatpak apps" "no Flathub package: warns that Flatpak apps won't use the theme"

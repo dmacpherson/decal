@@ -67,5 +67,8 @@ stub gh 'case "$*" in "auth token") echo s3cret ;; *) exit 1 ;; esac'
 assert_eq "$("$REPO/decal" whoami 2>/dev/null)" "tester" "whoami: from a gh login"
 stub gh 'exit 1'
 "$REPO/decal" whoami >/dev/null 2>&1; assert_eq "$?" "1" "whoami: no key: fails quietly"
+stub gh 'case "$*" in "auth token") echo s3cret ;; *) exit 1 ;; esac'
+DECAL_STICK="$T_TMP" GH_TOKEN=s3cret "$REPO/decal" whoami >/dev/null 2>&1; assert_eq "$?" "1" "from a stick: the PC's gh login and GH_TOKEN are never used"
+stub gh 'exit 1'
 kill "$GHPID" 2>/dev/null
 t_done

@@ -20,7 +20,7 @@ _unwanted_add() {
   local id origin
   for id in "${P_remove_flatpaks[@]}"; do
     _fp_present "$id" || continue
-    origin=$(flatpak info --system --show-origin "$id" 2>/dev/null || echo "$P_remote")
+    origin=$(flatpak info --system --show-origin -- "$id" 2>/dev/null || echo "$P_remote")
     srun flatpak uninstall --system --noninteractive -y -- "$id"
     state_append "$REMOVED_FP" "$id $origin"
   done
@@ -34,7 +34,7 @@ _unwanted_restore() {
   fi
   pkg_restore apps
 }
-_fp_present() { flatpak info --system "$1" >/dev/null 2>&1; }
+_fp_present() { flatpak info --system -- "$1" >/dev/null 2>&1; }
 _desktop_exists() {
   local d dirs; IFS=: read -ra dirs <<<"${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-$(sys_path /usr/local/share):$(sys_path /usr/share)}:$(sys_path /var/lib/flatpak/exports/share):$HOME/.local/share/flatpak/exports/share"
   for d in "${dirs[@]}"; do [[ -e $d/applications/$1 ]] && return 0; done; return 1
@@ -79,7 +79,7 @@ _defaults_add() {
     app=${P_defaults[$role]}; desk="$app.desktop"; mimes=$(_role_mimes "$role")
     if [[ -z $mimes ]]; then warn "unknown role '$role' (roles: $(grep -vE '^\s*(#|$)' "$MODULE_DIR/roles.list" | awk '{print $1}' | tr '\n' ' '))"; continue; fi
     if ! _desktop_exists "$desk"; then
-      if flatpak remote-info --system "$P_remote" "$app" >/dev/null 2>&1; then
+      if flatpak remote-info --system -- "$P_remote" "$app" >/dev/null 2>&1; then
         srun flatpak install --system --noninteractive -y -- "$P_remote" "$app"
         state_append "$MANAGED" "$app"
       else

@@ -537,7 +537,10 @@ find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single s
 }
 # gh_tarball OWNER/REPO REF OUT : a GitHub repo as a .tar.gz without git. Private repos need a key: GITHUB_TOKEN,
 # GH_TOKEN or a `gh auth login`; without one, in a terminal, it asks (sign in with GitHub, or a token you make)
-gh_token() { local t=${GITHUB_TOKEN:-${GH_TOKEN:-}}; if [[ -z $t ]] && have gh; then t=$(gh auth token 2>/dev/null || true); fi; printf '%s' "$t"; }
+gh_token() {   # from a USB stick (a borrowed PC): only the stick's own key (start.sh sets GITHUB_TOKEN), never GH_TOKEN or gh
+  if [[ -n ${DECAL_STICK:-} ]]; then printf '%s' "${GITHUB_TOKEN:-}"; return 0; fi
+  local t=${GITHUB_TOKEN:-${GH_TOKEN:-}}; if [[ -z $t ]] && have gh; then t=$(gh auth token 2>/dev/null || true); fi; printf '%s' "$t"
+}
 # gh_write_token : a key to write to GitHub with: from a USB stick (a borrowed PC) never the PC's GITHUB_TOKEN, GH_TOKEN
 # or gh login, only this menu session's key (DECAL_WRITE_KEY) or a fresh sign-in; elsewhere, the usual order
 gh_write_token() { if [[ -n ${DECAL_STICK:-} ]]; then printf '%s' "${DECAL_WRITE_KEY:-}"; else gh_token; fi; }
@@ -642,21 +645,22 @@ activate_staged() {
 }
 # trust SOURCE : a profile that isn't yours (lib/source.py yours): say whose it is, offer a preview, ask.
 # --yes / DECAL_YES=1 skips the question; no terminal: stops with how to go on.
-trust() {
-  local src=$1 login="" tok a fd
+trust() {   # trust SOURCE [VERB] : VERB is what "y" does (apply it / use it)
+  local src=$1 verb=${2:-apply} login="" tok a fd done=applied
+  if [[ $verb == use ]]; then done=used; fi
   if [[ ${DECAL_YES:-} == 1 ]]; then return 0; fi   # asked not to ask (the installer: you typed the source)
   if [[ $src == github:* ]]; then tok=$(gh_token); if [[ -n $tok ]]; then login=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami 2>/dev/null || true); fi; fi
   if python3 "$LS_REPO/lib/source.py" yours "$src" --login "$login"; then return 0; fi
   warn "this profile is from ${src#github:}, not you: it can install software and change system settings"
-  if [[ -z ${DECAL_TTY_IN:-} ]] && ! { : < /dev/tty; } 2>/dev/null; then die "not applied: to apply it anyway, run decal --yes apply $src"; fi
+  if [[ -z ${DECAL_TTY_IN:-} ]] && ! { : < /dev/tty; } 2>/dev/null; then die "not $done: to $verb it anyway, run decal --yes $verb $src"; fi
   exec {fd}<"${DECAL_TTY_IN:-/dev/tty}"
   while :; do
-    printf 'p preview what it would change · y apply it · n stop [p]: ' >> "${DECAL_TTY_OUT:-/dev/tty}"
+    printf 'p preview what it would change · y %s it · n stop [p]: ' "$verb" >> "${DECAL_TTY_OUT:-/dev/tty}"
     IFS= read -r a <&"$fd" || a=n
     case ${a:-p} in
       p|P) DECAL_NO_UPDATE=1 DECAL_YES=1 DECAL_PROFILE=$STAGE_DIR "$LS_REPO/decal" --dry-run add all || true ;;
       y|Y) exec {fd}<&-; return 0 ;;
-      *) die "not applied" ;;
+      *) die "not $done" ;;
     esac
   done
 }
@@ -768,7 +772,7 @@ case $cmd in
   use)
     [[ $# -eq 1 ]] || usage
     stage_profile "$1"
-    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then trust "$STAGE_SRC"; fi   # someone else's profile asks here too (the menu uses use)
+    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then trust "$STAGE_SRC" use; fi   # someone else's profile asks here too (the menu uses use)
     activate_staged
     info "active profile: $PROFILE_DIR (nothing applied yet: decal add all, or the menu)" ;;
   ui)

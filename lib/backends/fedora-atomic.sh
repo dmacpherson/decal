@@ -35,8 +35,8 @@ _initramfs_stale() {
   have=$(_ostree_json | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["deployments"][0].get("initramfs-args", [])))')
   [[ $want != "$have" ]]
 }
-_pkg_add() { srun rpm-ostree install --allow-inactive -- "$@"; _staged; }
-_pkg_del() { srun rpm-ostree uninstall -- "$@"; _staged; }
+_pkg_add() { srun rpm-ostree install --allow-inactive "$@"; _staged; }   # rpm-ostree rejects --: names are checked by the profile
+_pkg_del() { srun rpm-ostree uninstall "$@"; _staged; }
 
 _tree_hash() { (cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | cut -c1-12; }
 _container_engine() { if have podman; then echo podman; elif have docker; then echo docker; else die "podman or docker is required to build RPMs on Fedora Atomic"; fi; }

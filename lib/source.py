@@ -86,13 +86,27 @@ def unpack(archive, dest, links="none"):
             raise Bad(f"{name}: points outside the archive")
         return os.path.join(root, *parts) if parts else None
 
-    def link_ok(member, linkname):
-        if linkname.startswith("/"):
+    def within(p):
+        return p == root or p.startswith(root + os.sep)
+
+    def safe(member, t):
+        """T may be written: its folder, with every link unpacked so far followed, is inside DEST, and T itself isn't a
+        link (writing would follow it). A chain of links can't walk out: the real path is checked, not the text."""
+        if not within(os.path.realpath(os.path.dirname(t))) or os.path.islink(t):
+            raise Bad(f"{member}: points outside the archive")
+        return t
+
+    def link_ok(member, t, linkname):
+        if linkname.startswith("/") or not within(os.path.realpath(os.path.join(os.path.realpath(os.path.dirname(t)), linkname))):
             raise Bad(f"{member}: a link that points outside the archive")
-        where = os.path.normpath(os.path.join(os.path.dirname(target(member) or root), linkname))
-        if where != root and not where.startswith(root + os.sep):
-            raise Bad(f"{member}: a link that points outside the archive")
-        return where
+
+    def write(member, t, src):
+        nonlocal used
+        os.makedirs(os.path.dirname(safe(member, t)), exist_ok=True)
+        safe(member, t)   # again: makedirs may have gone through a link
+        fd = os.open(t, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "wb") as out:
+            used = _copy(src, out, used)
 
     with open(archive, "rb") as f:
         magic = f.read(4)
@@ -110,9 +124,8 @@ def unpack(archive, dest, links="none"):
                     kind = (i.external_attr >> 16) & 0o170000
                     if kind and kind != stat.S_IFREG:
                         raise Bad(f"{i.filename}: links and special files aren't allowed in a profile")
-                    os.makedirs(os.path.dirname(t), exist_ok=True)
-                    with zf.open(i) as src, open(t, "wb") as out:
-                        used = _copy(src, out, used)
+                    with zf.open(i) as src:
+                        write(i.filename, t, src)
             return
         try:
             tf = tarfile.open(archive, "r:*")   # gzip, xz, bzip2 or plain
@@ -124,24 +137,23 @@ def unpack(archive, dest, links="none"):
                 if t is None:
                     continue
                 if m.isdir():
+                    safe(m.name, t)
                     os.makedirs(t, exist_ok=True)
+                    safe(m.name, os.path.join(t, "."))
                 elif m.isfile():
-                    os.makedirs(os.path.dirname(t), exist_ok=True)
-                    with tf.extractfile(m) as src, open(t, "wb") as out:
-                        used = _copy(src, out, used)
+                    with tf.extractfile(m) as src:
+                        write(m.name, t, src)
                     os.chmod(t, 0o755 if m.mode & 0o111 else 0o644)
                 elif links == "inside" and m.issym():
-                    link_ok(m.name, m.linkname)
-                    os.makedirs(os.path.dirname(t), exist_ok=True)
-                    if os.path.lexists(t):
-                        os.remove(t)
+                    os.makedirs(os.path.dirname(safe(m.name, t)), exist_ok=True)
+                    link_ok(m.name, t, m.linkname)
                     os.symlink(m.linkname, t)
                 elif links == "inside" and m.islnk():   # a hard link: a copy of a file already unpacked
                     src = target(m.linkname)
-                    if not src or not os.path.isfile(src) or os.path.islink(src):
+                    if not src or not within(os.path.realpath(src)) or not os.path.isfile(src) or os.path.islink(src):
                         raise Bad(f"{m.name}: a link that points outside the archive")
-                    os.makedirs(os.path.dirname(t), exist_ok=True)
-                    shutil.copyfile(src, t)
+                    with open(src, "rb") as fh:
+                        write(m.name, t, fh)
                 else:
                     raise Bad(f"{m.name}: links and special files aren't allowed in a profile")
     except (tarfile.TarError, zipfile.BadZipFile, EOFError, OSError) as e:

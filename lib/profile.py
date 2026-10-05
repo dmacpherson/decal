@@ -23,14 +23,16 @@ RULES = {
     "relpath": "a folder inside the source (relative, no ..)",
     "ref": "a git branch, tag or commit",
     "glob": "a file name pattern (no /, not starting with -)",
+    "font": "a font and size, like 'FiraCode Nerd Font 10'",
 }
+FONT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._+-]* [0-9]{1,3}(\.[0-9]{1,2})?")
 
 
 def rule_ok(t, v):
     if not isinstance(v, str) or v == "" or any(ord(c) < 32 for c in v):
         return False
-    if t == "name":
-        return bool(NAME_RE.fullmatch(v)) and ".." not in v
+    if t == "name":   # a trailing - asks apt to remove the package
+        return bool(NAME_RE.fullmatch(v)) and ".." not in v and not v.endswith("-")
     if t == "formula":
         return bool(FORMULA_RE.fullmatch(v)) and ".." not in v
     if t == "theme":
@@ -42,6 +44,8 @@ def rule_ok(t, v):
         return bool(REF_RE.fullmatch(v)) and not v.startswith("-") and ".." not in v
     if t == "glob":
         return "/" not in v and not v.startswith("-")
+    if t == "font":
+        return bool(FONT_RE.fullmatch(v))
     return False
 
 
@@ -156,7 +160,7 @@ def check(sec, key, spec, v, pdir):
     def bad(msg):
         raise ProfileError(f"profile.toml: [{sec}] {key}: {msg}, got {v!r}")
 
-    if t in RULES:   # name, formula, theme, relpath, ref, glob ("" is allowed: it means "not set")
+    if t in RULES:   # name, formula, theme, relpath, ref, glob, font ("" is allowed: it means "not set")
         if v != "" and not rule_ok(t, v): bad(f"expected {RULES[t]}")
         return v
     if t in ("names", "formulas", "globs"):

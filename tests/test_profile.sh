@@ -95,7 +95,8 @@ cat > "$G/guard/schema.json" <<'EOF'
  "brew": {"type": "formulas", "default": []}, "theme": {"type": "theme", "default": "t"},
  "sub": {"type": "relpath", "default": ""}, "ref": {"type": "ref", "default": ""},
  "asset": {"type": "globs", "default": []}, "url": {"type": "url", "default": "https://x.org"},
- "file": {"type": "path", "default": ""}, "files.*": {"type": "path", "key": "relpath"}}}
+ "file": {"type": "path", "default": ""}, "files.*": {"type": "path", "key": "relpath"},
+ "font": {"type": "font", "default": "Mono 10"}}}
 EOF
 GP="$T_TMP/gp"; mkdir -p "$GP/in"; echo x > "$GP/in/f"; echo secret > "$T_TMP/outside"
 ok()  { printf '[guard]\n%s\n' "$1" > "$GP/profile.toml"; python3 "$REPO/lib/profile.py" check --profile "$GP" --modules "$G" >/dev/null 2>&1; echo $?; }
@@ -104,6 +105,7 @@ for v in 'pkgs = ["-oDPkg::Pre-Invoke::=sh -c id"]' 'pkgs = ["--nogpgcheck"]' 'p
          'one = "-x"' 'brew = ["jq\"; system(\"id\"); \""]' 'brew = ["-x"]' 'theme = "../../etc/profile.d"' 'theme = "a/b"' \
          'theme = ".."' 'theme = "-x"' 'sub = "../x"' 'sub = "/etc"' 'sub = "a/../../x"' 'ref = "--upload-pack=id"' \
          'ref = "a..b"' 'asset = ["../x"]' 'asset = ["-x"]' 'url = "http://x.org/r"' 'file = "../outside"' \
+         'pkgs = ["network-manager-"]' 'font = "Fira x\nshell sh -c id 10"' 'font = "Fira 10;os.execute(1)"' \
          'file = "/etc/passwd"' '[guard.files]
 "../.bashrc" = "in/f"'; do
   out=$(bad "$v"); [[ $out == *"profile.toml: [guard]"* ]] || _t_fail "rejected with a plain message: $v → $out"; T_COUNT=$((T_COUNT+1))
@@ -111,7 +113,8 @@ done
 for v in 'pkgs = ["org.gnome.Platform//47", "llama3:8b", "g++", "python3.12", "com.discordapp.Discord", "a@b.c"]' \
          'brew = ["jq", "user/tap/formula", "python@3.12"]' 'theme = "Demo Spaced Icons"' 'theme = "Bibata-Modern Classic"' \
          'sub = "pack_1"' 'sub = "a/b"' 'ref = "v1.2"' 'ref = "feature/x"' 'asset = ["bibata-*.tar.gz"]' \
-         'url = "https://dl.flathub.org/repo/flathub.flatpakrepo"' 'file = "in/f"' '[guard.files]
+         'url = "https://dl.flathub.org/repo/flathub.flatpakrepo"' 'file = "in/f"' 'pkgs = ["g++", "gcc-c++"]' \
+         'font = "FiraCode Nerd Font 10"' 'font = "JetBrainsMono Nerd Font Mono 11.5"' '[guard.files]
 "gtk-4.0/gtk.css" = "in/f"'; do
   assert_eq "$(ok "$v")" "0" "accepted: $v"
 done

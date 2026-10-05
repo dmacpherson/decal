@@ -154,7 +154,7 @@ tar -czf "$T_TMP/gh2.tar.gz" -C "$T_TMP/gh2" stranger-prof-1; serve https://api.
 : > "$LS_TEST_LOG"
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply stranger/prof 2>&1 < /dev/null); assert_eq "$?" "1" "someone else's profile, no terminal: stops"
 assert_contains "$out" "this profile is from stranger/prof, not you" "...says whose it is"
-assert_contains "$out" "decal --yes apply github:stranger/prof" "...and how to apply it anyway"
+assert_contains "$out" "not applied: to apply it anyway, run decal --yes apply github:stranger/prof" "...and how to apply it anyway"
 assert_eq "$(cat "$LS_TEST_LOG")" "" "...nothing added"
 assert_contains "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "...and the active profile is unchanged"
 # with a terminal: p previews (nothing changes), then y applies
@@ -213,7 +213,7 @@ mkdir -p "$T_TMP/gh4/third-p-1"; printf '[eee-conf]\nword = "third"\n' > "$T_TMP
 tar -czf "$T_TMP/gh4.tar.gz" -C "$T_TMP/gh4" third-p-1; serve https://api.github.com/repos/third/p/tarball "$T_TMP/gh4.tar.gz"
 before=$(cat "$DECAL_PROFILE_HOME/.decal-source" 2>/dev/null)
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" use third/p 2>&1 < /dev/null); assert_eq "$?" "1" "use: someone else's profile, no terminal: stops"
-assert_contains "$out" "this profile is from third/p, not you" "use: says whose it is"
+assert_contains "$out" "this profile is from third/p, not you" "use: says whose it is"; assert_contains "$out" "not used: to use it anyway, run decal --yes use github:third/p" "use: says how to go on"
 assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source" 2>/dev/null)" "$before" "use: the active profile unchanged"
 env -u GITHUB_TOKEN -u GH_TOKEN "$REPO/decal" --yes use third/p >/dev/null 2>&1; assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:third/p" "use --yes: used"
 t_done

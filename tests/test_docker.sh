@@ -28,7 +28,7 @@ printf 'wheel:x:10:me\n' > "$G"; stub rpm 'exit 1'; stub getent 'exit 2'; stub r
 mkdir -p "$T_TMP/pending/usr/lib"; printf 'docker:x:981:\n' > "$T_TMP/pending/usr/lib/group"
 mod_run_pre() { hide_compose; _pending_root() { echo "$T_TMP/pending"; }; _initramfs_enabled() { return 1; }; }
 out=$(DECAL_PLATFORM=fedora-atomic run_mod add 2>&1); assert_eq "$?" "0" "atomic add rc"
-assert_contains "$(calls)" "rpm-ostree install --allow-inactive -- moby-engine docker-compose" "atomic: layered"
+assert_contains "$(calls)" "rpm-ostree install --allow-inactive moby-engine docker-compose" "atomic: layered"
 assert_contains "$(calls)" "groupadd -g 981 docker" "atomic: group created in /etc/group with the image's id (groupadd, never by rewriting the file)"
 assert_contains "$(calls)" "usermod -aG docker tester" "atomic: user added"
 : > "$STUBS/calls"; DECAL_PLATFORM=fedora-atomic run_mod remove >/dev/null 2>&1

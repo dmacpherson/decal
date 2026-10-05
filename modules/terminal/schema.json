@@ -5,7 +5,7 @@
   "nerd-font": {"type": "theme", "default": "FiraCode"},
   "nerd-font-source": {"type": "source", "default": "github-release:ryanoasis/nerd-fonts"},
   "autosuggest-source": {"type": "source", "default": "github-release:akinomyoga/ble.sh"},
-  "font": {"type": "string", "default": "FiraCode Nerd Font 10"},
+  "font": {"type": "font", "default": "FiraCode Nerd Font 10"},
   "cursor": {"type": "enum", "values": ["block", "ibeam", "underline"], "default": "underline"},
   "opacity": {"type": "number", "min": 0, "max": 1, "default": 1},
   "brew": {"type": "formulas", "default": []},

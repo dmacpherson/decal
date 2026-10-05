@@ -23,6 +23,7 @@ fail() { printf '\033[1;31m%s\033[0m\n' "$*"; read -rp "Press Enter to close… 
 conf() { sed -n "s/^$1=\([^[:space:]#]*\).*/\1/p" "$HERE/stick.conf" | head -1; }
 
 [[ $(uname -s) == Linux ]] || fail "decal only runs on Linux."
+unset GITHUB_TOKEN GH_TOKEN   # a borrowed PC's keys never reach your repos; only this stick's key (below) is used
 [[ -r $HERE/stick.conf ]] || fail "This stick has no stick.conf: run decal usb to set it up again."
 PROFILE=$(conf profile); KEY=$(conf key); MODE=$(conf decal); VER=$(conf version)
 
@@ -55,7 +56,8 @@ DECAL=${DECAL_CMD:-$HOME/.local/bin/decal}
 [[ -x $DECAL ]] || DECAL=$(command -v decal) || fail "decal didn't install (see the messages above)."
 export DECAL_STICK=$HERE
 
-# 2. the profile (on this machine afterwards: unplugging the stick is fine)
+# 2. the profile (on this machine afterwards: unplugging the stick is fine). --yes: the stick's owner chose this
+#    profile when making the stick, so it isn't "someone else's"
 case $PROFILE in
   copy)
     t="${XDG_CACHE_HOME:-$HOME/.cache}/decal/stick-profile.tar.gz"; mkdir -p "$(dirname "$t")"
@@ -65,15 +67,15 @@ case $PROFILE in
       say "the profile from this stick is already here"   # nothing to do: no new copy, no backup
     else
       tar -czf "$t" -C "$HERE/profile" . 2>/dev/null || fail "The profile copy on this stick can't be read: run decal usb to refresh it."
-      "$DECAL" --no-update use "$t" || fail "Couldn't use the profile on this stick (see above)."
+      "$DECAL" --no-update --yes use "$t" || fail "Couldn't use the profile on this stick (see above)."
     fi ;;
   *)
     if [[ $KEY == saved ]]; then
       GITHUB_TOKEN=$(tr -d '[:space:]' < "$HERE/key" 2>/dev/null); export GITHUB_TOKEN
-      "$DECAL" --no-update use "$PROFILE" \
+      "$DECAL" --no-update --yes use "$PROFILE" \
         || fail "The key on this stick no longer works (revoked or expired): run decal usb on your own machine to give it a new one, or remove .Decal/key to sign in each time."
     else
-      "$DECAL" --no-update use "$PROFILE" || fail "Couldn't get $PROFILE (see above)."
+      "$DECAL" --no-update --yes use "$PROFILE" || fail "Couldn't get $PROFILE (see above)."
     fi ;;
 esac
 

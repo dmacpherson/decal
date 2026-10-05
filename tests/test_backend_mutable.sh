@@ -124,6 +124,7 @@ for b in debian fedora arch fedora-atomic; do
   for f in _pkg_present _pkg_add _pkg_rm _pkg_del _pkg_del_check; do
     body=$(bash -c "source '$REPO/lib/common.sh'; source '$REPO/lib/backends/_shared.sh'; source '$REPO/lib/backends/$b.sh'; declare -f $f" 2>/dev/null) || continue
     [[ $body == *'return 0'* && $body != *'"$@"'* ]] && continue   # a no-op (rpm-ostree checks by itself)
+    if [[ $body == *rpm-ostree* ]]; then assert_not_contains "$body" ' -- ' "$b $f: rpm-ostree rejects --"; continue; fi
     assert_contains "$body" ' -- ' "$b $f: -- before the names"
   done
 done
