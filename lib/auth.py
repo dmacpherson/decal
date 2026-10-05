@@ -12,9 +12,8 @@ import argparse, contextlib, http.client, json, os, re, select, shutil, subproce
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qrcodegen  # noqa: E402  (vendored next to this file)
-
-WEB = os.environ.get("DECAL_GITHUB", "https://github.com").rstrip("/")
-API = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
+import gh  # noqa: E402
+from gh import WEB, Offline  # noqa: E402
 # "CLIENT_ID:slug" of the Decal Profile and Decal Profile Write GitHub Apps (public IDs; device flow needs no secret)
 APPS = {"read": "Iv23li49m8npqJvYxiW8:decal-profile", "write": "Iv23lia2BX1vjfZuUstJ:decal-profile-write"}
 DAYS = [("30 days", "30"), ("90 days", "90"), ("1 year", "365"), ("never expires", "none")]
@@ -25,27 +24,10 @@ WHY = {BAD_KEY: "GitHub didn't accept that key (mistyped, revoked or expired)",
        OFFLINE: "couldn't reach GitHub: check the internet connection"}
 
 
-class Offline(Exception):
-    pass
-
-
-def api_get(path, token):
-    req = urllib.request.Request(API + path, headers={"Accept": "application/vnd.github+json",
-                                                      "Authorization": "Bearer " + token,
-                                                      "X-GitHub-Api-Version": "2022-11-28"})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return r.status, json.loads(r.read() or b"{}")
-    except urllib.error.HTTPError as e:
-        return e.code, {}
-    except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as e:
-        raise Offline(str(e))   # no answer, or not GitHub's (a Wi-Fi login page)
-
-
 def check(repo, need, token, may_create=False):
     """OK when TOKEN can read (or write) REPO; with MAY_CREATE a missing repo is fine (stamp creates it)."""
     try:
-        code, me = api_get("/user", token)
+        code, me = gh.get("/user", token)
         if code == 401:
             return BAD_KEY
         if repo == "-":   # signing in to list your profiles: the key works, that's all
@@ -54,7 +36,7 @@ def check(repo, need, token, may_create=False):
             if code != 200:
                 return BAD_KEY
             repo = f"{me.get('login')}/{repo}"
-        code, info = api_get(f"/repos/{repo}", token)
+        code, info = gh.get(f"/repos/{repo}", token)
         if code == 401:
             return BAD_KEY
         if code == 404 and may_create:
@@ -78,13 +60,11 @@ def stick_ok(token):
     """"" when TOKEN may be saved on a USB stick (it can only read); else why not."""
     if token.startswith(("ghp_", "gho_")):
         return "a classic or gh token can write to your repos"
-    req = urllib.request.Request(API + "/user", headers={"Authorization": "Bearer " + token,
-                                                          "Accept": "application/vnd.github+json"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            scopes = r.headers.get("X-OAuth-Scopes") or ""
-    except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError):
+        code, _, headers = gh.request("GET", "/user", token)
+    except Offline:
         return ""   # checked again when it's used; reading is all the stick does
+    scopes = (headers.get("X-OAuth-Scopes") or "") if code == 200 else ""
     return "that token can write to your repos (repo scope)" if scopes_write(scopes) else ""
 
 
@@ -95,7 +75,7 @@ def shown(repo):
 def can_create(token):
     """A repo the key can't see may be created: yes, unless it's an app key whose app is on picked repos only (it
     could neither create a new repo nor see one that's already there and not picked)."""
-    code, d = api_get("/user/installations", token)
+    code, d = gh.get("/user/installations", token)
     if code != 200:   # not an app's key (a token you made): GitHub decides when decal creates it
         return True
     return any(i.get("repository_selection") == "all" for i in d.get("installations", []))
@@ -252,7 +232,7 @@ def wait_for_access(tty, repo, need, token, may_create):
     while True:
         if "/" not in repo:   # stamp before it knows the owner: the account that just signed in
             try:
-                code, me = api_get("/user", token)
+                code, me = gh.get("/user", token)
                 if code == 200:
                     repo = f"{me.get('login')}/{repo}"
             except Offline:

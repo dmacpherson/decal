@@ -11,7 +11,7 @@ GitHub uses the key in GITHUB_TOKEN (decal passes the one it found); none: a sig
 import argparse, base64, concurrent.futures, datetime, glob, json, os, sys, tarfile, tomllib, zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import auth, source  # noqa: E402
+import auth, gh, source  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODULES = os.environ.get("DECAL_MODULES_DIR") or os.path.join(REPO, "modules")
@@ -101,14 +101,14 @@ def find_recent():
 
 
 def find_github(token):
-    """(entries, notes) for the repos the key's account owns that hold a profile.toml. Raises auth.Offline."""
-    code, me = auth.api_get("/user", token)
+    """(entries, notes) for the repos the key's account owns that hold a profile.toml. Raises gh.Offline."""
+    code, me = gh.get("/user", token)
     if code != 200:
         return [], ["GitHub didn't accept the key"]
     login = me.get("login", "")
     repos, page = [], 1
     while True:
-        code, batch = auth.api_get(f"/user/repos?affiliation=owner&per_page=100&page={page}", token)
+        code, batch = gh.get(f"/user/repos?affiliation=owner&per_page=100&page={page}", token)
         if code != 200 or not isinstance(batch, list):
             break
         repos += batch
@@ -119,7 +119,7 @@ def find_github(token):
     cand = {n for n, r in by.items() if r.get("name", "").startswith("decal-")}
     if len(repos) <= 100:
         cand |= set(by)
-    code, found = auth.api_get(f"/search/repositories?q=topic:decal-profile+user:{login}&per_page=100", token)
+    code, found = gh.get(f"/search/repositories?q=topic:decal-profile+user:{login}&per_page=100", token)
     if code == 200:
         for r in found.get("items", []):
             by.setdefault(r["full_name"], r)
@@ -128,9 +128,9 @@ def find_github(token):
 
     def check(full):
         try:
-            code, f = auth.api_get(f"/repos/{full}/contents/profile.toml", token)
+            code, f = gh.get(f"/repos/{full}/contents/profile.toml", token)
             n = count(base64.b64decode(f["content"]).decode()) if code == 200 and "content" in f else None
-        except (auth.Offline, ValueError, KeyError):
+        except (gh.Offline, ValueError, KeyError):
             return None
         if n is None:
             return None
@@ -142,7 +142,7 @@ def find_github(token):
         entries = [e for e in ex.map(check, sorted(cand)) if e]
     notes = []
     if not entries:
-        code, _ = auth.api_get("/user/installations", token)
+        code, _ = gh.get("/user/installations", token)
         if code == 200:   # an app key: the app may not be on any profile repo yet
             notes.append(f"no profiles found: install Decal Profile on your profile repos: {auth.install_url('read')}")
         else:
@@ -170,7 +170,7 @@ def listing(only=""):
                 e, n = find_github(token)
                 out += e
                 notes += n
-            except auth.Offline:
+            except gh.Offline:
                 notes.append("couldn't reach GitHub")
     if only in ("", "local"):
         out += find_local() + find_sticks()

@@ -10,7 +10,10 @@
   source.py public github:O/R     exit 0 when the repo is public (answers without a key)
 
 https only; DECAL_ALLOW_HTTP_LOCAL=1 also allows http://127.0.0.1 (tests)."""
-import argparse, datetime, os, re, shutil, stat, sys, tarfile, tempfile, urllib.error, urllib.parse, urllib.request, zipfile
+import argparse, datetime, os, re, stat, sys, tarfile, tempfile, urllib.error, urllib.parse, urllib.request, zipfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gh  # noqa: E402
 
 NAME = r"[A-Za-z0-9_.-]+"
 OWNER = r"[A-Za-z0-9][A-Za-z0-9-]*"   # GitHub accounts: letters, digits, hyphens
@@ -220,12 +223,9 @@ def public(source):
     m = re.fullmatch(rf"github:({OWNER}/{NAME})(@\S+)?", source)
     if not m:
         return False
-    api = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
     try:
-        with urllib.request.urlopen(urllib.request.Request(api + "/repos/" + m.group(1),
-                                    headers={"Accept": "application/vnd.github+json"}), timeout=15) as r:
-            return r.status == 200
-    except (urllib.error.URLError, OSError, ValueError):
+        return gh.request("GET", "/repos/" + m.group(1), timeout=15)[0] == 200
+    except gh.Offline:
         return False
 
 

@@ -74,10 +74,10 @@ kill "$GHPID" 2>/dev/null
 # GitHub answering with a web page (a Wi-Fi login) or hanging up: a plain message, no traceback (audit batch 3)
 gh_odd() { python3 - "$1" <<'EOF'
 import os, sys, threading, http.server
-sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import github
+sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import github, gh
 if sys.argv[1] == "bare":   # a timeout with no words of its own
     def no(*a, **k): raise TimeoutError()
-    github.urllib.request.urlopen = no
+    gh.urllib.request.urlopen = no
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if sys.argv[1] == "drop":
@@ -86,7 +86,7 @@ class H(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"<html>Sign in to this Wi-Fi</html>")
     def log_message(self, *a): pass
 s = http.server.HTTPServer(("127.0.0.1", 0), H); threading.Thread(target=s.serve_forever, daemon=True).start()
-github.API = f"http://127.0.0.1:{s.server_port}"; os.environ["GITHUB_TOKEN"] = "s3cret"
+gh.API = f"http://127.0.0.1:{s.server_port}"; os.environ["GITHUB_TOKEN"] = "s3cret"
 try:
     github.call("GET", "/repos/tester/x"); print("no error")
 except github.Fail as e:
