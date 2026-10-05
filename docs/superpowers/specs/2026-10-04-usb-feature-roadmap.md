@@ -10,7 +10,7 @@ implementation; this file records what's already decided so each part's design s
 | 2 | Profile browser | **Done** (merged 2026-10-05): `docs/superpowers/specs/2026-10-04-profile-browser-design.md` |
 | 2b | Profile review ("What this profile will do") | After 2 |
 | 3 | USB maker | **Done** (merged 2026-10-05; trial release and real-stick test pending): `docs/superpowers/specs/2026-10-05-usb-maker-design.md` |
-| 4 | Save back from a stick | After 3 |
+| 4 | Save back from a stick | **Built** (bounded: designed in chat; branch `stick-save`) |
 
 Order matters: each part uses the ones before it.
 
@@ -145,9 +145,11 @@ No separate stick menu: the normal one, with that header and order. No "temporar
 
 ## Part 4: Save back from a stick
 
-From the stick's menu: stamp the machine it's plugged into and push it to the person's GitHub profile, signing in
-with Decal Profile Write each time (no write key is ever stored on a stick). Uses `decal stamp --github` (part 1
-already signs in for it).
+From the stick's menu, **Save this machine** (after Preview first): the module picker and preview, then "Save to":
+where the stick's profile came from (its GitHub repo, or the stick's copy), **both** (copy sticks), or **somewhere
+else…** (the profile browser). GitHub saves sign in with Decal Profile Write once per menu session (8 hours at most;
+in memory only); the stick's read key, GITHUB_TOKEN, GH_TOKEN and the PC's gh login are never used for it
+(`clean_env`). The stick's copy is updated in place.
 
 ## The maintainer's own stick (works today, keep it working)
 

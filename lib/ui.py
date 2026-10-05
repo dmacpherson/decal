@@ -3,7 +3,7 @@
 
 Every action runs the same `decal` commands you could type (shown before they run), so the menu and the command
 line always agree. A shared picker chooses what each one covers: the profile's tags and its modules."""
-import curses, glob, json, os, re, subprocess, sys, threading
+import curses, glob, json, os, re, subprocess, sys, tempfile, threading
 
 import profiles  # noqa: E402  (lib/, next to this file: describe() and ago())
 
@@ -141,9 +141,30 @@ def drive_label(d):
 
 
 STICK_ITEMS = [("1", "apply-all", "Apply everything"), ("2", "choose", "Choose what to apply"),
-               ("3", "preview", "Preview first"), ("4", "remove-all", "Take it all off"),
-               ("5", "status", "What's on this machine"), ("6", "other", "Use a different profile"),
-               ("7", "full", "Full menu")]
+               ("3", "preview", "Preview first"), ("4", "save", "Save this machine"), ("5", "remove-all", "Take it all off"),
+               ("6", "status", "What's on this machine"), ("7", "other", "Use a different profile"),
+               ("8", "full", "Full menu")]
+
+
+def save_targets(conf, stick):
+    """Where "Save this machine" can go: where the stick's profile came from first, then the rest."""
+    p = conf.get("profile", "")
+    if p == "copy":
+        return [("the copy on this stick", os.path.join(stick, "profile"), "stick"),
+                ("both", "the copy on this stick and a GitHub repo", "both"),
+                ("somewhere else…", "any of your profiles, a file, or a new one", "elsewhere")]
+    return [(p.removeprefix("github:"), "signs in to GitHub to save", "github"),
+            ("somewhere else…", "any of your profiles, a file, or a new one", "elsewhere")]
+
+
+def clean_env(env, key, ghdir):
+    """The environment for saving to GitHub: only this session's write key; no GITHUB_TOKEN/GH_TOKEN (the stick's
+    read key), and gh pointed at an empty folder (a borrowed PC's gh login never touches your repo)."""
+    out = {k: v for k, v in env.items() if k not in ("GITHUB_TOKEN", "GH_TOKEN")}
+    out["GH_CONFIG_DIR"] = ghdir
+    if key:
+        out["GITHUB_TOKEN"] = key
+    return out
 
 
 def stick_header(conf, updated):
@@ -416,12 +437,12 @@ class UI:
         return m in self.d.base or any(t in on_t for t in self.d.mod_tags.get(m, []))
 
     # run commands in the terminal itself (progress lines, sudo prompts), then come back
-    def run(self, cmds, done, failed):
+    def run(self, cmds, done, failed, env=None):
         curses.endwin()
         rc = 0
         for c in cmds:
             print(f"\n\033[2m$ decal {' '.join(c)}\033[0m", flush=True)
-            rc = subprocess.call([DECAL, *c], env=ENV)
+            rc = subprocess.call([DECAL, *c], env=env or ENV)
             if rc != 0:
                 break
         print(f"\n\033[1;32m✓ {done}\033[0m" if rc == 0 else f"\n\033[1;31m✗ {failed}\033[0m")
@@ -658,6 +679,8 @@ class UI:
                         self.run(cmds, "Stuck on", "Apply stopped: see Logs")
                 elif pick == "choose":
                     self.apply_picked()
+                elif pick == "save":
+                    self.stick_save(conf)
                 elif pick == "preview":
                     self.view("Preview · nothing changed", self.preview("apply", [["add", "all"]]), "esc back")
                 elif pick == "remove-all":
@@ -667,6 +690,77 @@ class UI:
                     self.view("What's on this machine", decal("status")[1], "esc back")
                 elif pick == "other":
                     self.do_apply()
+
+    def write_key(self, repo):
+        """A Decal Profile Write key for this menu session (8 hours at most), asked for once; never written down."""
+        if not getattr(self, "wkey", ""):
+            curses.endwin()
+            r = subprocess.run([sys.executable, os.path.join(REPO, "lib", "auth.py"), "get", repo, "--need", "write",
+                                "--may-create"], stdout=subprocess.PIPE, text=True,
+                               env=clean_env(ENV, "", self.ghdir()))
+            self.wkey = r.stdout.strip() if r.returncode == 0 else ""
+            self.scr.refresh()
+        return self.wkey
+
+    def ghdir(self):
+        if not getattr(self, "_ghdir", ""):
+            self._ghdir = tempfile.mkdtemp(prefix="decal-nogh-")
+        return self._ghdir
+
+    def stick_save(self, conf):
+        """Save this machine (from a stick): stamp it to the stick's copy, its GitHub repo, both, or anywhere."""
+        pick = self.picker("Save this machine · what to save", "stamp")
+        if not pick:
+            return
+        mods = pick[1]
+        every = set(mods) == set(stamp_modules())
+        if not self.view("Save this machine · preview", self.preview("stamp", [stamp_cmd(mods, every)]),
+                         "enter save it · ↑↓ scroll · esc back"):
+            return
+        stick = os.environ["DECAL_STICK"]
+        to = self.choose("Save to", save_targets(conf, stick))
+        if to is None:
+            return
+        copy, repo, dest = os.path.join(stick, "profile"), "", ""
+        if to == "github":
+            repo = conf["profile"].removeprefix("github:")
+        elif to == "both":
+            repo = self.ask("Save to · GitHub", "the repo: name or owner/name", f"decal-{os.environ.get('USER') or 'me'}")
+            if not repo:
+                return
+        elif to == "elsewhere":
+            v = self.browse("Save to · where?", "stamp")
+            if v is None:
+                return
+            if v.get("action") == "new":
+                self.do_new("this-machine")
+                return
+            if v.get("action") == "enter":
+                where = self.ask("Save to", "a .tar.gz, a folder, or owner/name on GitHub")
+                if not where:
+                    return
+                if re.fullmatch(r"[\w.-]+/[\w.-]+", where) and not os.path.exists(os.path.expanduser(where)):
+                    repo = where
+                else:
+                    dest = os.path.expanduser(where)
+            elif v["kind"] == "github":
+                repo = v["source"].removeprefix("github:")
+            else:
+                dest = v["source"]
+        if to in ("stick", "both"):
+            if self.run([stamp_cmd(mods, every, copy)], "Saved to the copy on this stick", "Couldn't save to the stick (see above)") != 0:
+                return
+            os.sync()
+        if dest:
+            self.run([stamp_cmd(mods, every, dest)], f"Saved to {tilde(dest)}", "Couldn't save it (see above)")
+        if repo:
+            key = self.write_key(repo)
+            if not key:
+                self.view("Save to GitHub", "Not signed in: nothing saved to GitHub.", "esc back")
+                return
+            if self.run([stamp_cmd(mods, every, gh=repo)], f"Saved to {repo}", "Couldn't save to GitHub (see above)",
+                        env=clean_env(ENV, key, self.ghdir())) != 0:
+                self.wkey = ""   # expired or refused: the next save signs in again
 
     def apply_picked(self):
         pick = self.picker("Apply · stick it on · choose", "apply")

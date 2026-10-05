@@ -18,6 +18,7 @@ MODULE_DESC="ui fixture $n"
 module_add()    { [[ \$LS_DRY_RUN == 1 ]] && return 0; echo "$n add" >> "\$LS_TEST_LOG"; touch "\$T_TMP/$n.on"; }
 module_remove() { [[ \$LS_DRY_RUN == 1 ]] && return 0; echo "$n remove" >> "\$LS_TEST_LOG"; rm -f "\$T_TMP/$n.on"; }
 module_status() { if [[ -e \$T_TMP/$n.on ]]; then echo installed; else echo not-installed; fi; }
+module_stamp()  { printf '[%s]\\non = true\\n' "$n"; }
 MOD
 done
 P="$T_TMP/prof"; mkdir -p "$P"; printf '[base]\non = true\n[onlydev.dev]\non = true\n' > "$P/profile.toml"
@@ -99,7 +100,7 @@ assert_eq "$(py2 'ui.usb_cmd("github:me/p", "saved-key", "newest", False, "/run/
 assert_eq "$(py2 'ui.usb_cmd("/p", "copy", "copy", True, "folder")')" "['usb', '--from', '/p', '--how', 'copy', '--decal', 'copy', '--to', 'folder', '--arm']" "usb_cmd: ARM, folder"
 assert_eq "$(py2 'ui.drive_label({"label": "Ventoy", "size": 57700000000, "mount": "/m", "ventoy": True, "isos": 14})')" "Ventoy · 14 ISOs · 57.7 GB" "drive label: Ventoy"
 assert_eq "$(py2 'ui.drive_label({"label": "SPARE", "size": 8000000000, "mount": ""})')" "SPARE · 8.0 GB · not mounted" "drive label: unmounted"
-assert_eq "$(py2 '[w for k, w, l in ui.STICK_ITEMS]')" "['apply-all', 'choose', 'preview', 'remove-all', 'status', 'other', 'full']" "stick menu: the order"
+assert_eq "$(py2 '[w for k, w, l in ui.STICK_ITEMS]')" "['apply-all', 'choose', 'preview', 'save', 'remove-all', 'status', 'other', 'full']" "stick menu: the order (Save this machine after Preview)"
 assert_eq "$(py2 'ui.stick_header({"profile": "github:me/p"}, "just now")')" "From your USB stick: me/p · updated just now" "stick header"
 assert_eq "$(py2 'ui.stick_header({"profile": "copy"}, "")')" "From your USB stick: the profile copy on it" "stick header: a copy"
 # stick mode: started from a stick, the menu shows the header and its choices
@@ -108,4 +109,31 @@ DECAL_STICK="$SK" D "$REPO/decal" ui -- q
 assert_contains "$(cat "$T_TMP/screen")" "From your USB stick: me/p" "stick mode: header"
 assert_contains "$(cat "$T_TMP/screen")" "Apply everything" "stick mode: its choices"
 assert_contains "$(cat "$T_TMP/screen")" "Full menu" "stick mode: the way to everything else"
+# save this machine (part 4): where it can go, and a clean environment for GitHub (never the stick's read key,
+# GITHUB_TOKEN, GH_TOKEN or the PC's gh login)
+assert_eq "$(py2 '[v for l, a, v in ui.save_targets({"profile": "copy"}, "/s/.Decal")]')" \
+  "['stick', 'both', 'elsewhere']" "save to: a copy stick → the stick (first), both, somewhere else"
+assert_eq "$(py2 '[(l, v) for l, a, v in ui.save_targets({"profile": "github:me/p"}, "/s/.Decal")]')" \
+  "[('me/p', 'github'), ('somewhere else…', 'elsewhere')]" "save to: a GitHub stick → its repo (first), somewhere else"
+assert_eq "$(py2 'sorted(ui.clean_env({"GITHUB_TOKEN": "r", "GH_TOKEN": "g", "HOME": "/h"}, "w", "/empty").items())')" \
+  "[('GH_CONFIG_DIR', '/empty'), ('GITHUB_TOKEN', 'w'), ('HOME', '/h')]" "clean env: only the write key, gh hidden"
+assert_eq "$(py2 'sorted(ui.clean_env({"GITHUB_TOKEN": "r"}, "", "/empty"))')" "['GH_CONFIG_DIR']" "clean env: no key at all when none yet"
+# a copy stick: Save this machine → the copy on this stick, updated in place
+SV="$T_TMP/sv/.Decal"; mkdir -p "$SV/profile"; printf '[base]\non = false\n' > "$SV/profile/profile.toml"; : > "$SV/profile/.decal-stamp"
+printf 'profile=copy\nkey=none\ndecal=copy\n' > "$SV/stick.conf"
+DECAL_STICK="$SV" D "$REPO/decal" ui -- 4 "UNTIL:enter next" ENTER "UNTIL:enter save it" ENTER "UNTIL:Save to" ENTER WAIT ENTER q
+assert_contains "$(cat "$T_TMP/screen")" "Saved to the copy on this stick" "save: says where"
+assert_contains "$(cat "$SV/profile/profile.toml")" "on = true" "save: the stick's copy updated in place"
+# a GitHub stick: Save signs in fresh with Decal Profile Write (the stick's read key in GITHUB_TOKEN is ignored)
+G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"; echo tester/decal-p > "$G/seed"; printf 'ok\nok\n' > "$G/device_script"
+python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
+for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
+SG="$T_TMP/sg/.Decal"; mkdir -p "$SG"; printf 'profile=github:tester/decal-p\nkey=saved\ndecal=copy\n' > "$SG/stick.conf"
+DECAL_STICK="$SG" GITHUB_TOKEN=r3ad-only DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")" \
+  DECAL_GITHUB_APP_WRITE=Iv-write:decal-write D "$REPO/decal" ui -- 4 "UNTIL:enter next" ENTER "UNTIL:enter save it" ENTER "UNTIL:Save to" ENTER "UNTIL:Choose [1]" 1 ENTER "UNTIL:press enter to go back" ENTER q
+assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "save to GitHub: signed in with Decal Profile Write"
+assert_file "$G/tester_decal-p.json" "...the stamp pushed"
+assert_not_contains "$(cat "$G/log")" "r3ad-only" "...the stick's read key never used"
+assert_contains "$(cat "$T_TMP/screen")" "Saved to tester/decal-p" "...says where"
+kill "$GHPID" 2>/dev/null
 t_done
