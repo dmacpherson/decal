@@ -235,5 +235,18 @@ DECAL_VERSION=latest bash "$REPO/install.sh" --fetch-to "$T_TMP/f2" >/dev/null 2
 release v2.1.0; latest v2.1.0; mkdir -p "$T_TMP/up"; printf '[eee-conf]\nword = "u"\n' > "$T_TMP/up/profile.toml"
 out=$("$REPO/decal" usb --from "$T_TMP/up" --decal online --to "folder:$T_TMP/uf" --yes 2>&1); assert_eq "$?" "0" "usb: launchers from the release"
 assert_eq "$(cat "$T_TMP/uf/Decal" 2>/dev/null)" "x86 v2.1.0" "...the release's launcher on the stick"
+# an active profile nobody was asked about (made active by an older decal use): add asks first (minors)
+A="$DECAL_PROFILE_HOME"; rm -rf "$A"; mkdir -p "$A"; printf '[eee-conf]\nword = "fourth"\n' > "$A/profile.toml"; echo "github:fourth/q" > "$A/.decal-source"
+: > "$LS_TEST_LOG"
+out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" add all 2>&1 < /dev/null); assert_eq "$?" "1" "add: a stranger's active profile, never asked: stops"
+assert_contains "$out" "this profile is from fourth/q" "...says whose it is"; assert_eq "$(cat "$LS_TEST_LOG")" "" "...nothing added"
+setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" --yes add all >/dev/null 2>&1 < /dev/null; assert_eq "$?" "0" "...--yes: added"
+setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" add all >/dev/null 2>&1 < /dev/null; assert_eq "$?" "0" "...and not asked again"
+# decal use, answered yes, then add (what the menu runs): one question, not two
+mkdir -p "$T_TMP/gh5/fifth-r-1"; printf '[eee-conf]\nword = "fifth"\n' > "$T_TMP/gh5/fifth-r-1/profile.toml"
+tar -czf "$T_TMP/gh5.tar.gz" -C "$T_TMP/gh5" fifth-r-1; tb fifth/r "$T_TMP/gh5.tar.gz" public
+printf 'y\n' > "$T_TMP/keys"
+env -u GITHUB_TOKEN -u GH_TOKEN DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" use fifth/r >/dev/null 2>&1; assert_eq "$?" "0" "use: asked, yes"
+out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" add all 2>&1 < /dev/null); assert_eq "$?" "0" "...then add doesn't ask again"
 kill "$GMPID" 2>/dev/null
 t_done

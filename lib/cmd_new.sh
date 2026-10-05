@@ -44,7 +44,9 @@ do_new() {
   case $from in   # what goes in
     this-machine) do_stamp "$stage" ;;
     empty) python3 "$LS_REPO/lib/profiles.py" empty "$stage" ;;
-    *) stage_profile "$from"; copy_profile "$STAGE_DIR" "$stage" ;;
+    *) stage_profile "$from"
+       if (( use )); then trust "$STAGE_SRC" use; fi   # it becomes your active profile: someone else's asks first
+       copy_profile "$STAGE_DIR" "$stage" ;;
   esac
   rm -f "$stage/.decal-stamp"
   python3 "$LS_REPO/lib/profiles.py" readme "$stage" "$name" "$( [[ $from == this-machine || $from == empty ]] && echo "$from" || echo "${STAGE_SRC:-$from}")"

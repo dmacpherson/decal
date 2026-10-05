@@ -65,4 +65,11 @@ kill "$GHPID" 2>/dev/null
 # --to file:PATH is a file (a .tar.gz), whatever its name (review)
 out=$(N decal-f --from empty --to "file:$T_TMP/plainname"); assert_eq "$?" "0" "file:PATH without .tar.gz"
 assert_eq "$(file -b --mime-type "$T_TMP/plainname" 2>/dev/null || (gzip -t "$T_TMP/plainname" && echo application/gzip))" "application/gzip" "...is a .tar.gz all the same"
+# --use with someone else's profile asks first, as decal use does (minors)
+mkdir -p "$T_TMP/sx/stranger-p-1" "$G/tarballs"; echo '[live]' > "$T_TMP/sx/stranger-p-1/profile.toml"
+tar -czf "$G/tarballs/stranger_p.tar.gz" -C "$T_TMP/sx" stranger-p-1; : > "$G/tarballs/stranger_p.public"
+fake_github "$G"
+out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" new decal-s --from github:stranger/p --to file --use 2>&1 < /dev/null)
+assert_eq "$?" "1" "new --from someone else's --use, no terminal: stops"; assert_contains "$out" "this profile is from stranger/p" "...says whose it is"
+assert_nofile "$HOME/decal-s.tar.gz" "...before making anything"
 t_done

@@ -152,10 +152,13 @@ activate_staged() {
 }
 # trust SOURCE : a profile that isn't yours (lib/source.py yours): say whose it is, offer a preview, ask.
 # --yes / DECAL_YES=1 skips the question; no terminal: stops with how to go on.
+# asked SOURCE : you said yes to SOURCE (or --yes): not asked about again (it still isn't "yours" until applied)
+asked() { mkdir -p "$LS_USER_STATE"; rec_add "$LS_USER_STATE/asked" "$1"; }
 trust() {   # trust SOURCE [VERB] : VERB is what "y" does (apply it / use it)
   local src=$1 verb=${2:-apply} login="" tok a fd done=applied
   if [[ $verb == use ]]; then done=used; fi
-  if [[ ${DECAL_YES:-} == 1 ]]; then return 0; fi   # asked not to ask (the installer: you typed the source)
+  if [[ ${DECAL_YES:-} == 1 ]]; then asked "$src"; return 0; fi   # asked not to ask (the installer: you typed the source)
+  if grep -qxF -- "$src" "$LS_USER_STATE/asked" 2>/dev/null; then return 0; fi   # you said yes to it before
   if [[ $src == github:* ]]; then tok=$(gh_token); if [[ -n $tok ]]; then login=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami 2>/dev/null || true); fi; fi
   if python3 "$LS_REPO/lib/source.py" yours "$src" --login "$login"; then return 0; fi
   warn "this profile is from ${src#github:}, not you: it can install software and change system settings"
@@ -166,7 +169,7 @@ trust() {   # trust SOURCE [VERB] : VERB is what "y" does (apply it / use it)
     IFS= read -r a <&"$fd" || a=n
     case ${a:-p} in
       p|P) DECAL_NO_UPDATE=1 DECAL_YES=1 DECAL_PROFILE=$STAGE_DIR "$LS_REPO/decal" --dry-run add all || true ;;
-      y|Y) exec {fd}<&-; return 0 ;;
+      y|Y) exec {fd}<&-; asked "$src"; return 0 ;;
       *) die "not $done" ;;
     esac
   done

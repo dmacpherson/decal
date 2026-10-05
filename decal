@@ -318,6 +318,11 @@ case $cmd in
     [[ $# -ge 1 ]] || usage
     if [[ $cmd == add ]]; then
       pyprof check || die "fix $PROFILE_DIR/profile.toml first (nothing was changed)"
+      # the active profile, if nobody was ever asked about it (made active by an older decal use): ask now
+      if [[ ${LS_DRY_RUN:-0} != 1 && $PROFILE_DIR == "$PROFILE_HOME" ]]; then
+        src=$(env -u DECAL_PROFILE DECAL_PROFILE_HOME="$PROFILE_HOME" python3 "$LS_REPO/lib/profiles.py" active 2>/dev/null || true)
+        if [[ -n $src ]]; then STAGE_DIR=$PROFILE_DIR trust "$src"; fi
+      fi
       if [[ $# -eq 1 && $1 == all ]]; then names=$(profile_modules); else names=$(resolve "$@") || exit 1; fi
     else
       check_tags
