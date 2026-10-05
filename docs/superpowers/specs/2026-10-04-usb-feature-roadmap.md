@@ -52,6 +52,11 @@ One screen, reused by apply, stamp, remove and usb in place of their own "where'
   waits for "All repositories" in that case. Alternatively send people to GitHub's new-repo page pre-filled, then
   the install page for that repo.
 
+Deferred minors from part 2's review (fix when touching that code):
+- Stale GitHub listings in the menu (after `r` or a sign-in) can overwrite fresher ones: number each run.
+- A damaged archive with a file and a folder of the same name gives a traceback instead of "could not unpack".
+- Listing reads every member of big `~/decal-*.tar.gz` files: stop at the first shallow `profile.toml`.
+
 Open questions for its design: how repos are found (name pattern `decal-*`, a topic, or a `profile.toml` check per
 repo), how local stamp files are found, what the browser shows per profile (last stamped, private/public, modules).
 
