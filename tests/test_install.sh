@@ -216,4 +216,10 @@ out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" use t
 assert_contains "$out" "this profile is from third/p, not you" "use: says whose it is"; assert_contains "$out" "not used: to use it anyway, run decal --yes use github:third/p" "use: says how to go on"
 assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source" 2>/dev/null)" "$before" "use: the active profile unchanged"
 env -u GITHUB_TOKEN -u GH_TOKEN "$REPO/decal" --yes use third/p >/dev/null 2>&1; assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:third/p" "use --yes: used"
+# the new decal is unpacked beside the install (same filesystem): the swap is a rename, never a copy from /tmp
+mkdir -p "$T_TMP/ro"; chmod 555 "$T_TMP/ro"; release v1.9.0; latest v1.9.0
+out=$(TMPDIR="$T_TMP/ro" DECAL_VERSION=latest DECAL_NO_MENU=1 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "0" "install doesn't depend on /tmp"
+assert_eq "$(cat "$H/VERSION")" "v1.9.0" "...the new version in place"
+assert_eq "$(ls -A "$(dirname "$H")" | grep -c '^\.decal-new')" "0" "...no leftovers beside it"
+chmod 755 "$T_TMP/ro"
 t_done

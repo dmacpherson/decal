@@ -55,4 +55,9 @@ assert_eq "$(v RF)" "['Utilities']" "merge undone, user item kept"
 assert_eq "$(v RN)" "" "folder key reset"
 assert_eq "$(v PREV_EXISTS)" "no" "prev deleted"
 assert_eq "$(v USERCHANGE)" "['Utilities', 'Mine']" "merge that added nothing never resets user changes"; assert_eq "$(v RM2)" "0" "remove twice no-op"
+# the undo record is replaced whole (a crash can't leave it half-written, which would make remove impossible)
+python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import dconf_tool as d; d.save_prev('$T_TMP/prev.json', {'keys': {}})"
+i=$(stat -c %i "$T_TMP/prev.json")
+python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import dconf_tool as d; d.save_prev('$T_TMP/prev.json', {'keys': {'a': 1}})"
+assert_not_contains "$(stat -c %i "$T_TMP/prev.json")" "$i" "save_prev: replaced whole"; assert_contains "$(cat "$T_TMP/prev.json")" '"a": 1' "save_prev: content"
 t_done

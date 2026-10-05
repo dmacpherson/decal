@@ -54,7 +54,9 @@ mod module_remove 2>/dev/null; sed -i '/^opacity = 0.75$/d' "$PROFILE_DIR/profil
 # marked-block mode when .bashrc doesn't source .bashrc.d
 printf '# plain bashrc\n' > "$HOME/.bashrc"; mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"; mod module_add 2>/dev/null
 assert_contains "$(cat "$HOME/.bashrc")" "# >>> decal terminal >>>" "block appended"
+i_rc=$(stat -c %i "$HOME/.bashrc")
 mod module_remove 2>/dev/null; assert_eq "$(cat "$HOME/.bashrc")" "# plain bashrc" "block removed exactly"
+assert_not_contains "$(stat -c %i "$HOME/.bashrc")" "$i_rc" "~/.bashrc replaced whole (never half-written)"
 # fresh Ptyxis (never launched): no default profile yet -> add still succeeds, palette skipped with a warning
 stub gsettings 'case $1 in get) case $3 in default-profile-uuid) echo "'"'"''"'"'";; profile-uuids) echo "@as []";; *) echo "'"'"'x'"'"'";; esac;; list-keys) exit 0;; esac'
 mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"

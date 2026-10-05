@@ -258,13 +258,13 @@ module_remove() {
   run rm -f "$HOOK"
   if grep -qF "$MARK_BEGIN" "$HOME/.bashrc" 2>/dev/null && [[ $LS_DRY_RUN != 1 ]]; then
     python3 - "$HOME/.bashrc" "$MARK_BEGIN" "$MARK_END" <<'EOF'
-import sys
+import os, shutil, sys
 p, b, e = sys.argv[1:4]; out = []; skip = False
 for l in open(p).read().split("\n"):
     if l == b: skip = True; continue
     if l == e and skip: skip = False; continue
     if not skip: out.append(l)
-open(p, "w").write("\n".join(out))
+open(p + ".decal-new", "w").write("\n".join(out)); shutil.copymode(p, p + ".decal-new"); os.replace(p + ".decal-new", p)
 EOF
   fi
   run rm -rf "$CFG"; _font_remove; _blesh_remove

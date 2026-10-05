@@ -42,7 +42,7 @@ _strip_app_accent() {
   for f in "${XDG_CONFIG_HOME:-$HOME/.config}"/gtk-{4,3}.0/gtk.css; do
     [[ -f $f ]] || continue
     python3 - "$f" <<'EOF'
-import os, sys
+import os, shutil, sys
 p = sys.argv[1]; text = open(p).read(); kept = []; inside = False
 for line in text.split('\n'):
     if not inside and line.startswith('/* decal accent: begin'): inside = True
@@ -51,7 +51,7 @@ for line in text.split('\n'):
 rest = '\n'.join(kept).rstrip()
 new = rest + '\n' if rest else ''
 if new != text:
-    if new: open(p, 'w').write(new)
+    if new: open(p + '.decal-new', 'w').write(new); shutil.copymode(p, p + '.decal-new'); os.replace(p + '.decal-new', p)
     else: os.remove(p)
 EOF
   done

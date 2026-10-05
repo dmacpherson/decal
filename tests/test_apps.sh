@@ -43,7 +43,8 @@ python3 - "$PROFILE_DIR/profile.toml" <<'EOF'
 import re,sys; p=sys.argv[1]; s=open(p).read(); s=re.sub(r'\[apps\].*?(?=\n\[gnome-settings\])', '', s, flags=re.S); open(p,'w').write(s)
 EOF
 stub flatpak 'case "$*" in "info --system -- "*) exit 0;; esac; exit 0'   # now everything is installed
-: > "$STUBS/calls"; run_mod remove 2>/dev/null
+: > "$STUBS/calls"; i_mime=$(stat -c %i "$XDG_CONFIG_HOME/mimeapps.list"); run_mod remove 2>/dev/null
+assert_not_contains "$(stat -c %i "$XDG_CONFIG_HOME/mimeapps.list")" "$i_mime" "mimeapps.list replaced whole (never half-written)"
 assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y -- com.discordapp.Discord org.gnome.Loupe" "removes exactly the managed flatpaks"
 assert_not_contains "$(calls)" "com.brave.Browser" "never removes an app it didn't install"
 assert_contains "$(calls)" "flatpak uninstall --system --unused --noninteractive -y" "unused runtimes"

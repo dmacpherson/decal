@@ -101,7 +101,7 @@ _defaults_remove() {
   while IFS='=' read -r m d; do if [[ -n $d ]]; then run xdg-mime default "$d" "$m"; else unset+=("$m"); fi; done < "$DEF_PREV"
   if (( ${#unset[@]} )) && [[ $LS_DRY_RUN != 1 ]]; then
     python3 - "${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list" "${unset[@]}" <<'EOF'
-import sys
+import os, shutil, sys
 p, drop = sys.argv[1], set(sys.argv[2:]); out = []; sec = ""
 try: lines = open(p).read().split("\n")
 except FileNotFoundError: sys.exit(0)
@@ -109,7 +109,7 @@ for l in lines:
     if l.startswith("["): sec = l
     if sec == "[Default Applications]" and l.split("=", 1)[0] in drop: continue
     out.append(l)
-open(p, "w").write("\n".join(out))
+open(p + ".decal-new", "w").write("\n".join(out)); shutil.copymode(p, p + ".decal-new"); os.replace(p + ".decal-new", p)
 EOF
   fi
   run rm -f "$DEF_PREV"

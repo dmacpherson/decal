@@ -99,9 +99,10 @@ def load_prev(p):
         with open(p) as f: return json.load(f)
     return {"keys": {}, "merged": {}}
 
-def save_prev(p, prev):
+def save_prev(p, prev):   # replaced whole: a crash mid-write must never cost the undo record
     os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
-    with open(p, "w") as f: json.dump(prev, f, indent=1)
+    with open(p + ".decal-new", "w") as f: json.dump(prev, f, indent=1)
+    os.replace(p + ".decal-new", p)
 
 def cmd_apply(args):
     prev = load_prev(args.prev)

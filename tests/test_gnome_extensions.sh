@@ -161,7 +161,8 @@ body7() {
     block=$'/* decal accent: begin (Decal Tweaks) */\n:root { --accent-bg-color: #ff40a0; }\n/* decal accent: end */'
     printf '/* mine */\nwindow { color: red; }\n\n%s\n' "$block" > "$C/gtk-4.0/gtk.css"
     printf '%s\n' "$block" > "$C/gtk-3.0/gtk.css"
-    run add; run remove
+    run add; i4=$(stat -c %i "$C/gtk-4.0/gtk.css"); run remove
+    echo "SAMEINODE=$([[ $(stat -c %i "$C/gtk-4.0/gtk.css") == "$i4" ]] && echo yes || echo no)"
     echo "MINE=$(grep -c 'mine\|color: red' "$C/gtk-4.0/gtk.css")"; echo "BLOCK4=$(grep -c 'decal accent\|accent-bg' "$C/gtk-4.0/gtk.css")"
     echo "GTK3=$([[ -e $C/gtk-3.0/gtk.css ]] && echo kept || echo gone)" )
 }
@@ -170,6 +171,7 @@ out=$(DECAL_BUNDLED_DIR=bundled dbus-run-session -- bash -c body7 2>/dev/null)
 v7() { grep "^$1=" <<<"$out" | head -1 | cut -d= -f2-; }
 assert_eq "$(v7 MINE)" "2" "removing Decal Tweaks keeps the user's own GTK css"
 assert_eq "$(v7 BLOCK4)" "0" "and takes its Apps too block out"
+assert_eq "$(v7 SAMEINODE)" "no" "gtk.css replaced whole (never half-written)"
 assert_eq "$(v7 GTK3)" "gone" "a stylesheet with only the block goes"
 # extensions.gnome.org (or the profile's source) is reached over https only, never redirected to http
 assert_not_contains "$(grep '^curl' "$STUBS/calls" | grep -v -- '--proto =https --proto-redir =https')" "extension-info" "every extension download is https only"

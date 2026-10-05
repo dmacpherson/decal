@@ -44,7 +44,9 @@ _resolve() {
 # _install TAG URL SUMURL CHANNEL HOME BIN : download, check, unpack, swap in, link
 _install() {
   local tag=$1 url=$2 sumurl=$3 version=$4 home=$5 bin=$6
-  TMP_DL=$(mktemp -d); trap 'rm -rf "$TMP_DL"' EXIT   # global: the trap runs after the script's last line
+  # unpacked beside the install (same filesystem), so swapping it in is a rename, not a copy out of /tmp
+  mkdir -p "$(dirname "$home")"
+  TMP_DL=$(mktemp -d "$(dirname "$home")/.decal-new.XXXXXX"); trap 'rm -rf "$TMP_DL"' EXIT   # global: runs after the last line
   local tmp=$TMP_DL
   say "downloading decal $tag"
   _get "$url" "$tmp/decal.tar.gz" || die "download failed: $url"
@@ -63,7 +65,7 @@ _install() {
   fi
   mkdir -p "$(dirname "$home")"; rm -rf "$home.old"
   if [[ -e $home ]]; then mv "$home" "$home.old"; fi
-  mv "$top" "$home"; rm -rf "$home.old"
+  mv "$top" "$home"; rm -rf "$home.old" "$TMP_DL"   # removed here too: an exec of decal later skips the EXIT trap
   mkdir -p "$bin"; ln -sfn "$home/decal" "$bin/decal"
 }
 
