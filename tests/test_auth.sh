@@ -164,6 +164,7 @@ mkfifo "$T_TMP/fifo"; ( sleep 30 > "$T_TMP/fifo" ) & HOLD=$!
 signal.signal(signal.SIGINT, signal.default_int_handler); sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' \
   "$A" get me/prof --need read > /dev/null 2> "$T_TMP/err" & P=$!
 for _ in $(seq 100); do grep -q "Choose" "$T_TMP/screen" 2>/dev/null && break; sleep 0.1; done   # at the question
+grep -q "Choose" "$T_TMP/screen" || _t_fail "Ctrl+C: the question never showed"
 kill -INT "$P"; wait "$P"; assert_eq "$?" "130" "Ctrl+C: exit 130"
 assert_not_contains "$(cat "$T_TMP/err")" "Traceback" "Ctrl+C: no traceback"; kill "$HOLD" 2>/dev/null
 # a real terminal (a pty): key-at-a-time mode while waiting, Esc back to the choice, echo restored afterwards
@@ -182,7 +183,7 @@ def until(text, secs=10):
             except OSError: break
     return text.encode() in buf
 ok = until("Choose [1]: "); os.write(fd, b"1\n")
-ok = ok and until("Waiting for GitHub"); time.sleep(0.5); waiting_echo = bool(termios.tcgetattr(fd)[3] & termios.ECHO)
+ok = ok and until("Waiting for GitHub"); waiting_echo = bool(termios.tcgetattr(fd)[3] & termios.ECHO)
 os.write(fd, b"\x1b"); ok = ok and until("Choose [1]: "); os.write(fd, b"3\n")
 if not ok:
     os.kill(pid, 9)   # stuck: fail instead of hanging

@@ -308,8 +308,8 @@ def sign_in(tty, repo, need, may_create):
             return None
         url, code = d["verification_uri"], d["user_code"]
         opened, copied = open_browser(url), copy(code)
-        tty.say("", *layout(repo, need, code, url, qr_lines(url), tty.width(), opened, copied))
-        with tty.keys():
+        with tty.keys():   # key-at-a-time before the screen says it's waiting: a key pressed at once counts
+            tty.say("", *layout(repo, need, code, url, qr_lines(url), tty.width(), opened, copied))
             r = wait_for_token(tty, cid, d)
         if r == "expired":
             tty.say("", "The code expired: here's a new one.")

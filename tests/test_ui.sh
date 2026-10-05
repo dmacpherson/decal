@@ -25,7 +25,9 @@ P="$T_TMP/prof"; mkdir -p "$P"; printf '[base]\non = true\n[onlydev.dev]\non = t
 export T_TMP DECAL_MODULES_DIR="$M" DECAL_PLATFORM=fedora DECAL_PROFILE="$P" LS_TEST_LOG="$T_TMP/log"; : > "$LS_TEST_LOG"
 D() {  # D CMD... -- KEYS: drive the menu, starting once its main screen is up (keys sent while it loads can be lost)
   local cmd=() ; while [[ $1 != -- ]]; do cmd+=("$1"); shift; done; shift
-  python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "${cmd[@]}" -- "UNTIL:q quit" "$@"; }
+  python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "${cmd[@]}" -- "UNTIL:q quit" "$@"; local rc=$?
+  if (( rc == 125 )); then _t_fail "a screen never showed: $(tail -1 "$T_TMP/screen")"; fi   # a lost key fails loudly
+  return "$rc"; }
 
 D "$REPO/decal" ui -- q; assert_eq "$?" "0" "menu opens, q quits"
 S=$(cat "$T_TMP/screen")
