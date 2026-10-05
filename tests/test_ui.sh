@@ -92,4 +92,20 @@ mkdir -p "$T_TMP/jk-other"; printf '[base]\non = true\n' > "$T_TMP/jk-other/prof
 D "$REPO/decal" ui -- 1 "UNTIL:Sign in to see" UP ENTER "UNTIL:tab completes" "$T_TMP/jk-other" ENTER WAIT ENTER WAIT ENTER WAIT ENTER WAIT ENTER q
 assert_contains "$(cat "$T_TMP/screen")" "$ decal use $T_TMP/jk-other" "enter a profile: used (j and k typed as letters, not moves)"
 assert_contains "$(cat "$T_TMP/screen")" "Stuck on:" "...then applied (base may already be up to date from earlier flows)"
+# usb: the command the menu runs, drive labels, the stick menu
+py2() { python3 -c "import sys, json; sys.path.insert(0, '$REPO/lib'); import ui; print($1)"; }
+assert_eq "$(py2 'ui.usb_cmd("github:me/p", "saved-key", "newest", False, "/run/media/me/Ventoy")')" \
+  "['usb', '--from', 'github:me/p', '--how', 'saved-key', '--decal', 'newest', '--to', '/run/media/me/Ventoy']" "usb_cmd"
+assert_eq "$(py2 'ui.usb_cmd("/p", "copy", "copy", True, "folder")')" "['usb', '--from', '/p', '--how', 'copy', '--decal', 'copy', '--to', 'folder', '--arm']" "usb_cmd: ARM, folder"
+assert_eq "$(py2 'ui.drive_label({"label": "Ventoy", "size": 57700000000, "mount": "/m", "ventoy": True, "isos": 14})')" "Ventoy · 14 ISOs · 57.7 GB" "drive label: Ventoy"
+assert_eq "$(py2 'ui.drive_label({"label": "SPARE", "size": 8000000000, "mount": ""})')" "SPARE · 8.0 GB · not mounted" "drive label: unmounted"
+assert_eq "$(py2 '[w for k, w, l in ui.STICK_ITEMS]')" "['apply-all', 'choose', 'preview', 'remove-all', 'status', 'other', 'full']" "stick menu: the order"
+assert_eq "$(py2 'ui.stick_header({"profile": "github:me/p"}, "just now")')" "From your USB stick: me/p · updated just now" "stick header"
+assert_eq "$(py2 'ui.stick_header({"profile": "copy"}, "")')" "From your USB stick: the profile copy on it" "stick header: a copy"
+# stick mode: started from a stick, the menu shows the header and its choices
+SK="$T_TMP/sk/.Decal"; mkdir -p "$SK"; printf 'profile=github:me/p\nkey=saved\ndecal=newest\n' > "$SK/stick.conf"
+DECAL_STICK="$SK" D "$REPO/decal" ui -- q
+assert_contains "$(cat "$T_TMP/screen")" "From your USB stick: me/p" "stick mode: header"
+assert_contains "$(cat "$T_TMP/screen")" "Apply everything" "stick mode: its choices"
+assert_contains "$(cat "$T_TMP/screen")" "Full menu" "stick mode: the way to everything else"
 t_done

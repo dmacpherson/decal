@@ -20,6 +20,7 @@ ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 MENU = [  # key, word (the command), the sticker aside, what it does
     ("1", "apply", "stick it on", "put a profile on this machine"),
     ("2", "stamp", "take a print", "save this machine's setup as a profile"),
+    ("6", "usb", "a stick", "put decal on a USB stick"),
     ("3", "remove", "peel it off", "undo what decal changed"),
     ("4", "update", "fresh sheet", ""),
     ("5", "logs", "the fine print", "what the last run did"),
@@ -123,6 +124,32 @@ def remove_cmds(tags, mods):
     return [["remove", "all", "--only", t] for t in tags] + ([["remove", *mods]] if mods else [])
 
 
+
+
+def usb_cmd(profile, how, dmode, arm, to):
+    return ["usb", "--from", profile, "--how", how, "--decal", dmode, "--to", to] + (["--arm"] if arm else [])
+
+
+def drive_label(d):
+    parts = [d["label"]]
+    if d.get("ventoy"):
+        parts.append(f"{d.get('isos', 0)} ISOs")
+    parts.append(f"{d['size'] / 1e9:.1f} GB")
+    if not d.get("mount"):
+        parts.append("not mounted")
+    return " · ".join(parts)
+
+
+STICK_ITEMS = [("1", "apply-all", "Apply everything"), ("2", "choose", "Choose what to apply"),
+               ("3", "preview", "Preview first"), ("4", "remove-all", "Take it all off"),
+               ("5", "status", "What's on this machine"), ("6", "other", "Use a different profile"),
+               ("7", "full", "Full menu")]
+
+
+def stick_header(conf, updated):
+    p = conf.get("profile", "")
+    what = "the profile copy on it" if p == "copy" else p.removeprefix("github:")
+    return f"From your USB stick: {what}" + (f" · updated {updated}" if updated else "")
 
 GROUPS = [("github", "On GitHub"), ("file", "On this machine"), ("stick", "On USB sticks"), ("recent", "Recently used")]
 
@@ -519,7 +546,7 @@ class UI:
                          "You'll see a preview of every change before anything happens.",
                          "enter go on · esc back")
 
-    def do_new(self, start_from=""):
+    def do_new(self, start_from="", use=None):
         how = start_from or self.choose("New profile · start from", [
             ("this machine", "a stamp of how it's set up now", "this-machine"),
             ("a copy of a profile…", "then change it", "copy"),
@@ -541,12 +568,115 @@ class UI:
         name = self.ask("New profile · name", "letters, digits, - _ .", f"decal-{me}")
         if not name:
             return None
-        use = self.choose("New profile · use it now?", [("yes", "make it the active profile", True), ("no", "", False)])
+        if use is None:
+            use = self.choose("New profile · use it now?", [("yes", "make it the active profile", True), ("no", "", False)])
         if use is None:
             return None
         cmd = ["new", name, "--from", frm, "--to", where] + (["--use"] if use else [])
-        self.run([cmd], f"New profile: {name}", "Couldn't make it (see above)")
-        return name
+        rc = self.run([cmd], f"New profile: {name}", "Couldn't make it (see above)")
+        return name if rc == 0 else None
+
+    def do_usb(self):
+        v = self.browse("USB · which profile?", "apply")
+        if v is None:
+            return
+        if v.get("action") == "new":
+            if not self.do_new(use=True):
+                return
+            self.d.load()
+            src = profiles.active()
+        elif v.get("action") == "enter":
+            src = self.ask("USB · which profile?", "a link, owner/name, a file or a folder")
+            if not src:
+                return
+        else:
+            src = v["source"]
+        r = subprocess.run([sys.executable, os.path.join(REPO, "lib", "source.py"), "resolve", src], capture_output=True, text=True, env=ENV)
+        if r.returncode != 0:
+            self.view("USB · that profile", r.stderr.strip(), "esc back")
+            return
+        canon = r.stdout.split("\t")[1]
+        if canon.startswith("github:"):
+            pub = subprocess.run([sys.executable, os.path.join(REPO, "lib", "source.py"), "public", canon], env=ENV).returncode == 0
+            opts = [("always the latest", "public: no key needed", "latest"), ("a copy", "doesn't change until you run usb again", "copy")] if pub else [
+                ("a saved read-only key", "the stick reads your repo by itself (recommended)", "saved-key"),
+                ("sign in each time", "nothing secret on the stick", "sign-in"),
+                ("a copy", "no key; doesn't change until you run usb again", "copy")]
+            how = self.choose("USB · how does the stick get it?", opts)
+        else:
+            how = "copy"
+        if how is None:
+            return
+        dmode = self.choose("USB · which decal should it run?", [
+            ("the newest, with a copy as backup", "recommended", "newest"),
+            ("always the copy on the stick", "the same version everywhere; no download", "copy"),
+            ("always the newest, no copy", "needs internet every time", "online")])
+        if dmode is None:
+            return
+        arm = self.choose("USB · also for ARM machines?", [("no", "regular PCs (almost every laptop and desktop)", False),
+                                                          ("yes", "adds .Decal/Decal-ARM", True)])
+        if arm is None:
+            return
+        ds = json.loads(subprocess.run([sys.executable, os.path.join(REPO, "lib", "usb.py"), "drives", "--json"],
+                                       capture_output=True, text=True, env=ENV).stdout or "[]")
+        to = self.choose("USB · where?", [(drive_label(d), d["mount"] or d["device"], d["mount"] or d["device"]) for d in ds]
+                         + [("a folder", "I'll copy it myself: ~/decal-usb", "folder")])
+        if to is None:
+            return
+        self.run([usb_cmd(canon, how, dmode, arm, to)], "The stick is ready: double-click Decal on any Linux PC", "No stick written (see above)")
+
+    def stick_main(self):
+        conf = {}
+        try:
+            for line in open(os.path.join(os.environ["DECAL_STICK"], "stick.conf")):
+                line = line.split("#", 1)[0].strip()
+                if "=" in line:
+                    k, val = line.split("=", 1)
+                    conf[k.strip()] = val.strip()
+        except OSError:
+            pass
+        i = 0
+        while True:
+            top = self.header()
+            self.put(top, 2, stick_header(conf, "just now"), self.c(5, curses.A_BOLD))
+            for n, (key, word, label) in enumerate(STICK_ITEMS):
+                self.put(top + 2 + n, 2, key, self.c(4, curses.A_BOLD))
+                self.put(top + 2 + n, 5, f" {label} ", (curses.A_REVERSE if n == i else 0) | curses.A_BOLD)
+            self.footer("↑↓ move · enter or a number to choose · q quit")
+            k = self.key()
+            if k == "up": i = (i - 1) % len(STICK_ITEMS)
+            elif k == "down": i = (i + 1) % len(STICK_ITEMS)
+            elif k == "q": return
+            elif k is None or k in ("resize", "esc"): continue
+            else:
+                pick = STICK_ITEMS[i][1] if k == "enter" else next((w for key, w, _ in STICK_ITEMS if key == k), None)
+                if pick == "full":
+                    return self.main()
+                if pick == "apply-all":
+                    cmds = [["add", "all"]]
+                    if self.view("Apply everything · preview (nothing changed yet)", self.preview("apply", cmds), "enter apply · esc back"):
+                        self.run(cmds, "Stuck on", "Apply stopped: see Logs")
+                elif pick == "choose":
+                    self.apply_picked()
+                elif pick == "preview":
+                    self.view("Preview · nothing changed", self.preview("apply", [["add", "all"]]), "esc back")
+                elif pick == "remove-all":
+                    if self.ask("Take it all off", 'type "remove" to undo everything decal changed here') == "remove":
+                        self.run([["remove", "all"]], "Peeled off cleanly", "Remove stopped: see Logs")
+                elif pick == "status":
+                    self.view("What's on this machine", decal("status")[1], "esc back")
+                elif pick == "other":
+                    self.do_apply()
+
+    def apply_picked(self):
+        pick = self.picker("Apply · stick it on · choose", "apply")
+        if not pick:
+            return
+        tags, mods = pick
+        cmds = apply_cmds(tags, mods, [m for m in sorted(self.d.all) if self.available(m, set(tags))])
+        if self.view("Apply · preview (nothing changed yet)", self.preview("apply", cmds),
+                     "enter apply · ↑↓ scroll · esc back"):
+            self.run(cmds, f"Stuck on: {len(mods)} modules", "Apply stopped: see Logs (the fine print)")
 
     # --- the actions -------------------------------------------------------------------------------------------
     def do_apply(self):
@@ -568,14 +698,7 @@ class UI:
         if not v.get("active"):
             if self.run([["use", src]], "that's the active profile now", "couldn't use it (see above)") != 0:
                 return
-        pick = self.picker("Apply · stick it on · choose", "apply")
-        if not pick:
-            return
-        tags, mods = pick
-        cmds = apply_cmds(tags, mods, [m for m in sorted(self.d.all) if self.available(m, set(tags))])
-        if self.view("Apply · preview (nothing changed yet)", self.preview("apply", cmds),
-                     "enter apply · ↑↓ scroll · esc back"):
-            self.run(cmds, f"Stuck on: {len(mods)} modules", "Apply stopped: see Logs (the fine print)")
+        self.apply_picked()
 
     def do_stamp(self):
         pick = self.picker("Stamp · take a print · choose", "stamp")
@@ -673,11 +796,20 @@ class UI:
 
 def main():
     os.environ.setdefault("ESCDELAY", "25")
+    start = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    def run(scr):
+        ui = UI(scr)
+        if start == "usb":
+            ui.do_usb()
+        if os.environ.get("DECAL_STICK"):
+            ui.stick_main()
+        else:
+            ui.main()
     try:
-        curses.wrapper(lambda scr: UI(scr).main())
+        curses.wrapper(run)
     except KeyboardInterrupt:
         pass
-
 
 if __name__ == "__main__":
     main()
