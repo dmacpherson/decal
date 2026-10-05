@@ -7,7 +7,8 @@ implementation; this file records what's already decided so each part's design s
 | Part | What | Status |
 |---|---|---|
 | 1 | GitHub sign-in | **Done** (merged 2026-10-04): `docs/superpowers/specs/2026-10-04-github-sign-in-design.md` |
-| 2 | Profile browser | Next: design |
+| 2 | Profile browser | Spec written: `docs/superpowers/specs/2026-10-04-profile-browser-design.md` |
+| 2b | Profile review ("What this profile will do") | After 2 |
 | 3 | USB maker | After 2 |
 | 4 | Save back from a stick | After 3 |
 
@@ -53,6 +54,22 @@ One screen, reused by apply, stamp, remove and usb in place of their own "where'
 
 Open questions for its design: how repos are found (name pattern `decal-*`, a topic, or a `profile.toml` check per
 repo), how local stamp files are found, what the browser shows per profile (last stamped, private/public, modules).
+
+## Part 2b: Profile review
+
+A "What this profile will do" screen before applying a profile that isn't yours (and `decal review PROFILE` for any):
+everything it installs or downloads, grouped, with notes where a trust signal is weak. Information, not a block.
+
+| Asks for | Check | Flag when |
+|---|---|---|
+| Flatpaks | Flathub API: exists, verified publisher, install count | not on Flathub, unverified, very few installs |
+| GNOME extensions | extensions.gnome.org (reviewed): downloads, last update | from a git URL, or not updated for this GNOME |
+| Homebrew formulas | core vs third-party tap | `user/tap/formula` |
+| Native packages | the distro's repos | (listed; removals listed too) |
+| Theme/icon/font/splash sources | the link's host | not a well-known host, a bare IP, a shortener, `http://` |
+| Files in the profile | type and size | executables, scripts, unusually large files |
+
+Honest limit: catches the obvious cases; the "not yours" warning (part 2) stays the real protection.
 
 ## Part 3: USB maker
 
