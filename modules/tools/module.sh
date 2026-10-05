@@ -11,7 +11,6 @@ declare -A T_KEEP=([uv]="installed Pythons and tools in ~/.local/share/uv and th
 BIN="$HOME/.local/bin"
 REC="$LS_USER_STATE/tools.installed"
 _known() { printf '%s ' "${!T_URL[@]}" | xargs -n1 | sort | xargs; }
-_ours() { grep -qxF "$1" "$REC" 2>/dev/null; }
 _present() { local b; for b in ${T_BINS[$1]}; do [[ -x $BIN/$b ]] || have "$b" || return 1; done; }
 
 _add() {
@@ -22,7 +21,7 @@ _add() {
     step "installing $t"
     inst=$(ls_fetch "${T_URL[$t]}") || die "could not download the $t installer from ${T_URL[$t]}"
     env "${envs[@]}" sh "$inst" || die "the $t installer failed"
-    mkdir -p "$LS_USER_STATE"; _ours "$t" || echo "$t" >> "$REC"
+    mkdir -p "$LS_USER_STATE"; rec_add "$REC" "$t"
   elif (( ${#upd[@]} )); then
     step "updating $t"
     run env PATH="$BIN:$PATH" "${upd[@]}" || warn "$t: '${T_UPDATE[$t]}' failed (still installed)"
@@ -30,7 +29,7 @@ _add() {
 }
 _remove() {   # only what decal installed
   local t=$1 b files=()
-  _ours "$t" || return 0
+  rec_has "$REC" "$t" || return 0
   read -ra files <<<"${T_FILES[$t]:-}"
   for b in ${T_BINS[$t]}; do run rm -f "$BIN/$b"; done
   if (( ${#files[@]} )); then run rm -f "${files[@]}"; fi

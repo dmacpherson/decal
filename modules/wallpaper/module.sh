@@ -71,10 +71,7 @@ _desktop_add() {  # IMG
   run mkdir -p "$(dirname "$DESK_IMG")" "$LS_USER_STATE"
   if (( P_desktop_blur == 0 && P_desktop_brightness == 100 )); then run cp "$img" "$DESK_IMG"
   else run bash desktop.sh "$img" "$P_desktop_blur" "$P_desktop_brightness" "$DESK_IMG"; fi
-  if [[ ! -e $prev && $LS_DRY_RUN != 1 ]]; then
-    { echo "picture-uri=$(gsettings get org.gnome.desktop.background picture-uri)"
-      echo "picture-uri-dark=$(gsettings get org.gnome.desktop.background picture-uri-dark)"; } > "$prev"
-  fi
+  gs_save "$prev" org.gnome.desktop.background picture-uri picture-uri-dark
   run gsettings set org.gnome.desktop.background picture-uri "file://$DESK_IMG"
   run gsettings set org.gnome.desktop.background picture-uri-dark "file://$DESK_IMG"
 }
@@ -109,11 +106,7 @@ _login_remove() {
   if [[ -d $LS_STATE/wallpaper ]]; then srun rm -rf "$LS_STATE/wallpaper"; fi
 }
 _desktop_remove() {
-  local prev="$LS_USER_STATE/wallpaper.prev" k v
-  if [[ -r $prev ]]; then
-    while IFS='=' read -r k v; do run gsettings set org.gnome.desktop.background "$k" "$v"; done < "$prev"
-    run rm -f "$prev"
-  fi
+  gs_restore "$LS_USER_STATE/wallpaper.prev" org.gnome.desktop.background
   if [[ -e $DESK_IMG ]]; then run rm -f "$DESK_IMG"; fi
 }
 module_remove() { _login_remove; _desktop_remove; }

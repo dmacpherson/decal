@@ -16,7 +16,6 @@ _themes_in() {  # icon themes (index.theme), skipping cursor-only ones
   done
 }
 _wanted() { if [[ ${P_install[0]:-all} == all ]]; then return 0; fi; printf '%s\n' "${P_install[@]}" | grep -qxF "$1"; }
-_ours() { grep -qxF "$1" "$REC" 2>/dev/null; }
 # the icon theme to use: generated when another theme's folders go on top, or when GNOME's own UI symbols
 # replace the theme's (KDE-style symbolic icons render badly in GNOME)
 _final() {
@@ -47,9 +46,7 @@ module_add() {
   while IFS= read -r d; do
     n=$(_norm "$(basename "$d")"); avail+=("$n")
     _wanted "$n" || continue
-    if [[ -e $ICONS/$n ]] && ! _ours "$n"; then warn "$ICONS/$n already exists and isn't from decal: left as is"; continue; fi
-    rm -rf "${ICONS:?}/$n"; cp -a "$d" "$ICONS/$n"
-    _ours "$n" || echo "$n" >> "$REC"
+    install_owned "$ICONS" "$n" "$d" "$REC"
   done < <(_themes_in "$src")
   [[ -d $ICONS/$P_theme ]] || die "icon theme '$P_theme' not found (available: ${avail[*]:-none})"
   # generated themes from earlier runs that are no longer wanted
@@ -65,37 +62,20 @@ module_add() {
     if [[ $P_symbolic == adwaita ]]; then fargs+=(--no-symbolic); fi
     step "building the combined icon theme"
     python3 "$MODULE_DIR/combine.py" "$ICONS/$P_theme" "$ICONS/$(_final)" "$(_final)" "${fargs[@]}"
-    _ours "$(_final)" || _final >> "$REC"
+    rec_add "$REC" "$(_final)"
   fi
   if have gtk-update-icon-cache; then gtk-update-icon-cache -qf "$ICONS/$(_final)" >/dev/null 2>&1 || true; fi
   _warn_inherits
-  if [[ ! -e $PREV ]]; then echo "icon-theme=$(gsettings get org.gnome.desktop.interface icon-theme)" > "$PREV"; fi
+  gs_save "$PREV" org.gnome.desktop.interface icon-theme
   run gsettings set org.gnome.desktop.interface icon-theme "$(_final)"
 }
 module_remove() {
-  local k v n
-  if [[ -r $PREV ]]; then
-    while IFS='=' read -r k v; do run gsettings set org.gnome.desktop.interface "$k" "$v"; done < "$PREV"
-    run rm -f "$PREV"
-  fi
-  if [[ -r $REC ]]; then
-    while IFS= read -r n; do if [[ -n $n ]]; then run rm -rf "${ICONS:?}/$n"; fi; done < "$REC"
-    run rm -f "$REC"
-  fi
+  gs_restore "$PREV" org.gnome.desktop.interface
+  rec_remove_all "$REC" "$ICONS"
 }
 module_status() {
   if [[ ! -r $REC ]]; then echo not-installed; return 0; fi
   local cur; cur=$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")
   if [[ $cur == "$(_final)" && -d $ICONS/$(_final) ]]; then echo installed; else echo "partial (icon theme is '$cur')"; fi
 }
-# stamp: the theme you picked, bundled into the stamp if you installed it into your home (the system's own themes
-# come with the system: nothing to carry)
-module_stamp() {
-  have dconf || return 0
-  local t d b; t=$(dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null | tr -d "'"); [[ -n $t ]] || return 0
-  for b in "${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons"; do if [[ -d $b/$t ]]; then d=$b/$t; break; fi; done
-  if [[ -z ${d:-} ]]; then stamp_note "icons: $t (comes with the system: not stamped)"; return 0; fi
-  stamp_copy "$d" "themes/icons/$t" >/dev/null
-  stamp_note "icons: $t (bundled, $(du -sh "$d" 2>/dev/null | cut -f1))"
-  printf '[icons]\nsource = "themes/icons"\ntheme = "%s"\n' "$t"
-}
+module_stamp() { stamp_theme icons icon-theme "${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons"; }   # your theme, bundled when it's in your home

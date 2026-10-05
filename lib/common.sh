@@ -90,6 +90,45 @@ state_append() {
 
 # stamp helpers (module_stamp): a line for the summary; copy a file/folder into the stamp (prints REL);
 # a TOML list of strings
+# --- what a module put in place: one name per line in a record, so remove takes exactly that ---
+rec_has() { grep -qxF "$2" "$1" 2>/dev/null; }            # rec_has REC NAME
+rec_add() { rec_has "$1" "$2" || echo "$2" >> "$1"; }     # rec_add REC NAME
+# rec_remove_all REC DIR : remove DIR/NAME for each NAME in REC, then REC
+rec_remove_all() {
+  [[ -r $1 ]] || return 0
+  local n; while IFS= read -r n; do if [[ -n $n ]]; then run rm -rf "${2:?}/$n"; fi; done < "$1"
+  run rm -f "$1"
+}
+# install_owned DIR NAME SRC REC : SRC copied to DIR/NAME and recorded; a DIR/NAME decal didn't put there is left as is
+install_owned() {
+  if [[ -e $1/$2 ]] && ! rec_has "$4" "$2"; then warn "$1/$2 already exists and isn't from decal: left as is"; return 0; fi
+  rm -rf "${1:?}/$2"; cp -a "$3" "$1/$2"; rec_add "$4" "$2"
+}
+# gs_save PREV SCHEMA KEY... : the keys' current values, saved once (the first add) for remove to put back
+gs_save() {
+  local f=$1 s=$2 k; shift 2
+  if [[ -e $f || $LS_DRY_RUN == 1 ]]; then return 0; fi
+  mkdir -p "$(dirname "$f")"
+  for k; do echo "$k=$(gsettings get "$s" "$k")"; done > "$f"
+}
+# gs_restore PREV SCHEMA : put the saved values back, then forget them
+gs_restore() {
+  [[ -r $1 ]] || return 0
+  local k v; while IFS='=' read -r k v; do run gsettings set "$2" "$k" "$v"; done < "$1"
+  run rm -f "$1"
+}
+# stamp_theme MODULE KEY DIR... : the theme in org.gnome.desktop.interface KEY, bundled into the stamp when it's
+# installed in one of DIRs (your home); the system's own themes come with the system, so there's nothing to carry
+stamp_theme() {
+  have dconf || return 0
+  local m=$1 key=$2 t d="" b; shift 2
+  t=$(dconf read "/org/gnome/desktop/interface/$key" 2>/dev/null | tr -d "'"); [[ -n $t ]] || return 0
+  for b; do if [[ -d $b/$t ]]; then d=$b/$t; break; fi; done
+  if [[ -z $d ]]; then stamp_note "$m: $t (comes with the system: not stamped)"; return 0; fi
+  stamp_copy "$d" "themes/$m/$t" >/dev/null
+  stamp_note "$m: $t (bundled, $(du -sh "$d" 2>/dev/null | cut -f1))"
+  printf '[%s]\nsource = "themes/%s"\ntheme = "%s"\n' "$m" "$m" "$t"
+}
 stamp_note() { printf '%s\n' "$*" >> "$STAMP_NOTES"; }
 stamp_copy() { mkdir -p "$STAMP_DIR/$(dirname "$2")"; cp -aL "$1" "$STAMP_DIR/$2"; printf '%s' "$2"; }
 toml_list() { local x items=() IFS=,; for x; do x=${x//\\/\\\\}; items+=("\"${x//\"/\\\"}\""); done; printf '[%s]' "${items[*]}" | sed 's/","/", "/g'; }
