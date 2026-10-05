@@ -17,6 +17,11 @@ warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# safe_name NAME : a plain name (a theme, a UUID, an adapter): no /, not . or .., not starting with -, no control
+# characters. The profile check already enforces this; modules check again where a name becomes a path or argument.
+safe_name() { [[ -n $1 && $1 != */* && $1 != . && $1 != .. && $1 != -* && $1 != *[[:cntrl:]]* ]]; }
+# inside DIR PATH : PATH (links followed, .. resolved) is somewhere under DIR
+inside() { local d p; d=$(realpath -m -- "$1") && p=$(realpath -m -- "$2") && [[ $p == "$d"/* ]]; }
 # run CMD...  : execute, or print under --dry-run
 run()  { if [[ $LS_DRY_RUN == 1 ]]; then printf '[dry-run] %s\n' "$*" >&2; else "$@"; fi; }
 # srun CMD... : like run, with sudo when not root

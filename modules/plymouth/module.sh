@@ -33,6 +33,7 @@ module_add() {
   # mutable systems: new packages or theme files mean a rebuilt initramfs (on Fedora Atomic any
   # change stages a new deployment, which rebuilds it anyway)
   local p dest; dest=$(sys_path "/usr/share/plymouth/themes/$P_theme")
+  if ! safe_name "$P_theme" || ! inside "$(sys_path /usr/share/plymouth/themes)" "$dest"; then die "not a plymouth theme name: $P_theme"; fi
   if [[ $PLATFORM != fedora-atomic ]]; then
     for p in plymouth plymouth-script-plugin; do p=$(_pkg_name "$p"); if [[ -n $p ]] && ! _pkg_present "$p"; then initramfs_dirty; fi; done
     if [[ -d $src ]] && ! diff -rq "$src" "$dest" >/dev/null 2>&1; then initramfs_dirty; fi

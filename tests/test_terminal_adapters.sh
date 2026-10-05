@@ -53,6 +53,6 @@ mod() { mod_run terminal "$@"; }
 mod module_add 2>/dev/null; : > "$STUBS/calls"
 sed -i 's/^app = "ptyxis"/app = "kitty"/' "$PROFILE_DIR/profile.toml"; mod module_add 2>/dev/null
 assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/abc/ palette 'gnome'" "ptyxis unconfigured"
-assert_contains "$(calls)" "dnf install -y kitty" "kitty installed via backend"
+assert_contains "$(calls)" "dnf install -y -- kitty" "kitty installed via backend"
 assert_eq "$(head -1 "$XDG_CONFIG_HOME/xdg-terminals.list")" "kitty.desktop" "kitty is default"
 t_done

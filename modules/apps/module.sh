@@ -21,7 +21,7 @@ _unwanted_add() {
   for id in "${P_remove_flatpaks[@]}"; do
     _fp_present "$id" || continue
     origin=$(flatpak info --system --show-origin "$id" 2>/dev/null || echo "$P_remote")
-    srun flatpak uninstall --system --noninteractive -y "$id"
+    srun flatpak uninstall --system --noninteractive -y -- "$id"
     state_append "$REMOVED_FP" "$id $origin"
   done
   if (( ${#P_remove_packages[@]} )); then pkg_uninstall apps "${P_remove_packages[@]}"; fi
@@ -29,7 +29,7 @@ _unwanted_add() {
 _unwanted_restore() {
   local id origin
   if [[ -r $REMOVED_FP ]]; then
-    while read -r id origin; do if [[ -n $id ]]; then srun flatpak install --system --noninteractive -y "$origin" "$id"; fi; done < "$REMOVED_FP"
+    while read -r id origin; do if [[ -n $id ]]; then srun flatpak install --system --noninteractive -y -- "$origin" "$id"; fi; done < "$REMOVED_FP"
     srun rm -f "$REMOVED_FP"
   fi
   pkg_restore apps
@@ -80,7 +80,7 @@ _defaults_add() {
     if [[ -z $mimes ]]; then warn "unknown role '$role' (roles: $(grep -vE '^\s*(#|$)' "$MODULE_DIR/roles.list" | awk '{print $1}' | tr '\n' ' '))"; continue; fi
     if ! _desktop_exists "$desk"; then
       if flatpak remote-info --system "$P_remote" "$app" >/dev/null 2>&1; then
-        srun flatpak install --system --noninteractive -y "$P_remote" "$app"
+        srun flatpak install --system --noninteractive -y -- "$P_remote" "$app"
         state_append "$MANAGED" "$app"
       else
         warn "$role: $app is not installed and not on $P_remote; skipped"; continue
@@ -124,10 +124,10 @@ _defaults_ok() {
 module_add() {
   _contradictions
   pkg_install apps flatpak
-  srun flatpak remote-add --system --if-not-exists "$P_remote" "$P_remote_url"
+  srun flatpak remote-add --system --if-not-exists -- "$P_remote" "$P_remote_url"
   local missing=() id
   for id in "${P_flatpaks[@]}"; do _fp_present "$id" || missing+=("$id"); state_append "$MANAGED" "$id"; done
-  if (( ${#missing[@]} )); then step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y "$P_remote" "${missing[@]}"; fi
+  if (( ${#missing[@]} )); then step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y -- "$P_remote" "${missing[@]}"; fi
   if (( ${#P_packages[@]} )); then pkg_install apps "${P_packages[@]}"; fi
   _unwanted_add
   _defaults_add
@@ -145,7 +145,7 @@ module_remove() {
   if [[ -r $MANAGED ]]; then
     while IFS= read -r id; do if [[ -n $id ]] && _fp_present "$id"; then present+=("$id"); fi; done < "$MANAGED"
   fi
-  if (( ${#present[@]} )); then srun flatpak uninstall --system --noninteractive -y "${extra[@]}" "${present[@]}"; fi
+  if (( ${#present[@]} )); then srun flatpak uninstall --system --noninteractive -y "${extra[@]}" -- "${present[@]}"; fi
   if have flatpak && [[ -r $MANAGED ]]; then srun flatpak uninstall --system --unused --noninteractive -y; fi
   if [[ -e $MANAGED ]]; then srun rm -f "$MANAGED"; fi
   _unwanted_restore
@@ -162,8 +162,8 @@ module_drop() {
   done
   if (( ${#present[@]} )); then
     step "uninstalling ${present[*]}"
-    if [[ $P_purge_data == true ]]; then srun flatpak uninstall --system --noninteractive -y --delete-data "${present[@]}"
-    else srun flatpak uninstall --system --noninteractive -y "${present[@]}"; fi
+    if [[ $P_purge_data == true ]]; then srun flatpak uninstall --system --noninteractive -y --delete-data -- "${present[@]}"
+    else srun flatpak uninstall --system --noninteractive -y -- "${present[@]}"; fi
     srun flatpak uninstall --system --unused --noninteractive -y
   fi
   for id in "${P_show[@]}"; do f="$(_show_dir)/$id.desktop"; if _show_ours "$f"; then run rm -f "$f"; fi; done

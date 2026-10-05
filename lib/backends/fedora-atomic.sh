@@ -24,7 +24,7 @@ import json,sys; sys.exit(0 if json.load(sys.stdin)["deployments"][0].get("regen
 
 _pkg_present() {   # check the pending deployment if there is one
   local r; r=$(_pending_root)
-  if [[ -n $r && -d $r/usr/share/rpm ]]; then rpm -q --quiet --dbpath "$r/usr/share/rpm" "$1"; else rpm -q --quiet "$1"; fi
+  if [[ -n $r && -d $r/usr/share/rpm ]]; then rpm -q --quiet --dbpath "$r/usr/share/rpm" -- "$1"; else rpm -q --quiet -- "$1"; fi
 }
 # a staged deployment: reboot needed, and (while regeneration is on) its initramfs was rebuilt from the current /etc
 _staged() { need_reboot; if [[ $LS_DRY_RUN != 1 ]] && _initramfs_enabled; then _initramfs_clean; fi; }
@@ -35,8 +35,8 @@ _initramfs_stale() {
   have=$(_ostree_json | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["deployments"][0].get("initramfs-args", [])))')
   [[ $want != "$have" ]]
 }
-_pkg_add() { srun rpm-ostree install --allow-inactive "$@"; _staged; }
-_pkg_del() { srun rpm-ostree uninstall "$@"; _staged; }
+_pkg_add() { srun rpm-ostree install --allow-inactive -- "$@"; _staged; }
+_pkg_del() { srun rpm-ostree uninstall -- "$@"; _staged; }
 
 _tree_hash() { (cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum | cut -c1-12; }
 _container_engine() { if have podman; then echo podman; elif have docker; then echo docker; else die "podman or docker is required to build RPMs on Fedora Atomic"; fi; }
@@ -135,7 +135,7 @@ _initramfs_rebuild() {   # ACTION(require|release) OWNER — intent is passed so
 }
 
 # base-image packages are hidden with an override; layered ones are uninstalled
-_pkg_del_check() { return 0; }   # rpm-ostree refuses by itself if something depends on the package
+_pkg_del_check() { return 0; }   # rpm-ostree refuses by itself if something depends on the package (names -- checked by the profile)
 _pkg_uninstall_names() {
   local req n base=() layered=(); req=$(_requested)
   for n in "$@"; do if grep -qx "$n" <<<"$req"; then layered+=("$n"); else base+=("$n"); fi; done

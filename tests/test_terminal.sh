@@ -120,7 +120,7 @@ mod_run_pre() { ls_fetch() { printf '%s\n' "echo \"installer NONINTERACTIVE=\${N
   "mkdir -p $DECAL_BREW_PREFIX/bin; cp $T_TMP/fakebrew $DECAL_BREW_PREFIX/bin/brew" > "$T_TMP/inst.sh"; echo "$T_TMP/inst.sh"; }; }
 printf '%s\n' '#!/usr/bin/env bash' "echo \"brew \$*\" >> $STUBS/calls" '[ "$1" = shellenv ] && echo "export PATH=\"'"$DECAL_BREW_PREFIX"'/bin:\$PATH\""; exit 0' > "$T_TMP/fakebrew"; chmod +x "$T_TMP/fakebrew"
 mod module_add >/dev/null 2>&1; assert_eq "$?" "0" "add succeeds without Homebrew"
-assert_contains "$(calls)" "dnf install -y git" "git installed for Homebrew"
+assert_contains "$(calls)" "dnf install -y -- git" "git installed for Homebrew"
 assert_contains "$(calls)" "installer NONINTERACTIVE=1" "Homebrew installer run non-interactively"
 assert_contains "$(calls)" "brew bundle --file" "the new brew installs the tools"
 assert_file "$DECAL_USER_STATE/terminal.homebrew" "recorded that decal installed Homebrew"
@@ -128,4 +128,9 @@ assert_contains "$(cat "$XDG_CONFIG_HOME/decal/terminal/bashrc.sh")" "/home/linu
 : > "$STUBS/calls"; mod module_add >/dev/null 2>&1
 assert_not_contains "$(calls)" "installer" "installed but not on PATH: not installed again"
 unset -f mod_run_pre; unset DECAL_BREW_PREFIX
+# defence in depth: an adapter or preset name that isn't a plain name is refused even if handed in directly
+out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$PWD; source ./module.sh; _load_adapter "../../../tmp/evil") 2>&1); assert_eq "$?" "1" "adapter ../: refused"
+assert_contains "$out" "unknown TERMINAL" "...as an unknown terminal"
+out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$PWD; source ./module.sh; _preset themes "../../x") 2>&1); assert_eq "$?" "1" "preset ../: refused"
+out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$PWD; source ./module.sh; P_brew=('jq"; system("id"); "'); P_features_prompt=false; for f in fuzzy completions history jump ls cat; do eval "P_features_$f=false"; done; _gen_brewfile) 2>&1); assert_eq "$?" "1" "a formula that isn't a name: refused"
 t_done

@@ -11,7 +11,7 @@ run_mod() { mod_run docker "module_$1"; }
 # Fedora (mutable): packages, socket enabled, docker-compose command, user in the docker group
 stub getent 'echo "docker:x:975:"'; printf 'docker:x:975:\n' >> "$G"
 out=$(DECAL_PLATFORM=fedora run_mod add 2>&1); assert_eq "$?" "0" "add rc"
-assert_contains "$(calls)" "dnf install -y moby-engine docker-compose" "engine + compose installed"
+assert_contains "$(calls)" "dnf install -y -- moby-engine docker-compose" "engine + compose installed"
 assert_eq "$(readlink "$DECAL_ROOT/etc/systemd/system/sockets.target.wants/docker.socket")" "/usr/lib/systemd/system/docker.socket" "docker.socket enabled"
 assert_contains "$(cat "$DECAL_ROOT/usr/local/bin/docker-compose")" 'exec docker compose "$@"' "docker-compose command"
 assert_contains "$(calls)" "usermod -aG docker tester" "user added to the docker group"
@@ -28,7 +28,7 @@ printf 'wheel:x:10:me\n' > "$G"; stub rpm 'exit 1'; stub getent 'exit 2'; stub r
 mkdir -p "$T_TMP/pending/usr/lib"; printf 'docker:x:981:\n' > "$T_TMP/pending/usr/lib/group"
 mod_run_pre() { hide_compose; _pending_root() { echo "$T_TMP/pending"; }; _initramfs_enabled() { return 1; }; }
 out=$(DECAL_PLATFORM=fedora-atomic run_mod add 2>&1); assert_eq "$?" "0" "atomic add rc"
-assert_contains "$(calls)" "rpm-ostree install --allow-inactive moby-engine docker-compose" "atomic: layered"
+assert_contains "$(calls)" "rpm-ostree install --allow-inactive -- moby-engine docker-compose" "atomic: layered"
 assert_contains "$(calls)" "groupadd -g 981 docker" "atomic: group created in /etc/group with the image's id (groupadd, never by rewriting the file)"
 assert_contains "$(calls)" "usermod -aG docker tester" "atomic: user added"
 : > "$STUBS/calls"; DECAL_PLATFORM=fedora-atomic run_mod remove >/dev/null 2>&1

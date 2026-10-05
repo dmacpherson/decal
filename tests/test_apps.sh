@@ -17,9 +17,9 @@ sed -i 's/^text-editor = "org.gnome.TextEditor"$/&\nimages = "org.gnome.Loupe"\n
 run_mod() { mod_run apps "module_$1"; }
 assert_eq "$(run_mod status)" "not-installed (defaults: not set; Brave Origin: no)" "only listed flatpaks count; Discord missing"
 out=$(run_mod add 2>&1); assert_eq "$?" "0" "add rc"
-assert_contains "$(calls)" "flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo" "remote from profile defaults"
-assert_contains "$(calls)" "flatpak install --system --noninteractive -y flathub com.discordapp.Discord" "listed flatpak installed"
-assert_contains "$(calls)" "flatpak install --system --noninteractive -y flathub org.gnome.Loupe" "missing default app installed from Flathub"
+assert_contains "$(calls)" "flatpak remote-add --system --if-not-exists -- flathub https://dl.flathub.org/repo/flathub.flatpakrepo" "remote from profile defaults"
+assert_contains "$(calls)" "flatpak install --system --noninteractive -y -- flathub com.discordapp.Discord" "listed flatpak installed"
+assert_contains "$(calls)" "flatpak install --system --noninteractive -y -- flathub org.gnome.Loupe" "missing default app installed from Flathub"
 assert_not_contains "$(calls)" "flathub com.brave.Browser" "installed default not reinstalled"
 assert_contains "$out" "org.example.NotOnFlathub is not installed and not on flathub" "unavailable default skipped with warning"
 assert_contains "$(cat "$STUBS/mime.db")" "x-scheme-handler/https=com.brave.Browser.desktop" "brave is browser"
@@ -34,9 +34,9 @@ sed -i 's/^remove-flatpaks = \["com.discordapp.Discord"\]$/remove-flatpaks = ["o
 stub flatpak 'case "$*" in "info --system com.brave.Browser"|"info --system org.mozilla.firefox") exit 0;; "info --system --show-origin org.mozilla.firefox") echo flathub;; "info --system "*) exit 1;; "remote-info --system flathub org.gnome.Loupe") exit 0;; "remote-info "*) exit 1;; esac; exit 0'
 stub rpm 'case "$*" in "-q --quiet firefox") exit 0;; "-e --test firefox") exit 0;; esac; exit 0'
 : > "$STUBS/calls"; run_mod add >/dev/null 2>&1
-assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y org.mozilla.firefox" "unwanted flatpak removed"
+assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y -- org.mozilla.firefox" "unwanted flatpak removed"
 assert_not_contains "$(calls)" "--delete-data org.mozilla.firefox" "never deletes app data"
-assert_contains "$(calls)" "dnf remove -y --setopt=clean_requirements_on_remove=False firefox" "unwanted native package removed"
+assert_contains "$(calls)" "dnf remove -y --setopt=clean_requirements_on_remove=False -- firefox" "unwanted native package removed"
 assert_eq "$(cat "$DECAL_STATE/apps/removed-flatpaks")" "org.mozilla.firefox flathub" "removal recorded with its remote"
 # remove works from the record even after the [apps] section is deleted from the profile
 python3 - "$PROFILE_DIR/profile.toml" <<'EOF'
@@ -44,15 +44,15 @@ import re,sys; p=sys.argv[1]; s=open(p).read(); s=re.sub(r'\[apps\].*?(?=\n\[gno
 EOF
 stub flatpak 'case "$*" in "info --system "*) exit 0;; esac; exit 0'   # now everything is installed
 : > "$STUBS/calls"; run_mod remove 2>/dev/null
-assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y com.discordapp.Discord org.gnome.Loupe" "removes exactly the managed flatpaks"
+assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y -- com.discordapp.Discord org.gnome.Loupe" "removes exactly the managed flatpaks"
 assert_not_contains "$(calls)" "com.brave.Browser" "never removes an app it didn't install"
 assert_contains "$(calls)" "flatpak uninstall --system --unused --noninteractive -y" "unused runtimes"
 assert_contains "$(cat "$STUBS/mime.db")" "x-scheme-handler/http=org.mozilla.firefox.desktop" "firefox restored"
 assert_not_contains "$(cat "$XDG_CONFIG_HOME/mimeapps.list")" "text/markdown=" "unset mime removed"
 assert_contains "$(cat "$XDG_CONFIG_HOME/mimeapps.list")" "application/x-unrelated=keep.desktop" "other lines kept"
 assert_nofile "$DECAL_STATE/apps/managed" "record cleared"
-assert_contains "$(calls)" "flatpak install --system --noninteractive -y flathub org.mozilla.firefox" "undo reinstalls the removed flatpak"
-assert_contains "$(calls)" "dnf install -y firefox" "undo reinstalls the removed package"
+assert_contains "$(calls)" "flatpak install --system --noninteractive -y -- flathub org.mozilla.firefox" "undo reinstalls the removed flatpak"
+assert_contains "$(calls)" "dnf install -y -- firefox" "undo reinstalls the removed package"
 assert_nofile "$DECAL_STATE/apps/removed-flatpaks" "removal record cleared"
 # launchers the distro hides (Hidden/NoDisplay) shown again by [apps] show: your own copy, marked as decal's
 A="$T_TMP/share/applications"; U="$XDG_DATA_HOME/applications"; mkdir -p "$U"
@@ -80,7 +80,7 @@ DECAL_TAGS=dev run_mod add >/dev/null 2>&1
 assert_contains "$(cat "$DECAL_STATE/apps/managed")" "dev.zed.Zed" "with --tags dev: dev's flatpak installed and recorded"
 assert_file "$U/htop.desktop" "and dev's launcher shown"
 : > "$STUBS/calls"; DECAL_DROP=dev run_mod drop >/dev/null 2>&1
-assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y dev.zed.Zed" "drop: dev's flatpak uninstalled"
+assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y -- dev.zed.Zed" "drop: dev's flatpak uninstalled"
 assert_not_contains "$(calls)" "com.discordapp.Discord" "a flatpak that is in [apps] too is kept"
 assert_not_contains "$(cat "$DECAL_STATE/apps/managed")" "dev.zed.Zed" "and no longer recorded"
 assert_contains "$(cat "$DECAL_STATE/apps/managed")" "com.discordapp.Discord" "the rest still recorded"

@@ -45,4 +45,12 @@ assert_file "$LS_RUNTMP/reboot" "reboot flag"
 for v in HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_CACHE_HOME; do
   assert_contains "${!v:-unset}" "$T_TMP" "$v is inside the test's temp dir"
 done
+# names and paths from a profile, checked again where they're used (CLAUDE.md → Security)
+for n in plymouth Bibata-Modern "Demo Spaced Icons" "dash-to-dock@micxgx.gmail.com"; do safe_name "$n"; assert_eq "$?" "0" "safe_name: $n"; done
+for n in "" . .. ../x a/b -x "a
+b"; do safe_name "$n"; assert_eq "$?" "1" "safe_name refuses: [$n]"; done
+inside /usr/share/plymouth/themes /usr/share/plymouth/themes/angular; assert_eq "$?" "0" "inside: a theme folder"
+inside /usr/share/plymouth/themes /usr/share/plymouth/themes/../../../etc; assert_eq "$?" "1" "inside: ../ refused"
+inside /usr/share/plymouth/themes /usr/share/plymouth/themes; assert_eq "$?" "1" "inside: the folder itself isn't inside it"
+mkdir -p "$T_TMP/in"; ln -s /etc "$T_TMP/in/out"; inside "$T_TMP/in" "$T_TMP/in/out/passwd"; assert_eq "$?" "1" "inside: a link out refused"
 t_done

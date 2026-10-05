@@ -27,6 +27,7 @@ _files_apply() {
   fi
   for d in "${!P_files[@]}"; do
     t=$(_cfg "$d")
+    inside "$(_cfg "")" "$t" || die "files: $d isn't inside ${XDG_CONFIG_HOME:-$HOME/.config}"
     if ! grep -qxF "$d" "$FILES_REC" 2>/dev/null; then
       if [[ -e $t ]]; then mkdir -p "$(dirname "$FILES_BK/$d")"; cp -a "$t" "$FILES_BK/$d"; fi
       echo "$d" >> "$FILES_REC"
@@ -115,9 +116,10 @@ _present() { _loaded "$1" || _on_disk "$1"; }
 # extensions that ship with decal ($BUNDLED/<uuid>, none yet): copied in and kept in sync with decal's copy
 BUNDLED="${DECAL_BUNDLED_DIR:-bundled}"
 EXT_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions"
-_bundled() { [[ -d $BUNDLED/$1 ]]; }
+_bundled() { safe_name "$1" && [[ -d $BUNDLED/$1 ]]; }
 _install_bundled() {  # UUID -> 0 if (re)installed, 1 if already up to date
   local u=$1 d="$EXT_HOME/$1"
+  safe_name "$u" || die "not an extension UUID: $u"
   if [[ -d $d ]] && diff -rq --exclude=gschemas.compiled "$BUNDLED/$u" "$d" >/dev/null 2>&1; then return 1; fi
   rm -rf "$d"; mkdir -p "$EXT_HOME"; cp -r "$BUNDLED/$u" "$d"
   if [[ -d $d/schemas ]]; then glib-compile-schemas "$d/schemas"; fi

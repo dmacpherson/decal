@@ -116,5 +116,5 @@ rm -f "$DECAL_ROOT/etc/systemd/system/decal-gdm-background.service" "$DECAL_USER
 # remove also removes the package the hooks needed (dnf5 actions plugin)
 mkdir -p "$DECAL_STATE/pkgs"; echo libdnf5-plugin-actions > "$DECAL_STATE/pkgs/wallpaper"; stub dnf; : > "$STUBS/calls"
 ( DECAL_PLATFORM=fedora mod_run wallpaper module_remove ) >/dev/null 2>&1
-assert_contains "$(calls)" "dnf remove -y libdnf5-plugin-actions" "hooks package removed with the module"
+assert_contains "$(calls)" "dnf remove -y -- libdnf5-plugin-actions" "hooks package removed with the module"
 t_done

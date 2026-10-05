@@ -46,7 +46,7 @@ out=$(run_mod add 2>&1); assert_eq "$?" "0" "desktop on debian rc"
 assert_contains "$(calls)" "ls_fetch https://downloads.claude.ai/claude-desktop/key.asc" "signing key downloaded"
 assert_eq "$(cat "$DECAL_ROOT/usr/share/keyrings/claude-desktop-archive-keyring.asc")" "fake key" "key installed"
 assert_contains "$(cat "$DECAL_ROOT/etc/apt/sources.list.d/claude-desktop.list")" "signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main" "repository registered"
-assert_contains "$(calls)" "apt-get install -y claude-desktop" "claude-desktop installed"
+assert_contains "$(calls)" "apt-get install -y -- claude-desktop" "claude-desktop installed"
 assert_contains "$(calls)" "usermod -aG kvm" "cowork (default): you join the kvm group"
 # a key with another fingerprint is refused before anything is registered
 rm -rf "$DECAL_ROOT/etc/apt" "$DECAL_ROOT/usr/share/keyrings" "$DECAL_STATE"; stub gpg "echo 'fpr:::::::::0000000000000000000000000000000000000000:'"

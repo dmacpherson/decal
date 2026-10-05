@@ -16,7 +16,9 @@ FLATHUB=https://dl.flathub.org/repo/flathub.flatpakrepo
 TOOL_FEATURES=(prompt fuzzy completions history jump ls cat)   # bashrc order (between ble load/attach)
 declare -A FEATURE_BREW=([prompt]=starship [fuzzy]=fzf [completions]=carapace [history]=atuin [jump]=zoxide [ls]=eza [cat]=bat)
 
-_preset() { if [[ -e ${PROFILE_DIR:-/nonexistent}/terminal/$1/$2 ]]; then echo "$PROFILE_DIR/terminal/$1/$2"; else echo "$MODULE_DIR/$1/$2"; fi; }
+_preset() {  # _preset KIND NAME : a layout/theme from the profile (terminal/KIND/NAME) or decal's own
+  safe_name "${2%.toml}" || die "not a plain name: $2"
+  if [[ -e ${PROFILE_DIR:-/nonexistent}/terminal/$1/$2 ]]; then echo "$PROFILE_DIR/terminal/$1/$2"; else echo "$MODULE_DIR/$1/$2"; fi; }
 _init() {
   TERMINAL=$P_app LAYOUT=$P_layout THEME=$P_theme NERD_FONT=$P_nerd_font FONT=$P_font CURSOR=$P_cursor OPACITY=$P_opacity
   FONT_FAMILY="${FONT% *}"; FONT_SIZE="${FONT##* }"
@@ -41,7 +43,7 @@ terminal_missing_roles() {
 _load_adapter() {
   local t=$1
   # shellcheck disable=SC2012  # plain adapter names, list only
-  [[ -r $MODULE_DIR/terminals/$t.sh ]] || die "unknown TERMINAL '$t' (choose one of: $(cd "$MODULE_DIR/terminals" && ls | sed 's/\.sh$//' | tr '\n' ' '))"
+  [[ $t =~ ^[a-z0-9-]+$ && -r $MODULE_DIR/terminals/$t.sh ]] || die "unknown TERMINAL '$t' (choose one of: $(cd "$MODULE_DIR/terminals" && ls | sed 's/\.sh$//' | tr '\n' ' '))"
   unset -f term_source term_configure term_unconfigure term_configured
   # shellcheck source=/dev/null
   source "$MODULE_DIR/terminals/$t.sh"
@@ -61,7 +63,7 @@ _term_install() {
     flatpak)
       if ! flatpak info --system "$a" >/dev/null 2>&1; then
         srun flatpak remote-add --system --if-not-exists flathub "$FLATHUB"
-        srun flatpak install --system --noninteractive -y flathub "$a"
+        srun flatpak install --system --noninteractive -y -- flathub "$a"
         state_append "$LS_STATE/terminal/flatpaks" "$a"
       fi ;;
     copr) warn "$TERMINAL comes from the community COPR $a (not an official Fedora package)"; _copr_enable "$a"; pkg_install terminal "$b" ;;
@@ -157,7 +159,10 @@ _brew_ensure() {
 _gen_brewfile() {
   local f b
   for f in "${TOOL_FEATURES[@]}"; do if _on "$f"; then echo "brew \"${FEATURE_BREW[$f]}\""; fi; done
-  for b in "${P_brew[@]}"; do echo "brew \"$b\""; done
+  for b in "${P_brew[@]}"; do   # a formula name only: it's written into a Ruby file
+    [[ $b =~ ^[a-z0-9][a-z0-9._+@-]*(/[a-z0-9._+@-]+){0,2}$ && $b != *..* ]] || die "not a Homebrew formula name: $b"
+    echo "brew \"$b\""
+  done
 }
 _blesh_add() {
   if [[ -f $BLESH/ble.sh ]]; then return 0; fi
@@ -203,7 +208,7 @@ module_add() {
   if [[ $LS_DRY_RUN != 1 ]]; then echo "$P_remove_brew" > "$LS_USER_STATE/terminal.remove-brew"; fi   # remove honours it without the profile
   # 1. Homebrew tools for the enabled features (+ extra formulae)
   step "installing Homebrew tools"
-  bf=$(_gen_brewfile)
+  bf=$(_gen_brewfile) || exit 1
   if [[ -n $bf ]]; then
     _brew_ensure
     if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] brew bundle: $(tr '\n' ' ' <<<"$bf")"
@@ -263,7 +268,7 @@ EOF
   run rm -rf "$CFG"; _font_remove; _blesh_remove
   local id p
   if [[ -r $LS_STATE/terminal/flatpaks ]]; then
-    while IFS= read -r id; do [[ -n $id ]] && srun flatpak uninstall --system --noninteractive -y "$id"; done < "$LS_STATE/terminal/flatpaks"
+    while IFS= read -r id; do [[ -n $id ]] && srun flatpak uninstall --system --noninteractive -y -- "$id"; done < "$LS_STATE/terminal/flatpaks"
     srun rm -f "$LS_STATE/terminal/flatpaks"
   fi
   pkg_remove terminal
