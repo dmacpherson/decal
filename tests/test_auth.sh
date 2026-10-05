@@ -205,5 +205,8 @@ rm "$G/html"; fake_up
 echo "drop 1" > "$G/drop"; fake_up; echo ok > "$G/device_script"
 assert_eq "$(ask '1\n' me/prof --need read)" "s3cret" "a blip during the install wait: still signed in"
 rm "$G/drop"; fake_up
+echo ok > "$G/device_script"
+assert_eq "$(ask '1\n' - --need read)" "s3cret" "sign in without a repo (to list your profiles)"
+assert_contains "$(cat "$T_TMP/screen")" "so decal can read your profiles" "...says what for"
 kill "$GHPID" 2>/dev/null
 t_done

@@ -7,7 +7,9 @@ python3 fake_github_api.py STATE_DIR. Serves on 127.0.0.1 (port written to STATE
 expired, denied, ok per poll; hold: pending for good), device_fail (the code request fails),
 installations (the Write app's installs for /user/installations: all, selected, or selected N = all after N
 lookups; missing: 403, as for a token that isn't an app's), drop N (close the next N /repos lookups without an
-answer), html (answer /user and the device code request with an HTML page). Device requests go to device_log."""
+answer), html (answer /user and the device code request with an HTML page). Device requests go to device_log.
+seed lines may add "public" and "topic"; many (N plain repos for tester); contents/OWNER/REPO/PATH (served by the
+contents API, as are pushed files); PUT topics are logged to topics.log."""
 import base64, hashlib, json, os, sys, urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -29,9 +31,14 @@ def state(name):
 
 
 for line in state("seed") or []:
-    if line.strip():
-        c = sha({"seed": line.strip()})
-        repos[line.strip()] = {"private": True, "default_branch": "main", "head": c, "commits": 1}
+    words = line.split()
+    if words:
+        c = sha({"seed": words[0]})
+        repos[words[0]] = {"private": "public" not in words, "default_branch": "main", "head": c, "commits": 1,
+                           "topics": ["decal-profile"] if "topic" in words else [], "files": {}}
+for i in range(int((state("many") or ["0"])[0])):
+    repos[f"{USER}/filler-{i}"] = {"private": True, "default_branch": "main", "head": sha({"f": i}), "commits": 1,
+                                   "topics": [], "files": {}}
 for line in state("hidden") or []:
     if line.strip():
         name, n = line.split()
@@ -88,9 +95,18 @@ class H(BaseHTTPRequestHandler):
         if self.headers.get("Authorization") != f"Bearer {TOKEN}":
             return self.reply(401, {"message": "Bad credentials"})
         body = json.loads(raw) if raw else None
-        p = self.path.strip("/").split("/")
+        url = urllib.parse.urlparse(self.path)
+        p = url.path.strip("/").split("/")
+        qs = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}
         if p == ["user"]:
             return self.reply(200, {"login": USER})
+        if p == ["user", "repos"] and method == "GET":
+            mine = sorted(n for n in repos if n.startswith(USER + "/"))
+            per, page = int(qs.get("per_page", 30)), int(qs.get("page", 1))
+            return self.reply(200, [self.repo_json(n) for n in mine[(page - 1) * per:page * per]])
+        if p == ["search", "repositories"]:
+            items = [self.repo_json(n) for n in sorted(repos) if n.startswith(USER + "/") and "decal-profile" in repos[n]["topics"]]
+            return self.reply(200, {"total_count": len(items), "items": items})
         if p == ["user", "installations"]:
             sel = countdown("installations")
             if sel is None:
@@ -99,7 +115,8 @@ class H(BaseHTTPRequestHandler):
         if method == "POST" and p == ["user", "repos"]:
             full = f"{USER}/{body['name']}"
             c = sha({"init": full}); commits[c] = {"tree": None, "parents": []}
-            repos[full] = {"private": body.get("private"), "default_branch": "main", "head": c, "commits": 1}
+            repos[full] = {"private": body.get("private"), "default_branch": "main", "head": c, "commits": 1,
+                           "topics": [], "files": {}}
             return self.reply(201, {"full_name": full, "default_branch": "main", "private": body.get("private")})
         if p[0] == "repos" and len(p) >= 3:
             if countdown("drop") == "drop":   # a network blip: no answer at all
@@ -118,8 +135,21 @@ class H(BaseHTTPRequestHandler):
             rest = p[3:]
             if not rest:
                 push = not os.path.exists(os.path.join(STATE, "readonly"))
-                return self.reply(200, {"full_name": full, "default_branch": r["default_branch"],
-                                        "permissions": {"pull": True, "push": push}})
+                return self.reply(200, dict(self.repo_json(full), permissions={"pull": True, "push": push}))
+            if rest[0] == "contents" and method == "GET":
+                path = "/".join(rest[1:])
+                text = r["files"].get(path)
+                disk = os.path.join(STATE, "contents", p[1], p[2], path)
+                if text is None and os.path.isfile(disk):
+                    text = open(disk).read()
+                if text is None:
+                    return self.reply(404, {"message": "Not Found"})
+                return self.reply(200, {"content": base64.b64encode(text.encode()).decode(), "encoding": "base64"})
+            if rest == ["topics"] and method == "PUT":
+                r["topics"] = body["names"]
+                with open(os.path.join(STATE, "topics.log"), "a") as f:
+                    f.write(f"{full} {' '.join(body['names'])}\n")
+                return self.reply(200, {"names": body["names"]})
             if rest[:3] == ["git", "ref", "heads"]:
                 return self.reply(200, {"object": {"sha": r["head"]}})
             if rest == ["git", "blobs"]:
@@ -132,6 +162,7 @@ class H(BaseHTTPRequestHandler):
             if rest[:3] == ["git", "refs", "heads"] and method == "PATCH":
                 r["head"] = body["sha"]; r["commits"] += 1
                 files = {t["path"]: blobs[t["sha"]].decode("utf-8", "replace") for t in trees[commits[body["sha"]]["tree"]]}
+                r["files"] = files
                 json.dump({"private": r["private"], "commits": r["commits"], "files": files,
                            "message": commits[body["sha"]]["message"]},
                           open(os.path.join(STATE, full.replace("/", "_") + ".json"), "w"))
@@ -159,6 +190,12 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self): self.handle_any("GET")
     def do_POST(self): self.handle_any("POST")
     def do_PATCH(self): self.handle_any("PATCH")
+    def do_PUT(self): self.handle_any("PUT")
+
+    def repo_json(self, full):
+        r = repos[full]
+        return {"full_name": full, "name": full.split("/", 1)[1], "private": r["private"],
+                "default_branch": r["default_branch"], "topics": r["topics"], "pushed_at": "2026-10-01T12:00:00Z"}
 
 
 srv = HTTPServer(("127.0.0.1", 0), H)

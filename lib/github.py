@@ -4,7 +4,7 @@
 REPO is NAME (on your account) or OWNER/NAME. A missing repo is created, private unless --public. The repo then
 holds exactly the folder (files no longer in it are gone from the new commit; history keeps them). The token comes
 from GITHUB_TOKEN (never the command line); DECAL_GITHUB_API points elsewhere (tests). Prints the repo's
-OWNER/NAME on success."""
+OWNER/NAME on success. github.py exists REPO: exit 0 when it exists, 1 when not; github.py whoami: the key's login."""
 import argparse, base64, json, os, sys, urllib.error, urllib.request
 
 API = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
@@ -76,12 +76,17 @@ def push(folder, repo, public, message):
     t = need(call("POST", f"/repos/{repo}/git/trees", {"tree": tree}), "write the tree")["sha"]
     c = need(call("POST", f"/repos/{repo}/git/commits", {"message": message, "tree": t, "parents": [head]}), "commit")["sha"]
     need(call("PATCH", f"/repos/{repo}/git/refs/heads/{branch}", {"sha": c}), f"update {branch}")
+    topics = info.get("topics") or []
+    if "decal-profile" not in topics:   # so decal profiles finds it, whatever its name
+        code, _ = call("PUT", f"/repos/{repo}/topics", {"names": sorted(set(topics) | {"decal-profile"})})
+        if code != 200:
+            print("note: couldn't tag the repo with the decal-profile topic", file=sys.stderr)
     print(repo)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["push", "whoami"])
+    ap.add_argument("cmd", choices=["push", "whoami", "exists"])
     ap.add_argument("folder", nargs="?"); ap.add_argument("repo", nargs="?")
     ap.add_argument("--public", action="store_true"); ap.add_argument("--message", default="decal stamp")
     a = ap.parse_args()
@@ -90,6 +95,9 @@ def main():
     try:
         if a.cmd == "whoami":
             print(need(call("GET", "/user"), "who is this token for")["login"])
+        elif a.cmd == "exists":
+            code, _ = call("GET", f"/repos/{a.folder}", ok=(200, 404))
+            sys.exit(0 if code == 200 else 1 if code == 404 else 2)
         else:
             push(a.folder, a.repo, a.public, a.message)
     except Fail as e:

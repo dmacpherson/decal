@@ -48,6 +48,8 @@ def check(repo, need, token, may_create=False):
         code, me = api_get("/user", token)
         if code == 401:
             return BAD_KEY
+        if repo == "-":   # signing in to list your profiles: the key works, that's all
+            return OK if code == 200 else BAD_KEY
         if "/" not in repo:   # stamp before it knows the owner: the key's account
             if code != 200:
                 return BAD_KEY
@@ -65,6 +67,10 @@ def check(repo, need, token, may_create=False):
     except Offline:
         return OFFLINE
 
+
+
+def shown(repo):
+    return "your profiles" if repo == "-" else repo
 
 
 def can_create(token):
@@ -275,6 +281,9 @@ def sign_in(tty, repo, need, may_create):
             return "paste"
         if r in ("cancel", "denied"):
             return None
+        if repo == "-":
+            tty.say("Signed in.")
+            return r
         with tty.keys():
             return wait_for_access(tty, repo, need, r, may_create)
 
@@ -290,6 +299,7 @@ def make_token(tty, repo, need, may_create):
     days = DAYS[int(a) - 1][1] if a in ("1", "2", "3", "4") else DAYS[1][1]
     url = token_url(need, days)
     where = ('choose "All repositories" (decal creates ' + repo.split("/")[-1] + " if it isn't there yet)") if may_create \
+        else 'choose "Only select repositories" and pick your profile repos' if repo == "-" \
         else f'choose "Only select repositories" and pick {repo.split("/")[-1]}'
     tty.say("", "Opened in your browser:" if open_browser(url) else "Open this page:", "  " + url,
             f'Under "Repository access" {where}, then press "Generate token".')
@@ -307,7 +317,7 @@ def get(tty, repo, need, may_create):
     while True:
         opts = ([("Sign in with GitHub", "sign")] if app(need) else []) + \
                [("Make a token myself", "token"), ("Cancel", "cancel")]
-        tty.say("", f"decal needs a GitHub key to {'read' if need == 'read' else 'save to'} {repo}:")
+        tty.say("", f"decal needs a GitHub key to {'read' if need == 'read' else 'save to'} {shown(repo)}:")
         for i, (label, _) in enumerate(opts, 1):
             tty.say(f"  {i}) {label}")
         a = tty.line("Choose [1]: ")
@@ -367,7 +377,7 @@ def layout(repo, need, code, url, qr, width, opened=False, copied=False):
         left.append("   (copied to your clipboard)")
     right = ["On your phone", "─" * 13] + qr + [f"Scan, then enter {code}"]
     what = "read" if need == "read" else "save to"
-    return [f"Sign in to GitHub so decal can {what} {repo}", ""] + columns(left, right, width) + \
+    return [f"Sign in to GitHub so decal can {what} {shown(repo)}", ""] + columns(left, right, width) + \
            ["", "Waiting for GitHub...   Esc cancel \u00b7 t paste a token instead"]
 
 
