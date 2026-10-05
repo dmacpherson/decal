@@ -174,8 +174,9 @@ file and a `Decal/` folder can't share a directory.
   gets `/security-review`. Fix Critical and Important findings (each with a test that fails first); record Minor ones
   in the roadmap; record every ruling (a decision the spec or plan didn't make) in the commit or the plan's ledger.
 - **Branches**: work merges into `dev`; each push to `dev` publishes a dev build for testing
-  (`curl -fsSL https://dmacpherson.github.io/decal/dev/install | bash`). When it's good, merge `dev` into `main` and
-  tag a release (`v0.4.0`); only tags reach stable installs.
+  (`curl -fsSL https://dmacpherson.github.io/decal/dev/install | bash`). When it's good, `bash tools/promote.sh`
+  releases dev into `main` without what's only for working on decal (this file, `docs/`, `tests/`), then push main
+  and tag a release (`v0.4.0`); only tags reach stable installs. Never merge dev into main by hand.
 - **Commits**: one line in the repo's style (`area: what changed, plainly`, lowercase start), then the
   Co-Authored-By trailer. Run the suite and `shellcheck` before committing.
 - Don't push, tag or publish without the maintainer's go.
