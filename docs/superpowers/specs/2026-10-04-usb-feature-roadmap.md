@@ -143,6 +143,16 @@ No separate stick menu: the normal one, with that header and order. No "temporar
 - The menu's usb entry drops into the full menu after `decal usb` instead of exiting.
 - `source.py public` treats "offline" as private, so a public repo is offered a saved key.
 
+### Audit batch 1 (security): deferred minors
+
+- Legitimate package forms now refused: dnf groups (`@virtualization`), provides (`perl(Foo::Bar)`), globs
+  (`texlive-*`). Support them deliberately if wanted, or say so in the message.
+- Zip theme archives containing symlinks are refused (tar ones with inside links work).
+- gnome-extensions `files.*`: a `~/.config/<sub>` that is itself a symlink (dotfile managers) is refused by `inside`.
+- `decal new --from <someone else's> --use` makes a local copy that then counts as yours without the question.
+- A profile made active before this change (old `use`, never asked) is applied from the menu without the question.
+- Git sources check out symlinks as they are; `path`/`theme` could go through one (not traced to a leak).
+
 ## Part 4: Save back from a stick
 
 From the stick's menu, **Save this machine** (after Preview first): the module picker and preview, then "Save to":
