@@ -9,7 +9,7 @@ JOB=decal-ollama-models   # background download job (transient systemd user unit
 _pkg() { if [[ $P_gpu == true ]]; then echo "cask ollama-binary"; else echo "formula ollama"; fi; }
 _bin() { if have brew; then echo "$(brew --prefix)/bin/ollama"; fi; }
 _have_ollama() { [[ -x $(_bin) ]] || have ollama; }
-_cli() { if [[ -x $(_bin) ]]; then _bin; else command -v ollama; fi; }
+_cli() { if [[ -x $(_bin) ]]; then _bin; else command -v ollama || _bin; fi; }
 
 _install() {
   local kind name; read -r kind name <<<"$(_pkg)"
@@ -37,7 +37,7 @@ _igpu() {
   ! cat "${DECAL_SYS_DRM:-/sys/class/drm}"/card*/device/vendor 2>/dev/null | grep -qx 0x10de   # no vulkaninfo: anything but NVIDIA
 }
 _unit_text() {
-  printf '%s\n' "[Unit]" "Description=Ollama (decal)" "After=network-online.target" "" "[Service]" "ExecStart=$(_bin) serve"
+  printf '%s\n' "[Unit]" "Description=Ollama (decal)" "After=network-online.target" "" "[Service]" "ExecStart=$(_cli) serve"
   if [[ $P_gpu == true ]] && _igpu; then echo "Environment=OLLAMA_IGPU_ENABLE=1"; fi
   printf '%s\n' "Restart=on-failure" "" "[Install]" "WantedBy=default.target"
 }
@@ -47,7 +47,7 @@ _service() {
     if [[ $P_gpu == true ]] && _igpu; then warn "Ollama runs as another service here: set OLLAMA_IGPU_ENABLE=1 in it to use the integrated GPU"; fi
     return 0
   fi
-  if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] user service $UNIT_NAME: $(_bin) serve"; return 0; fi
+  if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] user service $UNIT_NAME: $(_cli) serve"; return 0; fi
   local want had=0; want=$(_unit_text)
   if [[ -e $UNIT && $(cat "$UNIT") == "$want" ]]; then systemctl --user enable --now "$UNIT_NAME"; return 0; fi
   [[ -e $UNIT ]] && had=1

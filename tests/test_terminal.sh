@@ -57,6 +57,12 @@ assert_contains "$(cat "$HOME/.bashrc")" "# >>> decal terminal >>>" "block appen
 i_rc=$(stat -c %i "$HOME/.bashrc")
 mod module_remove 2>/dev/null; assert_eq "$(cat "$HOME/.bashrc")" "# plain bashrc" "block removed exactly"
 assert_not_contains "$(stat -c %i "$HOME/.bashrc")" "$i_rc" "~/.bashrc replaced whole (never half-written)"
+# a ~/.bashrc that links into a dotfiles folder: the hook comes out of the real file and the link stays (review)
+mkdir -p "$HOME/dot"; printf '# plain bashrc\n' > "$HOME/dot/bashrc"; rm -f "$HOME/.bashrc"; ln -s dot/bashrc "$HOME/.bashrc"
+mod module_add 2>/dev/null; mod module_remove 2>/dev/null
+assert_eq "$(readlink "$HOME/.bashrc")" "dot/bashrc" "a linked ~/.bashrc stays a link"
+assert_eq "$(cat "$HOME/dot/bashrc")" "# plain bashrc" "the hook comes out of the real file"
+rm -f "$HOME/.bashrc"; printf '# plain bashrc\n' > "$HOME/.bashrc"
 # fresh Ptyxis (never launched): no default profile yet -> add still succeeds, palette skipped with a warning
 stub gsettings 'case $1 in get) case $3 in default-profile-uuid) echo "'"'"''"'"'";; profile-uuids) echo "@as []";; *) echo "'"'"'x'"'"'";; esac;; list-keys) exit 0;; esac'
 mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"

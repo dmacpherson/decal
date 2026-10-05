@@ -262,6 +262,7 @@ module_remove() {
     python3 - "$HOME/.bashrc" "$MARK_BEGIN" "$MARK_END" <<'EOF'
 import os, shutil, sys
 p, b, e = sys.argv[1:4]; out = []; skip = False
+p = os.path.realpath(p)   # a link into a dotfiles folder: edit the real file, keep the link
 for l in open(p).read().split("\n"):
     if l == b: skip = True; continue
     if l == e and skip: skip = False; continue

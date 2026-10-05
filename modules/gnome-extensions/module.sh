@@ -43,7 +43,8 @@ _strip_app_accent() {
     [[ -f $f ]] || continue
     python3 - "$f" <<'EOF'
 import os, shutil, sys
-p = sys.argv[1]; text = open(p).read(); kept = []; inside = False
+p = sys.argv[1]; link = os.path.islink(p); p = os.path.realpath(p)   # a dotfiles link: edit the real file, keep the link
+text = open(p).read(); kept = []; inside = False
 for line in text.split('\n'):
     if not inside and line.startswith('/* decal accent: begin'): inside = True
     elif inside and line.startswith('/* decal accent: end'): inside = False
@@ -51,7 +52,7 @@ for line in text.split('\n'):
 rest = '\n'.join(kept).rstrip()
 new = rest + '\n' if rest else ''
 if new != text:
-    if new: open(p + '.decal-new', 'w').write(new); shutil.copymode(p, p + '.decal-new'); os.replace(p + '.decal-new', p)
+    if new or link: open(p + '.decal-new', 'w').write(new); shutil.copymode(p, p + '.decal-new'); os.replace(p + '.decal-new', p)
     else: os.remove(p)
 EOF
   done

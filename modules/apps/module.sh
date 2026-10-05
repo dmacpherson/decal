@@ -103,6 +103,7 @@ _defaults_remove() {
     python3 - "${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list" "${unset[@]}" <<'EOF'
 import os, shutil, sys
 p, drop = sys.argv[1], set(sys.argv[2:]); out = []; sec = ""
+p = os.path.realpath(p)   # a link into a dotfiles folder: edit the real file, keep the link
 try: lines = open(p).read().split("\n")
 except FileNotFoundError: sys.exit(0)
 for l in lines:
@@ -125,16 +126,19 @@ _defaults_ok() {
 module_add() {
   _contradictions
   pkg_install apps flatpak
-  if ! flatpak remotes --system --columns=name 2>/dev/null | grep -qxF -- "$P_remote"; then
-    srun flatpak remote-add --system --if-not-exists -- "$P_remote" "$P_remote_url"
-    if [[ $LS_DRY_RUN != 1 ]]; then echo "$P_remote" | swrite "$REMOTE_REC"; fi
+  # the remote is decal's only when flatpak listed its remotes (turned-off ones too) and it wasn't there
+  local remotes
+  if remotes=$(flatpak remotes --system --show-disabled --columns=name 2>/dev/null) && ! grep -qxF -- "$P_remote" <<<"$remotes"; then
+    echo "$P_remote" | swrite "$REMOTE_REC"   # recorded first: an interrupted add still gets undone
   fi
+  srun flatpak remote-add --system --if-not-exists -- "$P_remote" "$P_remote_url"
   local missing=() id
   for id in "${P_flatpaks[@]}"; do _fp_present "$id" || missing+=("$id"); done
   if (( ${#missing[@]} )); then
-    step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y -- "$P_remote" "${missing[@]}"
-    # only what decal installed is decal's: an app you already had is never uninstalled by remove
+    # only what decal installs is decal's (an app you already had is never uninstalled by remove); recorded first,
+    # so an install stopped halfway is still undone (remove skips the ones that never got in)
     for id in "${missing[@]}"; do state_append "$MANAGED" "$id"; done
+    step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y -- "$P_remote" "${missing[@]}"
   fi
   if (( ${#P_packages[@]} )); then pkg_install apps "${P_packages[@]}"; fi
   _unwanted_add

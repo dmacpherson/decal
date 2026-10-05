@@ -91,4 +91,8 @@ assert_eq "$rc" "1" "server never answers: job fails"; assert_contains "$out" "n
 # no Homebrew (and no Ollama): skipped with a word, the run goes on (audit batch 2)
 out=$( ( mod_run_pre() { have() { [[ $1 != brew && $1 != ollama ]] && command -v "$1" >/dev/null 2>&1; }; }; mod_run ollama module_add ) 2>&1); assert_eq "$?" "0" "no Homebrew: not a failure"
 assert_contains "$out" "skipped" "...says it's skipped"
+# Ollama from the distro and no Homebrew: the service runs that ollama (review)
+D="$T_TMP/distro"; mkdir -p "$D"; printf '#!/bin/sh\nexit 0\n' > "$D/ollama"; chmod +x "$D/ollama"; rm -f "$UNIT" "$B/bin/ollama"
+( export PATH="$D:$PATH"; mod_run_pre() { have() { [[ $1 != brew ]] && command -v "$1" >/dev/null 2>&1; }; }; mod_run ollama module_add ) >/dev/null 2>&1
+assert_contains "$(cat "$UNIT" 2>/dev/null)" "ExecStart=$D/ollama serve" "distro ollama: the service runs it"
 t_done
