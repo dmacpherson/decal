@@ -8,7 +8,7 @@
 
 A key from signing in is only printed, never saved. DECAL_GITHUB / DECAL_GITHUB_API point elsewhere (tests);
 DECAL_GITHUB_APP_READ / DECAL_GITHUB_APP_WRITE ("CLIENT_ID:slug") use other apps (forks, tests)."""
-import argparse, contextlib, json, os, select, shutil, subprocess, sys, termios, time, tty as ttymod, urllib.error, urllib.parse, urllib.request
+import argparse, contextlib, json, os, re, select, shutil, subprocess, sys, termios, time, tty as ttymod, urllib.error, urllib.parse, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qrcodegen  # noqa: E402  (vendored next to this file)
@@ -225,9 +225,9 @@ def wait_for_access(tty, repo, need, token, may_create):
             tty.say(f"decal still can't see {repo}: check the name (it may be misspelled), or that the app is installed on it")
             return None
         if not told:
-            name = "Decal Profile" if need == "read" else "Decal Profile Write"
-            tty.say("", f"{name} can't see {repo} yet: install it on that repo (or check the name)",
-                    f"  {install_url(need)}", "", "Waiting for it...   Esc cancel")
+            url = install_url(need)
+            opened = open_browser(url)
+            tty.say("", *install_layout(need, repo, url, qr_lines(url), tty.width(), opened))
             told = True
         if tty.key(every) == "\x1b":
             return None
@@ -348,14 +348,29 @@ def layout(repo, need, code, url, qr, width, opened=False, copied=False):
     if copied:
         left.append("   (copied to your clipboard)")
     right = ["On your phone", "─" * 13] + qr + [f"Scan, then enter {code}"]
-    if width >= 76:
-        rows = [(left[i] if i < len(left) else "").ljust(41) + (right[i] if i < len(right) else "")
-                for i in range(max(len(left), len(right)))]
-    else:
-        rows = left + [""] + right
     what = "read" if need == "read" else "save to"
-    return [f"Sign in to GitHub so decal can {what} {repo}", ""] + rows + \
-           ["", "Waiting for GitHub...   Esc cancel · t paste a token instead"]
+    return [f"Sign in to GitHub so decal can {what} {repo}", ""] + columns(left, right, width) + \
+           ["", "Waiting for GitHub...   Esc cancel \u00b7 t paste a token instead"]
+
+
+def install_layout(need, repo, url, qr, width, opened=False):
+    """The app can't see REPO yet: install it here (the page, maybe opened for you) or from a phone (the QR code)."""
+    name = "Decal Profile" if need == "read" else "Decal Profile Write"
+    left = ["On this computer", "\u2500" * 16, "1. Open the install page",
+            "   (opened in your browser)" if opened else "   (the link below)",
+            '2. Choose "Only select', f'   repositories": {repo.split("/")[-1]}', "3. Press Install"]
+    right = ["On your phone", "\u2500" * 13] + qr + ["Scan to install from your phone"]
+    return [f"{name} can't see {repo} yet: install it on that repo (or check the name)", ""] + \
+           columns(left, right, width) + ["", "  " + url, "", "Waiting for it...   Esc cancel"]
+
+
+def columns(left, right, width):
+    """LEFT and RIGHT side by side when the terminal is wide enough (76 at least), else one under the other."""
+    widest = max(len(re.sub(r"\033\[[0-9;]*m", "", r)) for r in right)
+    if width >= max(76, 41 + widest):
+        return [(left[i] if i < len(left) else "").ljust(41) + (right[i] if i < len(right) else "")
+                for i in range(max(len(left), len(right)))]
+    return left + [""] + right
 
 
 def days_arg(v):

@@ -95,6 +95,18 @@ assert_eq "$(ask '1\n' me/prof --need read)" "s3cret" "not installed yet: the ke
 assert_contains "$(cat "$T_TMP/screen")" "Decal Profile can't see me/prof yet: install it on that repo" "says what to do"
 assert_contains "$(cat "$T_TMP/screen")" "$DECAL_GITHUB/apps/decal/installations/new" "with the install link"
 assert_eq "$(grep -c '^code' "$G/device_log")" "1" "one code only"
+S=$(cat "$T_TMP/screen")
+assert_contains "$S" "Scan to install from your phone" "a QR code for installing from the phone"
+assert_contains "$S" '2. Choose "Only select' "the steps: which repos"
+assert_contains "$S" 'repositories": prof' "...and which repo"
+assert_contains "$S" "   (the link below)" "no browser: points at the link"
+assert_eq "$(grep -c 'On your phone' "$T_TMP/screen")" "2" "two-column screens: signing in, then installing"
+# with a desktop: the install page opens in the browser too
+echo "me/prof 2" > "$G/hidden"; fake_up; printf 'ok\n' > "$G/device_script"; stub xdg-open; stub xclip 'exit 1'; : > "$STUBS/calls"
+assert_eq "$(DISPLAY=:99 ask '1\n' me/prof --need read)" "s3cret" "with a desktop: signed in"
+assert_contains "$(calls)" "xdg-open $DECAL_GITHUB/apps/decal/installations/new" "the install page opened in the browser"
+assert_eq "$(grep -c '(opened in your browser)' "$T_TMP/screen")" "2" "both pages say they opened"
+rm -f "$STUBS/xdg-open" "$STUBS/xclip" "$G/hidden"; fake_up
 # never visible (misspelled?): gives up on its own
 echo "me/prof forever" > "$G/hidden"; fake_up
 printf 'ok\nok\n' > "$G/device_script"
