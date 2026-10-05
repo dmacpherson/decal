@@ -39,15 +39,15 @@ assert_not_contains "$L" "On this computer                         On your phone
 assert_contains "$L" "(opened in your browser)" "browser note"
 assert_contains "$L" "(copied to your clipboard)" "clipboard note"
 
-# the pre-filled token page
-assert_eq "$(python3 "$A" token-url --need read --days 90)" \
+# the pre-filled token page (GitHub's own addresses: nothing is fetched here)
+assert_eq "$(env -u DECAL_GITHUB python3 "$A" token-url --need read --days 90)" \
   "https://github.com/settings/personal-access-tokens/new?name=Decal&description=decal%3A+read+your+profile&expires_in=90&contents=read" "read token page"
-assert_eq "$(python3 "$A" token-url --need write --days none)" \
+assert_eq "$(env -u DECAL_GITHUB python3 "$A" token-url --need write --days none)" \
   "https://github.com/settings/personal-access-tokens/new?name=Decal&description=decal%3A+save+your+profile&expires_in=none&contents=write&administration=write" "write token page, never expires"
 python3 "$A" token-url --need read --days 400 >/dev/null 2>&1; assert_eq "$?" "2" "expiry over 366 days refused"
 
 # the apps: from the environment ("CLIENT_ID:slug"), else built in (none yet: no sign-in offered)
-assert_eq "$(DECAL_GITHUB_APP_READ=Iv1.abc:decal python3 "$A" install-url --need read)" "https://github.com/apps/decal/installations/new" "install page"
+assert_eq "$(env -u DECAL_GITHUB DECAL_GITHUB_APP_READ=Iv1.abc:decal python3 "$A" install-url --need read)" "https://github.com/apps/decal/installations/new" "install page"
 assert_eq "$(DECAL_GITHUB_APP_WRITE=Iv1.w:decal-write py 'print(auth.app("write"))')" "('Iv1.w', 'decal-write')" "write app from the environment"
 assert_eq "$(DECAL_GITHUB_APP_READ=junk py 'print(auth.app("read"))')" "None" "a malformed setting: no app"
 # a fake GitHub (localhost): checking a key

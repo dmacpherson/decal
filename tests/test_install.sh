@@ -19,6 +19,7 @@ if [ -e "$f" ] && { [ ! -e "$f.token" ] || grep -qF "$(cat "$f.token")" "$hdr" 2
 fi
 [ -z "$w" ] || { printf 404; exit 0; }; exit 22'
 API=https://api.github.com/repos/dmacpherson/decal; DL=https://github.com/dmacpherson/decal
+export DECAL_GITHUB_API=https://api.github.com   # curl is the fake above: GitHub's real addresses never leave this test
 # a release: decal's own files (+ a marker to tell versions apart), and its checksum
 release() {  # release TAG
   local d="$T_TMP/rel/$1"; mkdir -p "$d/decal"
