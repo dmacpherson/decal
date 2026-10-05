@@ -117,4 +117,13 @@ rm -f "$DECAL_ROOT/etc/systemd/system/decal-gdm-background.service" "$DECAL_USER
 mkdir -p "$DECAL_STATE/pkgs"; echo libdnf5-plugin-actions > "$DECAL_STATE/pkgs/wallpaper"; stub dnf; : > "$STUBS/calls"
 ( DECAL_PLATFORM=fedora mod_run wallpaper module_remove ) >/dev/null 2>&1
 assert_contains "$(calls)" "dnf remove -y -- libdnf5-plugin-actions" "hooks package removed with the module"
+# the login background needs podman/docker or ImageMagick 7: without them it's skipped before any package hook goes in
+python3 - "$PROFILE_DIR/profile.toml" <<'PY'
+import re,sys; p=sys.argv[1]; s=open(p).read(); s=re.sub(r"(?ms)^\[wallpaper(\.[a-z]+)?\]\n.*?(?=^\[(?!wallpaper)|\Z)","",s); open(p,'w').write(s+'[wallpaper]\nimage = "wallpaper.jpg"\n')
+PY
+mkdir -p "$DECAL_ROOT/usr/sbin"; printf '#!/bin/sh\n' > "$DECAL_ROOT/usr/sbin/gdm"; chmod +x "$DECAL_ROOT/usr/sbin/gdm"; : > "$STUBS/calls"
+out=$( ( stub systemctl 'exit 0'; stub gsettings 'exit 0'; mod_run_pre() { have() { case $1 in podman|docker|magick) return 1;; esac; command -v "$1" >/dev/null 2>&1; }; }
+        DECAL_PLATFORM=fedora mod_run wallpaper module_add ) 2>&1)
+assert_contains "$out" "login background skipped" "no image tools: login background skipped with a word"
+assert_nofile "$DECAL_ROOT/etc/dnf/libdnf5-plugins/actions.d/decal-wallpaper.actions" "...and no package hook installed"
 t_done

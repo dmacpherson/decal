@@ -206,6 +206,8 @@ module_add() {
   local missing old bf before
   missing=$(terminal_missing_roles); [[ -z $missing ]] || die "theme '$THEME' lacks roles used by layout '$LAYOUT': $missing"
   _load_adapter "$TERMINAL"
+  # checked before anything is set up: an app this distro can't install skips the module, it doesn't half-do it
+  if [[ $(term_source) == none* ]]; then warn "$TERMINAL isn't available on $PLATFORM: terminal skipped (choose another app in [terminal])"; return 0; fi
   run mkdir -p "$LS_USER_STATE" "$CFG"
   if [[ $LS_DRY_RUN != 1 ]]; then echo "$P_remove_brew" > "$LS_USER_STATE/terminal.remove-brew"; fi   # remove honours it without the profile
   # 1. Homebrew tools for the enabled features (+ extra formulae)

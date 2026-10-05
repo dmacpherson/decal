@@ -175,4 +175,7 @@ assert_eq "$(v7 SAMEINODE)" "no" "gtk.css replaced whole (never half-written)"
 assert_eq "$(v7 GTK3)" "gone" "a stylesheet with only the block goes"
 # extensions.gnome.org (or the profile's source) is reached over https only, never redirected to http
 assert_not_contains "$(grep '^curl' "$STUBS/calls" | grep -v -- '--proto =https --proto-redir =https')" "extension-info" "every extension download is https only"
+# no GNOME Shell (KDE, Xfce…): skipped with a word, the run goes on (audit batch 2)
+out=$( ( mod_run_pre() { have() { [[ $1 != gnome-extensions ]] && command -v "$1" >/dev/null 2>&1; }; }; mod_run gnome-extensions module_add ) 2>&1); assert_eq "$?" "0" "no GNOME Shell: not a failure"
+assert_contains "$out" "skipped" "...says it's skipped"
 t_done

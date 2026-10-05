@@ -135,4 +135,9 @@ out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$P
 assert_contains "$out" "unknown TERMINAL" "...as an unknown terminal"
 out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$PWD; source ./module.sh; _preset themes "../../x") 2>&1); assert_eq "$?" "1" "preset ../: refused"
 out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$PWD; source ./module.sh; P_brew=('jq"; system("id"); "'); P_features_prompt=false; for f in fuzzy completions history jump ls cat; do eval "P_features_$f=false"; done; _gen_brewfile) 2>&1); assert_eq "$?" "1" "a formula that isn't a name: refused"
+# a terminal app this distro can't install (ghostty on Debian): skipped before anything changes (audit batch 2)
+sed -i 's/^app = "ptyxis"$/app = "ghostty"/' "$PROFILE_DIR/profile.toml"; grep -q '^app = "ghostty"' "$PROFILE_DIR/profile.toml" || printf '\n[terminal]\napp = "ghostty"\n' >> "$PROFILE_DIR/profile.toml"
+rm -rf "$XDG_CONFIG_HOME/decal/terminal"; : > "$STUBS/calls"
+out=$(DECAL_PLATFORM=debian mod module_add 2>&1); assert_eq "$?" "0" "unavailable terminal: not a failure"
+assert_contains "$out" "ghostty isn't available on debian" "...says why"; assert_nofile "$XDG_CONFIG_HOME/decal/terminal/Brewfile" "...and nothing was set up first"
 t_done

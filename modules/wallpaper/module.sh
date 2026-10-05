@@ -79,6 +79,8 @@ _desktop_add() {  # IMG
   run gsettings set org.gnome.desktop.background picture-uri-dark "file://$DESK_IMG"
 }
 
+# the login background is built in a container, or with ImageMagick 7 on the host (run-image-job.sh)
+_can_build() { have podman || have docker || { have magick && have glib-compile-resources; }; }
 module_add() {
   # resolve (download) the images first: nothing changes if one can't be fetched
   local limg="" dimg=""
@@ -86,6 +88,8 @@ module_add() {
   if [[ $P_desktop_enable == true ]] && _has_bg_schema; then dimg=$(_img desktop); fi
   if [[ $P_login_enable != true ]]; then _login_remove
   elif ! _has_gdm; then warn "GDM not found: login background skipped"
+  elif ! _can_build; then   # checked before any package hook goes in
+    warn "login background skipped: it needs podman or docker, or ImageMagick 7 (magick) and glib-compile-resources"
   elif ! txn_hooks_add wallpaper "$HELPER umount" "$HELPER mount"; then
     warn "login background skipped: this system can't unmount it around package updates (it would break gnome-shell upgrades)"
   else _login_add "$limg"; fi

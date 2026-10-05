@@ -7,7 +7,7 @@ UNIT="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT_NAME"
 REC="$LS_USER_STATE/ollama.installed"   # "cask ollama-binary" / "formula ollama": what decal installed
 JOB=decal-ollama-models   # background download job (transient systemd user unit, see pull-models.sh)
 _pkg() { if [[ $P_gpu == true ]]; then echo "cask ollama-binary"; else echo "formula ollama"; fi; }
-_bin() { echo "$(brew --prefix)/bin/ollama"; }
+_bin() { if have brew; then echo "$(brew --prefix)/bin/ollama"; fi; }
 _have_ollama() { [[ -x $(_bin) ]] || have ollama; }
 _cli() { if [[ -x $(_bin) ]]; then _bin; else command -v ollama; fi; }
 
@@ -77,7 +77,10 @@ _models() {
   info "models downloading in the background; follow them with: journalctl --user -u $JOB -f"
 }
 
-module_add() { _install; _service; _models; }
+module_add() {
+  if ! _have_ollama && ! have brew; then warn "Ollama comes from Homebrew, which isn't installed here: skipped (the terminal module installs Homebrew)"; return 0; fi
+  _install; _service; _models
+}
 
 module_remove() {
   if _pulling; then run systemctl --user stop "$JOB"; fi

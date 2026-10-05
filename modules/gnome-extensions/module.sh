@@ -137,7 +137,7 @@ _install_from_ego() {  # UUID -> 0 installed, 1 unavailable
 }
 
 module_add() {
-  have gnome-extensions || die "gnome-extensions not found (GNOME Shell required)"
+  if ! have gnome-extensions; then warn "not a GNOME Shell desktop: GNOME extensions skipped"; return 0; fi
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] would install missing: $(for u in $(_uuids); do _present "$u" || printf '%s ' "$u"; done)"; return 0; fi
   local x; for x in "${P_disable[@]}"; do
     if _uuids | grep -qxF "$x"; then die "$x is in both enable and disable in [gnome-extensions]"; fi
