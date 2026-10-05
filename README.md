@@ -279,8 +279,8 @@ but never updates itself.
 A module is `modules/<name>/module.sh` (`MODULE_DESC`, `module_add`,
 `module_remove`, `module_status`, optionally `module_capture`/`module_fetch`,
 `MODULE_NEEDS_ROOT=1`, `module_drop` with `MODULE_CAN_DROP=1` for `remove --only`, `module_stamp` printing its
-section of a stamp, with `STAMP_LIVE=1` to always read the machine and `STAMP_SKIP=1` to never be stamped) plus `schema.json` for its profile keys. Tests:
-`bash tests/run.sh`; distro e2e: `bash tests/containers/run.sh` (removes the images it
+section of a stamp, with `STAMP_LIVE=1` to always read the machine and `STAMP_SKIP=1` to never be stamped) plus `schema.json` for its profile keys. Work happens on the `dev` branch, which also holds the tests and design
+notes (`main` is what's released). Tests: `bash tests/run.sh`; distro e2e: `bash tests/containers/run.sh` (removes the images it
 pulled; `--keep-images` keeps them). Neither leaves files behind. Extensions that ship with decal
 (Decal Tweaks) are checked inside a throwaway headless GNOME Shell: `bash tests/shell/run.sh`.
 
