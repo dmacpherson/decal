@@ -176,6 +176,18 @@ else…** (the profile browser). GitHub saves sign in with Decal Profile Write o
 in memory only); the stick's read key, GITHUB_TOKEN, GH_TOKEN and the PC's gh login are never used for it
 (`clean_env`). The stick's copy is updated in place.
 
+## Ideas (not planned yet)
+
+- **A preferred source order for software.** `prefer = ["flatpak", "brew", "distro"]` in the profile. Wherever a
+  module installs software, decal tries each source in that order and uses the first one that has it. It records
+  which source it used (as it records ownership today), and `remove` takes the software away from that same source.
+  Today each module fixes its own source: apps uses Flatpak, terminal and ollama use Homebrew, the rest use the
+  distro through `pkg_install`. To design:
+  - how names map between sources (a Flathub id, a formula, a package name);
+  - a per-module or per-item override;
+  - the default order, which should match today's behaviour so existing profiles don't change;
+  - how `status` reports where something came from.
+
 ## The maintainer's own stick (works today, keep it working)
 
 `/run/media/denis/Ventoy`: `decal-me` (launcher), `Decal/decal-me.sh`, `Decal/decal-token.txt` (a token with admin
