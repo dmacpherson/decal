@@ -1,0 +1,44 @@
+# Every push to the dev branch -> the rolling "dev" pre-release (titled dev-<commit>), built by build.yml: what
+# https://dmacpherson.github.io/decal/dev/install installs. Never "latest": stable installs never get it.
+# Pushes in quick succession: only the newest is published.
+name: dev
+on:
+  push:
+    branches: [dev]
+permissions:
+  contents: write
+concurrency:
+  group: dev-build
+  cancel-in-progress: true
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ github.sha }}
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+          path: dist
+      - name: Publish the dev build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short=${GITHUB_SHA::7}
+          gh release delete dev --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release create dev dist/decal.tar.gz dist/decal.tar.gz.sha256 --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --prerelease --title "dev-$short" \
+            --notes "The newest build of the dev branch ($GITHUB_SHA). Install: curl -fsSL https://dmacpherson.github.io/decal/dev/install | bash"
+  pages:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Refresh the installers site (/dev/install comes from the dev branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main --repo "$GITHUB_REPOSITORY"

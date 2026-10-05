@@ -1,6 +1,6 @@
-# Push a tag like v1.2.0 -> a GitHub release with decal.tar.gz and its checksum (what install.sh downloads), with the
-# USB stick launchers built static for x86-64 and aarch64 inside it (usb/bin). A tag with a "-" (v1.2.0-rc1) is a
-# pre-release: never "latest". Run the checks first (bash tests/run.sh, shellcheck, gitleaks); this only packages.
+# Push a tag like v1.2.0 -> a GitHub release with decal.tar.gz and its checksum (what install.sh downloads), built by
+# build.yml (the USB stick launchers inside). A tag with a "-" (v1.2.0-rc1) is a pre-release: never "latest".
+# Run the checks first (bash tests/run.sh, shellcheck, gitleaks); this only packages.
 name: release
 on:
   push:
@@ -8,44 +8,22 @@ on:
 permissions:
   contents: write
 jobs:
-  launchers:
-    strategy:
-      matrix:
-        include:
-          - { runner: ubuntu-latest, arch: x86_64 }
-          - { runner: ubuntu-24.04-arm, arch: aarch64 }
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build (static, musl)
-        run: |
-          docker run --rm -v "$PWD:/w" -w /w alpine:3 sh -c \
-            'apk add -q gcc musl-dev && gcc -Os -static -s -o Decal-${{ matrix.arch }} usb/launch.c'
-          file Decal-${{ matrix.arch }} | tee /dev/stderr | grep -q 'statically linked\|static-pie linked'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: launcher-${{ matrix.arch }}
-          path: Decal-${{ matrix.arch }}
-  release:
-    needs: launchers
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ github.sha }}
+  publish:
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: bin
-          merge-multiple: true
-      - name: Package
-        run: |
-          mkdir dist stage
-          git archive --format=tar --prefix=decal/ "$GITHUB_REF_NAME" | tar -x -C stage   # .gitattributes leaves tests out
-          mkdir -p stage/decal/usb/bin && cp bin/Decal-* stage/decal/usb/bin/ && chmod 755 stage/decal/usb/bin/*
-          tar -czf dist/decal.tar.gz -C stage decal
-          (cd dist && sha256sum decal.tar.gz > decal.tar.gz.sha256)
-          tar -tzf dist/decal.tar.gz decal/decal decal/install.sh decal/usb/bin/Decal-x86_64 decal/usb/bin/Decal-aarch64 >/dev/null
+          name: package
+          path: dist
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=(); if [[ $GITHUB_REF_NAME == *-* ]]; then pre=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" dist/decal.tar.gz dist/decal.tar.gz.sha256 --title "$GITHUB_REF_NAME" --generate-notes "${pre[@]}"
+          gh release create "$GITHUB_REF_NAME" dist/decal.tar.gz dist/decal.tar.gz.sha256 --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" --generate-notes "${pre[@]}"

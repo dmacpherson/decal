@@ -181,4 +181,27 @@ echo "0000  decal.tar.gz" > "$T_TMP/badsum"; cp "$L/decal.tar.gz" "$T_TMP/copy.t
 out=$(DECAL_ARCHIVE="$T_TMP/copy.tar.gz" DECAL_ARCHIVE_VERSION=v1.6.0 DECAL_NO_MENU=1 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "local copy, bad checksum: refused"
 assert_contains "$out" "checksum mismatch" "...says why"; assert_eq "$(cat "$H/VERSION")" "v1.5.0" "...nothing changed"
 out=$(DECAL_ARCHIVE="$T_TMP/none.tar.gz" bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "no copy there: refused"
+# the dev channel: the rolling "dev" pre-release (named dev-<commit>), checksum checked, remembered, updated
+devrel() {  # devrel NAME : a dev build called NAME at releases/download/dev
+  local d="$T_TMP/dev/$1"; mkdir -p "$d/decal"
+  cp -a "$REPO/decal" "$REPO/install.sh" "$REPO/lib" "$REPO/modules" "$d/decal/"; echo "$1" > "$d/decal/MARK"
+  tar -czf "$d/decal.tar.gz" -C "$d" decal; (cd "$d" && sha256sum decal.tar.gz > decal.tar.gz.sha256)
+  serve "$DL/releases/download/dev/decal.tar.gz" "$d/decal.tar.gz"; serve "$DL/releases/download/dev/decal.tar.gz.sha256" "$d/decal.tar.gz.sha256"
+  serve_text "$API/releases/tags/dev" "{\"tag_name\": \"dev\", \"name\": \"$1\"}"; }
+devrel dev-abc1234
+out=$(DECAL_VERSION=dev DECAL_NO_MENU=1 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "0" "dev channel: installed"
+assert_eq "$(cat "$H/VERSION")" "dev-abc1234" "...the dev build, named by its commit"; assert_eq "$(cat "$H/MARK")" "dev-abc1234" "...its files"
+assert_eq "$(cat "$H/.channel")" "dev" "...dev remembered as the channel"
+DECAL_HOME="$H" bash "$REPO/install.sh" --check >/dev/null 2>&1; assert_eq "$?" "1" "dev: the same build is up to date"
+devrel dev-def5678
+assert_eq "$(DECAL_HOME="$H" bash "$REPO/install.sh" --check 2>/dev/null)" "dev-def5678" "dev: a newer dev build is an update"
+echo "0000  decal.tar.gz" > "$T_TMP/dsum"; serve "$DL/releases/download/dev/decal.tar.gz.sha256" "$T_TMP/dsum"
+out=$(DECAL_NO_MENU=1 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "dev: a damaged download is refused"
+# the pages site: /install (main's) and /dev/install (dev's, defaulting to the dev channel)
+cp "$REPO/install.sh" "$T_TMP/dev-install.sh"
+bash "$REPO/tools/pages-site.sh" "$REPO/install.sh" "$T_TMP/dev-install.sh" "$T_TMP/site" dmacpherson/decal
+assert_eq "$(cat "$T_TMP/site/install")" "$(cat "$REPO/install.sh")" "site: /install is main's installer"
+assert_contains "$(sed -n 2p "$T_TMP/site/dev/install")" 'DECAL_VERSION=${DECAL_VERSION:-dev}' "site: /dev/install defaults to the dev channel"
+bash -n "$T_TMP/site/dev/install"; assert_eq "$?" "0" "site: /dev/install is valid bash"
+assert_file "$T_TMP/site/dev/install.sh" "site: /dev/install.sh too"; assert_file "$T_TMP/site/index.html" "site: index"
 t_done

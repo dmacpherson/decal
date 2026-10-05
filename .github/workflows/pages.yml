@@ -1,9 +1,11 @@
-# The installer at a short URL: https://dmacpherson.github.io/decal/install (and /install.sh)
+# The installers at short URLs: https://dmacpherson.github.io/decal/install (stable, from main) and /dev/install (the
+# dev branch's, defaulting to the dev channel). Runs on main only (GitHub Pages deploys from the default branch):
+# when main's installer changes, and when dev.yml asks after each dev build.
 name: pages
 on:
   push:
     branches: [main]
-    paths: [install.sh, .github/workflows/pages.yml]
+    paths: [install.sh, tools/pages-site.sh, .github/workflows/pages.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,11 +22,13 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - name: Site
         run: |
-          mkdir _site
-          cp install.sh _site/install; cp install.sh _site/install.sh
-          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=https://github.com/%s"><title>decal</title><a href="https://github.com/%s">decal</a>\n' "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY" > _site/index.html
+          git show origin/dev:install.sh > dev-install.sh 2>/dev/null || cp install.sh dev-install.sh   # no dev branch yet: main's
+          bash tools/pages-site.sh install.sh dev-install.sh _site "$GITHUB_REPOSITORY"
       - uses: actions/upload-pages-artifact@v3
       - id: deploy
         uses: actions/deploy-pages@v4

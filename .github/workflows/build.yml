@@ -1,0 +1,55 @@
+# Build decal for one commit: the USB stick launchers (static musl, x86-64 and aarch64), and decal.tar.gz with them
+# inside (usb/bin) plus its checksum, as the artifact "package". Used by release.yml (tags) and dev.yml (the dev branch).
+name: build
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: the commit to build
+        required: true
+        type: string
+jobs:
+  launchers:
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-latest, arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Build (static, musl)
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w alpine:3 sh -c \
+            'apk add -q gcc musl-dev && gcc -Os -static -s -o Decal-${{ matrix.arch }} usb/launch.c'
+          file Decal-${{ matrix.arch }} | tee /dev/stderr | grep -q 'statically linked\|static-pie linked'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ matrix.arch }}
+          path: Decal-${{ matrix.arch }}
+  package:
+    needs: launchers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: launcher-*
+          path: bin
+          merge-multiple: true
+      - name: Package
+        run: |
+          mkdir dist stage
+          git archive --format=tar --prefix=decal/ HEAD | tar -x -C stage   # .gitattributes leaves tests and docs out
+          mkdir -p stage/decal/usb/bin && cp bin/Decal-* stage/decal/usb/bin/ && chmod 755 stage/decal/usb/bin/*
+          tar -czf dist/decal.tar.gz -C stage decal
+          (cd dist && sha256sum decal.tar.gz > decal.tar.gz.sha256)
+          tar -tzf dist/decal.tar.gz decal/decal decal/install.sh decal/usb/bin/Decal-x86_64 decal/usb/bin/Decal-aarch64 >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: dist/

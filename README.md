@@ -19,6 +19,15 @@ curl -fsSL https://dmacpherson.github.io/decal/install | bash
 From the menu you can apply a setup, stamp this machine, or take things off again. After this, just run
 `decal` to open it.
 
+Want the newest features before they're released? The **dev** build is the latest of the `dev` branch (it may
+break); decal then updates itself from dev builds:
+
+```bash
+curl -fsSL https://dmacpherson.github.io/decal/dev/install | bash
+```
+
+Run the first line again to go back to the stable releases.
+
 ## Save your setup
 
 Stamp this machine: decal saves what you've changed from the defaults to `~/decal-$USER.tar.gz`.
@@ -262,7 +271,7 @@ forces it), an older one is updated, and a profile you give it is applied either
 it takes a profile to apply (with any `decal apply` options, e.g. `--tags dev`), or `stamp` and any
 `decal stamp` options; with nothing, it opens the menu (`DECAL_NO_MENU=1`: it just installs).
 `DECAL_VERSION=v1.2.0` (or `main`) before `bash` picks a release (or the newest commit) and is
-remembered. Needs `bash`, `curl` or `wget`, `tar` and `python3`. A git checkout (`./decal`) works the same
+remembered; `DECAL_VERSION=dev` (what `/dev/install` uses) follows the dev builds, `latest` the stable releases. Needs `bash`, `curl` or `wget`, `tar` and `python3`. A git checkout (`./decal`) works the same
 but never updates itself.
 
 ### Adding a module

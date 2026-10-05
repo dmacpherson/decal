@@ -7,7 +7,8 @@
 # newest version; decal also updates itself before add/apply/remove. PROFILE is anything `decal apply` takes: a
 # folder, a .tar.gz/.zip, owner/repo or a GitHub link, an https link to an archive, a git URL (private GitHub repos:
 # GITHUB_TOKEN, `gh auth login`, or decal signs you in).
-# DECAL_VERSION: latest (default: the newest release, checksum verified) | vX.Y.Z | a branch, e.g. main (newest commit).
+# DECAL_VERSION: latest (default: the newest release, checksum verified) | dev (the newest build of the dev branch,
+# checksum verified) | vX.Y.Z | a branch, e.g. main (newest commit).
 # Remembered, so updates stay on it. Already installed and current: nothing is downloaded (DECAL_REINSTALL=1 does
 # anyway). Options for decal itself: install.sh --update | --check (newer version? print it).
 # DECAL_ARCHIVE=PATH: install that decal.tar.gz (with PATH.sha256) instead of downloading (a decal USB stick's copy).
@@ -33,6 +34,8 @@ _resolve() {
     latest) tag=$(_get "$api/releases/latest" | _json tag_name) || return 1
             echo "$tag $dl/releases/download/$tag/decal.tar.gz $dl/releases/download/$tag/decal.tar.gz.sha256" ;;
     v[0-9]*) echo "$v $dl/releases/download/$v/decal.tar.gz $dl/releases/download/$v/decal.tar.gz.sha256" ;;
+    dev) tag=$(_get "$api/releases/tags/dev" | _json name) || return 1   # the rolling dev build: dev-<commit>
+         echo "$tag $dl/releases/download/dev/decal.tar.gz $dl/releases/download/dev/decal.tar.gz.sha256" ;;
     *) sha=$(_get "$api/commits/$v" | _json sha) || return 1
        echo "$v@${sha:0:12} $dl/archive/$sha.tar.gz -" ;;
   esac

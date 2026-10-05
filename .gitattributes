@@ -3,3 +3,4 @@ tests/ export-ignore
 .gitleaksignore export-ignore
 assets/ export-ignore
 docs/ export-ignore
+tools/ export-ignore
