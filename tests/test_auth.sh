@@ -142,6 +142,9 @@ assert_contains "$(cat "$T_TMP/screen")" 'choose "All repositories"' "a repo dec
 printf 'pending\n' > "$G/device_script"
 assert_eq "$(ask '1\nt\ns3cret\n' me/prof --need read)" "s3cret" "t while waiting: paste a token instead"
 assert_eq "$(DECAL_GITHUB_APP_READ= ask '1\n\ns3cret\n' me/prof --need read)" "s3cret" "no app configured: 1 is make a token"
+# how long: an answer that isn't 1-4 asks again instead of guessing (audit batch 3)
+assert_eq "$(DECAL_GITHUB_APP_READ= ask '1\n9\n4\ns3cret\n' me/prof --need read)" "s3cret" "a wrong length: asked again"
+assert_contains "$(cat "$T_TMP/screen")" "expires_in=none" "...and the second answer is used"
 assert_not_contains "$(cat "$T_TMP/screen")" "Sign in with GitHub" "...and signing in isn't offered"
 
 # no terminal: fails with how to fix it; Ctrl+C: exits 130, no traceback

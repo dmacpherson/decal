@@ -50,6 +50,9 @@ EOF
   exit 1
 }
 
+# val OPTION VALUE WHAT : an option given without its value says what it needs (not bash's "parameter null")
+val() { [[ -n $2 ]] || die "$1 needs $3"; }
+
 ORIG_ARGS=("$@")
 args=(); OPT_PROFILE=""
 while [[ $# -gt 0 ]]; do
@@ -57,9 +60,9 @@ while [[ $# -gt 0 ]]; do
     --dry-run|-dr) export LS_DRY_RUN=1 ;;
     -v|--verbose) export DECAL_VERBOSE=1 ;;
     -f|--force) export DECAL_FORCE=1 ;;
-    --profile) OPT_PROFILE=${2:?--profile needs a directory}; shift ;;
-    --tags) DECAL_TAGS=${2:?--tags needs a tag list, e.g. --tags dev}; export DECAL_TAGS; shift ;;
-    --only) DECAL_ONLY=${2:?--only needs a tag}; export DECAL_ONLY; shift ;;
+    --profile) val "$1" "${2:-}" "a profile folder"; OPT_PROFILE=$2; shift ;;
+    --tags) val "$1" "${2:-}" "a tag list, e.g. --tags dev"; DECAL_TAGS=$2; export DECAL_TAGS; shift ;;
+    --only) val "$1" "${2:-}" "a tag"; DECAL_ONLY=$2; export DECAL_ONLY; shift ;;
     --no-update) export DECAL_NO_UPDATE=1 ;;
     -y|--yes) export DECAL_YES=1 ;;
     -h|--help) usage ;;
@@ -375,8 +378,8 @@ do_new() {
   local name="" from=this-machine to=github public=0 use=0 dest="" repo="" tok="" src stage sticks n a
   while (( $# )); do
     case $1 in
-      --from) from=${2:?--from needs this-machine, a profile, or empty}; shift ;;
-      --to) to=${2:?--to needs github, file, file:PATH or stick}; shift ;;
+      --from) val "$1" "${2:-}" "this-machine, a profile, or empty"; from=$2; shift ;;
+      --to) val "$1" "${2:-}" "github, file, file:PATH, stick or stick:NAME"; to=$2; shift ;;
       --public) public=1 ;;
       --use) use=1 ;;
       -*) die "new: unknown option $1" ;;
@@ -449,8 +452,11 @@ do_usb() {
   local prof="" how="" dmode=newest arm=0 to="" yes=0 target files key="" kind src ver bin how_text a res
   while (( $# )); do
     case $1 in
-      --from) prof=${2:?}; shift ;; --how) how=${2:?}; shift ;; --decal) dmode=${2:?}; shift ;;
-      --arm) arm=1 ;; --to) to=${2:?}; shift ;; --yes|-y) yes=1 ;;
+      --from) val "$1" "${2:-}" "a profile (a folder, a link or owner/name)"; prof=$2; shift ;;
+      --how) val "$1" "${2:-}" "saved-key, sign-in, copy or latest"; how=$2; shift ;;
+      --decal) val "$1" "${2:-}" "newest, copy or online"; dmode=$2; shift ;;
+      --to) val "$1" "${2:-}" "a mount point, a device, or folder[:PATH]"; to=$2; shift ;;
+      --arm) arm=1 ;; --yes|-y) yes=1 ;;
       *) die "usb: unknown option $1" ;;
     esac; shift
   done
@@ -573,7 +579,8 @@ gh_tarball() {
     fi
     case $code in
       401|403|404) die "github:$1 not found or not allowed (private? set GITHUB_TOKEN, or log in with gh auth login)" ;;
-      *) die "could not download github:$1 (HTTP $code)" ;;
+      000) die "couldn't reach GitHub to get github:$1: check the internet connection" ;;
+      *) die "could not download github:$1 (GitHub answered $code)" ;;
     esac
   done
 }

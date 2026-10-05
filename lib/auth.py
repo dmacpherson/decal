@@ -312,10 +312,13 @@ def make_token(tty, repo, need, may_create):
     tty.say("", "How long should the token last?")
     for i, (label, _) in enumerate(DAYS, 1):
         tty.say(f"  {i}) {label}" + ("   (default)" if i == 2 else ""))
-    a = tty.line("Choose [2]: ")
-    if a is None:
-        return None
-    days = DAYS[int(a) - 1][1] if a in ("1", "2", "3", "4") else DAYS[1][1]
+    while True:   # an answer that isn't 1-4 asks again
+        a = tty.line("Choose [2]: ")
+        if a is None:
+            return None
+        if (a or "2") in ("1", "2", "3", "4"):
+            break
+    days = DAYS[int(a or "2") - 1][1]
     url = token_url(need, days)
     where = ('choose "All repositories" (decal creates ' + repo.split("/")[-1] + " if it isn't there yet)") if may_create \
         else 'choose "Only select repositories" and pick your profile repos' if repo == "-" \
