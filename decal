@@ -38,6 +38,9 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
                              a new profile: a stamp of this machine (default), a copy of PROFILE, or a starter
                              with everything commented out; on GitHub (default: a private repo), in a file
                              (~/NAME.tar.gz) or on the USB stick. Never overwrites. --use: make it active
+  usb [--from SRC] [--how saved-key|sign-in|copy|latest] [--decal newest|copy|online] [--arm] [--to WHERE] [--yes]
+                             put decal on a USB stick (or --to folder[:PATH]): double-click Decal on any Linux PC to
+                             get decal, the profile and the menu. In a terminal with no options: asks step by step
   fetch  [module...]         pre-download sources (themes, fonts, ...)
   capture <module>           print current config to copy into your profile
   update                     update decal now (installs from install.sh also update themselves on every run;
@@ -419,6 +422,102 @@ do_new() {
   info "new profile: $src"
   if (( use )); then set_profile "$src"; python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi
 }
+# usb_bin : a folder with the launchers (Decal-x86_64, Decal-aarch64): the release's usb/bin, else downloaded once
+usb_bin() {
+  local d=${DECAL_USB_BIN:-$LS_REPO/usb/bin} c="${XDG_CACHE_HOME:-$HOME/.cache}/decal/usb-bin" t
+  if [[ -f $d/Decal-x86_64 ]]; then echo "$d"; return 0; fi
+  if [[ -f $c/Decal-x86_64 ]]; then echo "$c"; return 0; fi
+  info "getting the stick launchers (this copy of decal doesn't have them)"
+  t=$(mktemp -d "$LS_RUNTMP/rel.XXXXXX")
+  if ! curl -fsSL https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz -o "$t/d.tgz" \
+     || ! curl -fsSL https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz.sha256 -o "$t/sum"; then
+    die "couldn't download the stick launchers"
+  fi
+  [[ $(sha256sum "$t/d.tgz" | cut -d' ' -f1) == "$(cut -d' ' -f1 < "$t/sum")" ]] || die "the launchers download is damaged"
+  tar -xzf "$t/d.tgz" -C "$t" decal/usb/bin 2>/dev/null || die "the latest release has no stick launchers yet"
+  mkdir -p "$c"; cp "$t/decal/usb/bin/"* "$c/"; echo "$c"
+}
+# do_usb [--from SRC] [--how saved-key|sign-in|copy|latest] [--decal newest|copy|online] [--arm]
+#        [--to MOUNTPOINT|DEVICE|folder[:PATH]] [--yes] : put decal on a USB stick (or in a folder)
+do_usb() {
+  local prof="" how="" dmode=newest arm=0 to="" yes=0 target files key="" kind src ver bin how_text a res
+  while (( $# )); do
+    case $1 in
+      --from) prof=${2:?}; shift ;; --how) how=${2:?}; shift ;; --decal) dmode=${2:?}; shift ;;
+      --arm) arm=1 ;; --to) to=${2:?}; shift ;; --yes|-y) yes=1 ;;
+      *) die "usb: unknown option $1" ;;
+    esac; shift
+  done
+  if [[ ${DECAL_YES:-} == 1 ]]; then yes=1; fi   # --yes is decal's own option (it reaches here as DECAL_YES)
+  [[ $dmode =~ ^(newest|copy|online)$ ]] || die "usb: --decal newest, copy or online"
+  # where
+  case $to in
+    folder) target="$HOME/decal-usb" ;;
+    folder:*) target=${to#folder:}; target=${target/#\~/$HOME} ;;
+    /dev/*) target=$(python3 "$LS_REPO/lib/usb.py" mount "$to") || exit 1 ;;
+    "") mapfile -t a < <(python3 "$LS_REPO/lib/usb.py" drives | awk -F'\t' '$3 != "" {print $3}')
+        (( ${#a[@]} == 1 )) || die "usb: which drive? --to a mount point, a device, or folder (decal usb in a terminal asks)"
+        target=${a[0]} ;;
+    *) [[ -d $to ]] || die "usb: $to isn't a folder or a mounted drive"; target=$to ;;
+  esac
+  # which profile (the active one by default)
+  if [[ -z $prof ]]; then
+    if [[ -L $PROFILE_HOME ]]; then prof=$(readlink -f "$PROFILE_HOME"); else prof=$(cat "$PROFILE_HOME/.decal-source" 2>/dev/null || true); fi
+    [[ -n $prof ]] || die "usb: which profile? --from SOURCE (there's no active profile)"
+  fi
+  stage_profile "$prof"; kind=$STAGE_KIND; src=$STAGE_SRC
+  if [[ $kind == github ]]; then
+    if [[ -z $how ]]; then if python3 "$LS_REPO/lib/source.py" public "$src"; then how=latest; else how=saved-key; fi; fi
+  else
+    [[ -z $how || $how == copy ]] || die "usb: $src isn't on GitHub: the stick gets a copy (--how copy)"
+    how=copy
+  fi
+  [[ $how =~ ^(saved-key|sign-in|copy|latest)$ ]] || die "usb: --how saved-key, sign-in, copy or latest"
+  # the key: always a fresh read key, never GITHUB_TOKEN / GH_TOKEN / gh
+  if [[ $how == saved-key ]]; then
+    if [[ -n ${DECAL_STICK_KEY:-} ]]; then key=$DECAL_STICK_KEY
+    else
+      { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "usb: a saved key needs a terminal to sign in (or DECAL_STICK_KEY)"
+      info "the stick gets its own read-only key (your gh login or GITHUB_TOKEN are never put on a stick)"
+      key=$(env -u GITHUB_TOKEN -u GH_TOKEN python3 "$LS_REPO/lib/auth.py" get "${src#github:}" --need read) || die "no key: nothing written"
+    fi
+  fi
+  bin=$(usb_bin) || exit 1
+  ver=$(cat "$LS_REPO/VERSION" 2>/dev/null || echo "dev-$(git -C "$LS_REPO" rev-parse --short HEAD 2>/dev/null || echo local)")
+  files="$LS_RUNTMP/stick"; rm -rf "$files"; mkdir -p "$files/.Decal"
+  cp "$bin/Decal-x86_64" "$files/Decal"
+  if (( arm )); then cp "$bin/Decal-aarch64" "$files/.Decal/Decal-ARM"; fi
+  cp "$LS_REPO/usb/start.sh" "$files/.Decal/start.sh"
+  case $how in
+    copy) mkdir -p "$files/.Decal/profile"; cp -a "$STAGE_DIR/." "$files/.Decal/profile/"
+          rm -rf "$files/.Decal/profile/.git" "$files/.Decal/profile/.decal-source"; : > "$files/.Decal/profile/.decal-stamp"
+          how_text="a copy of $src" ;;
+    saved-key) ( umask 077; printf '%s\n' "$key" > "$files/.Decal/key" ); how_text="$src (with a read-only key)" ;;
+    sign-in) how_text="$src (signs in each time)" ;;
+    latest) how_text="$src (public: always the latest)" ;;
+  esac
+  if [[ $dmode != online ]]; then   # this decal's own files (installed or a checkout), without .git, tests or docs
+    tar -czf "$files/.Decal/decal.tar.gz" -C "$(dirname "$LS_REPO")" --exclude=.git --exclude=tests --exclude=docs \
+      --exclude=__pycache__ --exclude=.superpowers --transform "s,^$(basename "$LS_REPO"),decal," "$(basename "$LS_REPO")"
+    (cd "$files/.Decal" && sha256sum decal.tar.gz > decal.tar.gz.sha256)
+  fi
+  { echo "# Made by decal $ver on $(date +%F). Run decal usb to change it."
+    if [[ $how == copy ]]; then echo "profile=copy"; else echo "profile=$src"; fi
+    case $how in saved-key) echo "key=saved" ;; sign-in) echo "key=ask" ;; *) echo "key=none" ;; esac
+    echo "decal=$dmode"; echo "version=$ver"; } > "$files/.Decal/stick.conf"
+  sed -e "s|{profile}|$how_text|" -e "s|{version}|$ver ($dmode)|" -e "s|{made}|$(date +%F)|" "$LS_REPO/usb/README.txt" > "$files/.Decal/README.txt"
+  info "on $target:"; (cd "$files" && find Decal .Decal -type f | sort | sed 's/^/    /') >&2
+  if (( ! yes )); then
+    { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "usb: nothing written: add --yes to write without asking"
+    printf 'Write these to %s? [Y/n] ' "$target" >> "${DECAL_TTY_OUT:-/dev/tty}"; IFS= read -r a < "${DECAL_TTY_IN:-/dev/tty}" || a=n
+    [[ ${a:-y} == [Yy]* ]] || die "nothing written"
+  fi
+  res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || die "couldn't write to $target"
+  info "done: double-click Decal on any Linux PC (Ctrl+H shows the .Decal folder)"
+  if (( arm )); then info "ARM machines: double-click .Decal/Decal-ARM"; fi
+  if [[ $res == upgraded ]]; then warn "the old hand-made setup was replaced: revoke its token on GitHub (Settings → Developer settings → tokens)"; fi
+  if [[ $target == "$HOME"/* || $to == folder* ]]; then info "copy Decal and .Decal/ together; zipping or some cloud drives drop the 'can run' bit Decal needs"; fi
+}
 # tidy_cache : one version per source, nothing unused for 30 days (after a successful apply/fetch)
 tidy_cache() { if [[ ${LS_DRY_RUN:-0} != 1 ]]; then python3 "$LS_REPO/lib/fetch.py" --prune || warn "could not tidy the download cache"; fi; }
 find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single sub-folder)
@@ -652,6 +751,7 @@ case $cmd in
     GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami 2>/dev/null ;;
   stamp) do_stamp "$@" ;;
   new) do_new "$@" ;;
+  usb) if [[ $# -eq 0 && -t 0 && -t 1 ]]; then exec python3 "$LS_REPO/lib/ui.py" usb; fi; do_usb "$@" ;;
   use)
     [[ $# -eq 1 ]] || usage
     set_profile "$1"

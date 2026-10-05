@@ -6,6 +6,7 @@
   source.py fetch URL DIR         download; an archive is unpacked into DIR (prints "archive"); else exit 3
   source.py remember SOURCE       put SOURCE first in the recently-used list (10 kept; never a key)
   source.py yours SOURCE [--login L]  exit 0 when SOURCE is yours: local, recently used, or L's on GitHub
+  source.py public github:O/R     exit 0 when the repo is public (answers without a key)
 
 https only; DECAL_ALLOW_HTTP_LOCAL=1 also allows http://127.0.0.1 (tests)."""
 import argparse, datetime, os, re, shutil, stat, sys, tarfile, tempfile, urllib.error, urllib.parse, urllib.request, zipfile
@@ -176,9 +177,23 @@ def yours(source, login=""):
     return bool(m and login and m.group(1).lower() == login.lower())
 
 
+def public(source):
+    """True when a github: repo answers without a key (a public repo); False when private, missing or offline."""
+    m = re.fullmatch(rf"github:({OWNER}/{NAME})(@\S+)?", source)
+    if not m:
+        return False
+    api = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
+    try:
+        with urllib.request.urlopen(urllib.request.Request(api + "/repos/" + m.group(1),
+                                    headers={"Accept": "application/vnd.github+json"}), timeout=15) as r:
+            return r.status == 200
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["resolve", "unpack", "fetch", "remember", "yours"])
+    ap.add_argument("cmd", choices=["resolve", "unpack", "fetch", "remember", "yours", "public"])
     ap.add_argument("args", nargs="+")
     ap.add_argument("--login", default="")
     a = ap.parse_args()
@@ -194,6 +209,8 @@ def main():
             print("archive")
         elif a.cmd == "remember":
             remember(a.args[0])
+        elif a.cmd == "public":
+            sys.exit(0 if public(a.args[0]) else 1)
         else:
             sys.exit(0 if yours(a.args[0], a.login) else 1)
     except Bad as e:
