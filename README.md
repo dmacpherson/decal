@@ -62,6 +62,17 @@ Undo everything decal changed on this machine:
 decal remove all
 ```
 
+## Put it on a USB stick
+
+```bash
+decal usb
+```
+
+Asks which profile, how the stick gets it (a saved read-only key, signing in each time, or a copy), which decal it
+runs and which stick (a Ventoy stick is fine: decal only adds `Decal` and a hidden `.Decal` folder). Then
+double-click **Decal** on any Linux PC: a terminal opens, decal installs, your profile is fetched and decal's menu
+opens. Run `decal usb` again to update the stick.
+
 ## What decal can set
 
 | Module | What it does |
@@ -96,6 +107,7 @@ decal use ~/my-profile            # make it the active profile, without applying
 decal apply ~/my-profile          # a folder, a .tar.gz/.zip, owner/repo or a GitHub link, an archive link, a git URL: becomes the active profile, then applied (never removes anything)
 decal profiles                    # the profiles decal can see: yours on GitHub, stamps here, USB sticks, recently used
 decal new decal-work --from empty # a new profile: from this machine (default), a copy, or a starter; --to github|file|stick
+decal usb --to folder             # the USB stick files in ~/decal-usb, to copy anywhere (decal usb alone asks step by step)
 decal status                      # what's applied
 decal add cursor icons            # apply some modules from the active profile
 decal remove wallpaper            # undo exactly what add did

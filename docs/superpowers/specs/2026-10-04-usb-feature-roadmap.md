@@ -9,7 +9,7 @@ implementation; this file records what's already decided so each part's design s
 | 1 | GitHub sign-in | **Done** (merged 2026-10-04): `docs/superpowers/specs/2026-10-04-github-sign-in-design.md` |
 | 2 | Profile browser | **Done** (merged 2026-10-05): `docs/superpowers/specs/2026-10-04-profile-browser-design.md` |
 | 2b | Profile review ("What this profile will do") | After 2 |
-| 3 | USB maker | Spec written: `docs/superpowers/specs/2026-10-05-usb-maker-design.md` |
+| 3 | USB maker | **Built** on branch `usb-maker` (review pending): `docs/superpowers/specs/2026-10-05-usb-maker-design.md` |
 | 4 | Save back from a stick | After 3 |
 
 Order matters: each part uses the ones before it.
