@@ -33,6 +33,10 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
                              ~/decal-$USER.tar.gz, or PATH (a .tar.gz, or a folder); -dr / --dry-run shows it
                              without saving; -gh / --github also puts it in a private GitHub repo (REPO, or
                              decal-$USER), one commit per stamp (--public: a public repo)
+  new NAME [--from this-machine|PROFILE|empty] [--to github|file[:PATH]|stick] [--public] [--use]
+                             a new profile: a stamp of this machine (default), a copy of PROFILE, or a starter
+                             with everything commented out; on GitHub (default: a private repo), in a file
+                             (~/NAME.tar.gz) or on the USB stick. Never overwrites. --use: make it active
   fetch  [module...]         pre-download sources (themes, fonts, ...)
   capture <module>           print current config to copy into your profile
   update                     update decal now (installs from install.sh also update themselves on every run;
@@ -345,6 +349,65 @@ do_stamp() {
   info "on GitHub: https://github.com/$r"
   info "on another machine: curl -fsSL $INSTALL_URL | bash -s -- github:$r"
 }
+# do_new NAME [--from this-machine|PROFILE|empty] [--to github|file[:PATH]|stick] [--public] [--use] : a new profile.
+# Never overwrites: an existing repo, file or stick profile stops it before any work.
+do_new() {
+  local name="" from=this-machine to=github public=0 use=0 dest="" repo="" tok="" src stage sticks n a
+  while (( $# )); do
+    case $1 in
+      --from) from=${2:?--from needs this-machine, a profile, or empty}; shift ;;
+      --to) to=${2:?--to needs github, file, file:PATH or stick}; shift ;;
+      --public) public=1 ;;
+      --use) use=1 ;;
+      -*) die "new: unknown option $1" ;;
+      *) [[ -z $name ]] || die "new: one name (got $name and $1)"; name=$1 ;;
+    esac; shift
+  done
+  [[ $name =~ ^[A-Za-z0-9_.-]+$ ]] || die "new: a name like decal-work (letters, digits, - _ .)"
+  case $to in   # where, checked first
+    github) ;;
+    file) dest="$HOME/$name.tar.gz" ;;
+    file:*) dest=${to#file:}; dest=${dest/#\~/$HOME} ;;
+    stick)
+      mapfile -t sticks < <(python3 "$LS_REPO/lib/profiles.py" sticks | sed '/^$/d')
+      (( ${#sticks[@]} )) || die "no USB stick found: plug in a USB stick and try again"
+      if (( ${#sticks[@]} == 1 )); then dest="${sticks[0]}/.Decal/profile"
+      else
+        { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "several USB sticks: unplug the others"
+        n=0; for a in "${sticks[@]}"; do n=$((n + 1)); printf '  %s) %s\n' "$n" "$(basename "$a")" >> "${DECAL_TTY_OUT:-/dev/tty}"; done
+        printf 'Which stick? ' >> "${DECAL_TTY_OUT:-/dev/tty}"; IFS= read -r a < "${DECAL_TTY_IN:-/dev/tty}"
+        if ! [[ $a =~ ^[0-9]+$ ]] || (( a < 1 || a > ${#sticks[@]} )); then die "no stick chosen"; fi
+        dest="${sticks[$((a - 1))]}/.Decal/profile"
+      fi ;;
+    *) die "new: --to github, file, file:PATH or stick" ;;
+  esac
+  if [[ -n $dest && -e $dest ]]; then die "$dest already exists: use decal stamp to update it"; fi
+  if [[ $to == github ]]; then
+    tok=$(gh_token)
+    if [[ -z $tok ]]; then gh_auth "$name" write --may-create || die "no GitHub key: sign in when asked, set GITHUB_TOKEN, or log in with gh auth login"; tok=$GITHUB_TOKEN; fi
+    repo="$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami)/$name" || die "GitHub didn't accept the key"
+    if GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" exists "$repo"; then die "github:$repo already exists: use decal stamp -gh $repo to update it"; fi
+  fi
+  stage="$LS_RUNTMP/new/$name"
+  case $from in   # what goes in
+    this-machine) do_stamp "$stage" ;;
+    empty) python3 "$LS_REPO/lib/profiles.py" empty "$stage" ;;
+    *) stage_profile "$from"; mkdir -p "$stage"; cp -a "$STAGE_DIR/." "$stage/"; rm -rf "$stage/.git" "$stage/.decal-source" ;;
+  esac
+  rm -f "$stage/.decal-stamp"
+  python3 "$LS_REPO/lib/profiles.py" readme "$stage" "$name" "$( [[ $from == this-machine || $from == empty ]] && echo "$from" || echo "${STAGE_SRC:-$from}")"
+  case $to in   # where it goes
+    github)
+      local pub=(); if (( public )); then pub=(--public); fi
+      GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" push "$stage" "$repo" "${pub[@]}" --message "decal new: $name" >/dev/null \
+        || die "could not create github:$repo"
+      src="github:$repo" ;;
+    stick) mkdir -p "$dest"; cp -a "$stage/." "$dest/"; : > "$dest/.decal-stamp"; src=$dest ;;
+    *) mkdir -p "$(dirname "$dest")"; tar -czf "$dest" -C "$stage" .; src=$dest ;;
+  esac
+  info "new profile: $src"
+  if (( use )); then set_profile "$src"; python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi
+}
 # tidy_cache : one version per source, nothing unused for 30 days (after a successful apply/fetch)
 tidy_cache() { if [[ ${LS_DRY_RUN:-0} != 1 ]]; then python3 "$LS_REPO/lib/fetch.py" --prune || warn "could not tidy the download cache"; fi; }
 find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single sub-folder)
@@ -573,6 +636,7 @@ case $cmd in
     if [[ -z $tok ]] && (( signin )); then gh_auth - read || die "not signed in"; tok=$GITHUB_TOKEN; fi
     GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/profiles.py" list "${pargs[@]}" ;;
   stamp) do_stamp "$@" ;;
+  new) do_new "$@" ;;
   use)
     [[ $# -eq 1 ]] || usage
     set_profile "$1"
