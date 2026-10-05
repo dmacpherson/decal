@@ -152,10 +152,11 @@ out=$(DECAL_TTY_IN=/nonexistent python3 "$A" get me/prof --need read 2>&1); asse
 assert_contains "$out" "set GITHUB_TOKEN or log in with gh auth login" "...and says how to fix it"
 mkfifo "$T_TMP/fifo"; ( sleep 30 > "$T_TMP/fifo" ) & HOLD=$!
 # (bash starts background jobs with Ctrl+C ignored; put Python's handler back, as a foreground run has it)
-DECAL_TTY_IN="$T_TMP/fifo" DECAL_TTY_OUT="$T_TMP/screen" python3 -c 'import runpy, signal, sys
+: > "$T_TMP/screen"; DECAL_TTY_IN="$T_TMP/fifo" DECAL_TTY_OUT="$T_TMP/screen" python3 -c 'import runpy, signal, sys
 signal.signal(signal.SIGINT, signal.default_int_handler); sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' \
   "$A" get me/prof --need read > /dev/null 2> "$T_TMP/err" & P=$!
-sleep 1; kill -INT "$P"; wait "$P"; assert_eq "$?" "130" "Ctrl+C: exit 130"
+for _ in $(seq 100); do grep -q "Choose" "$T_TMP/screen" 2>/dev/null && break; sleep 0.1; done   # at the question
+kill -INT "$P"; wait "$P"; assert_eq "$?" "130" "Ctrl+C: exit 130"
 assert_not_contains "$(cat "$T_TMP/err")" "Traceback" "Ctrl+C: no traceback"; kill "$HOLD" 2>/dev/null
 # a real terminal (a pty): key-at-a-time mode while waiting, Esc back to the choice, echo restored afterwards
 echo hold > "$G/device_script"

@@ -115,7 +115,7 @@ The menu runs these same commands and shows them before it does anything.
 decal use ~/my-profile            # make it the active profile, without applying anything
 decal apply ~/my-profile          # a folder, a .tar.gz/.zip, owner/repo or a GitHub link, an archive link, a git URL: becomes the active profile, then applied (never removes anything)
 decal profiles                    # the profiles decal can see: yours on GitHub, stamps here, USB sticks, recently used
-decal new decal-work --from empty # a new profile: from this machine (default), a copy, or a starter; --to github|file|stick
+decal new decal-work --from empty # a new profile: from this machine (default), a copy, or a starter; --to github|file|stick[:NAME]
 decal usb --to folder             # the USB stick files in ~/decal-usb, to copy anywhere (decal usb alone asks step by step)
 decal status                      # what's applied
 decal add cursor icons            # apply some modules from the active profile

@@ -32,19 +32,21 @@ S=$(cat "$T_TMP/screen")
 assert_contains "$S" "Apply" "menu: Apply"; assert_contains "$S" "stick it on" "...with its sticker name"
 assert_contains "$S" "Remove" "menu: Remove (a profile is active)"; assert_not_contains "$S" "Update" "no Update unless a newer version is out"
 # apply: the active profile, tick the dev tag (brings its module), preview, apply, back, quit
-D "$REPO/decal" ui -- 1 ENTER SPACE ENTER WAIT ENTER WAIT ENTER q; assert_eq "$?" "0" "apply flow rc"
+D "$REPO/decal" ui -- 1 "UNTIL:r refresh" ENTER "UNTIL:enter next" SPACE ENTER "UNTIL:enter apply" ENTER "UNTIL:go back to the menu" ENTER "UNTIL:q quit" q
+assert_eq "$?" "0" "apply flow rc"
 assert_contains "$(cat "$T_TMP/screen")" "--tags dev add all" "apply: the command it runs is shown"
 assert_eq "$(sort "$LS_TEST_LOG" | tr '\n' ' ')" "base add onlydev add " "apply: both modules added (dev ticked)"
 assert_contains "$(cat "$T_TMP/screen")" "Stuck on: 2 modules" "apply: the sticker-flavoured result"
 assert_eq "$(cat "$DECAL_USER_STATE/tags")" "dev" "the tags used are remembered"
-D "$REPO/decal" ui -- 1 ENTER q; assert_contains "$(cat "$T_TMP/screen")" "[x] tag: dev" "...and pre-ticked next time"
+D "$REPO/decal" ui -- 1 "UNTIL:r refresh" ENTER "UNTIL:enter next" q; assert_contains "$(cat "$T_TMP/screen")" "[x] tag: dev" "...and pre-ticked next time"
 # remove: tick the dev tag, preview, confirm by typing remove
 : > "$LS_TEST_LOG"
-D "$REPO/decal" ui -- 4 SPACE ENTER WAIT ENTER r e m o v e ENTER WAIT ENTER q
+D "$REPO/decal" ui -- 4 "UNTIL:enter next" SPACE ENTER "UNTIL:enter go on" ENTER "UNTIL:to peel these off" r e m o v e ENTER "UNTIL:go back to the menu" ENTER "UNTIL:q quit" q
 assert_eq "$(cat "$LS_TEST_LOG")" "onlydev remove" "remove: the dev tag's module peeled off, the rest kept"
 assert_contains "$(cat "$T_TMP/screen")" "Peeled off: tag dev" "remove: the result"
 : > "$LS_TEST_LOG"
-D "$REPO/decal" ui -- 4 DOWN DOWN SPACE ENTER WAIT ENTER n o p e ENTER q
+D "$REPO/decal" ui -- 4 "UNTIL:enter next" DOWN DOWN SPACE ENTER "UNTIL:enter go on" ENTER "UNTIL:to peel these off" n o p e ENTER "UNTIL:q quit" q
+assert_eq "$?" "0" "remove, cancelled: every screen showed (no key lost)"
 assert_eq "$(cat "$LS_TEST_LOG")" "" "remove: anything but \"remove\" typed cancels it"
 # no profile yet: only Apply, Stamp, Logs, and a line saying what to do
 DECAL_PROFILE="$T_TMP/none" D "$REPO/decal" ui -- q; S=$(cat "$T_TMP/screen")
@@ -90,7 +92,7 @@ assert_eq "$(cur "$L1" "$L2")" "me/decal-profile" "cursor stays on the active pr
 # first row wraps to the last, "Enter a profile…";
 # Enter a profile… with a folder of someone else's? a local folder is yours: no warning, used, then applied
 mkdir -p "$T_TMP/jk-other"; printf '[base]\non = true\n' > "$T_TMP/jk-other/profile.toml"; : > "$LS_TEST_LOG"
-D "$REPO/decal" ui -- 1 "UNTIL:Sign in to see" UP ENTER "UNTIL:tab completes" "$T_TMP/jk-other" ENTER WAIT ENTER WAIT ENTER WAIT ENTER WAIT ENTER q
+D "$REPO/decal" ui -- 1 "UNTIL:Sign in to see" UP ENTER "UNTIL:tab completes" "$T_TMP/jk-other" ENTER "UNTIL:go back to the menu" ENTER "UNTIL:enter next" ENTER "UNTIL:enter apply" ENTER "UNTIL:go back to the menu" ENTER "UNTIL:q quit" q
 assert_contains "$(cat "$T_TMP/screen")" "$ decal use $T_TMP/jk-other" "enter a profile: used (j and k typed as letters, not moves)"
 assert_contains "$(cat "$T_TMP/screen")" "Stuck on:" "...then applied (base may already be up to date from earlier flows)"
 # usb: the command the menu runs, drive labels, the stick menu
@@ -121,7 +123,7 @@ assert_eq "$(py2 'sorted(ui.clean_env({"GITHUB_TOKEN": "r"}, "", "/empty"))')" "
 # a copy stick: Save this machine → the copy on this stick, updated in place
 SV="$T_TMP/sv/.Decal"; mkdir -p "$SV/profile"; printf '[base]\non = false\n' > "$SV/profile/profile.toml"; : > "$SV/profile/.decal-stamp"
 printf 'profile=copy\nkey=none\ndecal=copy\n' > "$SV/stick.conf"
-DECAL_STICK="$SV" D "$REPO/decal" ui -- 4 "UNTIL:enter next" ENTER "UNTIL:enter save it" ENTER "UNTIL:Save to" ENTER WAIT ENTER q
+DECAL_STICK="$SV" D "$REPO/decal" ui -- 4 "UNTIL:enter next" ENTER "UNTIL:enter save it" ENTER "UNTIL:somewhere else" ENTER "UNTIL:go back to the menu" ENTER "UNTIL:q quit" q
 assert_contains "$(cat "$T_TMP/screen")" "Saved to the copy on this stick" "save: says where"
 assert_contains "$(cat "$SV/profile/profile.toml")" "on = true" "save: the stick's copy updated in place"
 # a GitHub stick: Save signs in fresh with Decal Profile Write (the stick's read key in GITHUB_TOKEN is ignored)
@@ -130,7 +132,7 @@ python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
 for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
 SG="$T_TMP/sg/.Decal"; mkdir -p "$SG"; printf 'profile=github:tester/decal-p\nkey=saved\ndecal=copy\n' > "$SG/stick.conf"
 DECAL_STICK="$SG" GITHUB_TOKEN=r3ad-only DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")" \
-  DECAL_GITHUB_APP_WRITE=Iv-write:decal-write D "$REPO/decal" ui -- 4 "UNTIL:enter next" ENTER "UNTIL:enter save it" ENTER "UNTIL:Save to" ENTER "UNTIL:Choose [1]" 1 ENTER "UNTIL:press enter to go back" ENTER q
+  DECAL_GITHUB_APP_WRITE=Iv-write:decal-write D "$REPO/decal" ui -- 4 "UNTIL:enter next" ENTER "UNTIL:enter save it" ENTER "UNTIL:somewhere else" ENTER "UNTIL:Choose [1]" 1 ENTER "UNTIL:go back to the menu" ENTER "UNTIL:q quit" q
 assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "save to GitHub: signed in with Decal Profile Write"
 assert_file "$G/tester_decal-p.json" "...the stamp pushed"
 assert_not_contains "$(cat "$G/log")" "r3ad-only" "...the stick's read key never used"

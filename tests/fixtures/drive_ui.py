@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """drive_ui.py TRANSCRIPT CMD... -- KEY... : run CMD in a pseudo-terminal (80x30) and type KEYs one by one, each once
-the screen has settled. KEY: a literal string, or ENTER, ESC, SPACE, UP, DOWN, END, WAIT (a longer pause), UNTIL:TEXT (until TEXT shows).
-Writes everything the program printed (escape codes removed) to TRANSCRIPT; exits with the program's status."""
+the screen has settled. KEY: a literal string, or ENTER, ESC, SPACE, UP, DOWN, END, WAIT (a longer pause), UNTIL:TEXT
+(until TEXT shows again after the last key: curses redraws only what changed, so pick text the awaited screen draws whole). Writes everything the program printed (escape codes
+removed) to TRANSCRIPT; exits with the program's status, or 125 when an UNTIL's TEXT never showed (the program is
+stopped: a lost key fails the test instead of passing it by accident)."""
 import os, pty, re, select, struct, sys, time, fcntl, termios
 
 i = sys.argv.index("--")
@@ -14,6 +16,11 @@ if pid == 0:
     os.execvp(cmd[0], cmd)
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 80, 0, 0))
 buf = b""
+seen = {}   # how many times the awaited text had shown when the last key was sent
+
+
+def plain(b):
+    return re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", b).decode("utf-8", "replace")
 
 
 def drain(quiet=0.6, limit=60.0):
@@ -38,11 +45,11 @@ def drain(quiet=0.6, limit=60.0):
 
 drain(1.5)
 def until(text, limit=20.0):
-    """read until TEXT is on screen (escape codes aside)"""
+    """read until TEXT shows more often than it had when the last key was sent; None when it never does"""
     global buf
     end = time.time() + limit
     while time.time() < end:
-        if text in re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", buf).decode("utf-8", "replace"):
+        if plain(buf).count(text) > seen.get(text, 0):
             return drain(0.3)
         r, _, _ = select.select([fd], [], [], 0.1)
         if r:
@@ -50,14 +57,19 @@ def until(text, limit=20.0):
                 buf += os.read(fd, 65536)
             except OSError:
                 return False
-    return False
+    return None
 
 
+missed = None
 for k in keys:
     if k == "WAIT":
         drain(3.0); continue
     if k.startswith("UNTIL:"):
-        until(k[6:]); continue
+        r = until(k[6:])
+        if r is None:
+            missed = k[6:]; os.kill(pid, 9); break
+        continue
+    seen = {t[6:]: plain(buf).count(t[6:]) for t in keys if t.startswith("UNTIL:")}
     os.write(fd, NAMES.get(k, k).encode())
     if not drain():
         break
@@ -75,5 +87,7 @@ try:   # the terminal closes a moment before the process has finished exiting: g
 except ChildProcessError:
     code = 0
 text = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][A-Z0-9]|\x1b[=>]", b" ", buf).decode("utf-8", "replace")
+if missed is not None:
+    text += f"\n[drive_ui: never showed: {missed}]\n"; code = 125
 open(out, "w").write(text)
 sys.exit(code)
