@@ -6,12 +6,13 @@
   profiles.py sticks                                 mounted drives (one per line)
   profiles.py empty DIR                              a starter profile: examples/profile, every section commented out
   profiles.py readme DIR NAME FROM                   DIR/README.md for a profile called NAME, made from FROM
+  profiles.py active                                 the active profile's source (decal and the menu ask this)
 
 GitHub uses the key in GITHUB_TOKEN (decal passes the one it found); none: a sign-in row instead. Never asks."""
-import argparse, base64, concurrent.futures, datetime, glob, json, os, sys, tarfile, tomllib, zipfile
+import argparse, base64, concurrent.futures, datetime, glob, json, os, subprocess, sys, tarfile, tomllib, zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import auth, source  # noqa: E402
+import auth, gh, source  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODULES = os.environ.get("DECAL_MODULES_DIR") or os.path.join(REPO, "modules")
@@ -36,7 +37,16 @@ def iso(ts):
 
 
 def tilde(p):
-    return "~" + p[len(HOME):] if p == HOME or p.startswith(HOME + "/") else p
+    """P with your home folder shown as ~ (also when P names it through a link, e.g. /var/home on Atomic)."""
+    for home in (HOME, os.path.realpath(HOME)):
+        if p == home or p.startswith(home + "/"):
+            return "~" + p[len(home):]
+    return p
+
+
+def usual_stamp(user):
+    """Where decal stamp saves by default: ~/decal-USER.tar.gz."""
+    return os.path.join(HOME, f"decal-{user}.tar.gz")
 
 
 def toml_in_archive(path):
@@ -101,14 +111,14 @@ def find_recent():
 
 
 def find_github(token):
-    """(entries, notes) for the repos the key's account owns that hold a profile.toml. Raises auth.Offline."""
-    code, me = auth.api_get("/user", token)
+    """(entries, notes) for the repos the key's account owns that hold a profile.toml. Raises gh.Offline."""
+    code, me = gh.get("/user", token)
     if code != 200:
         return [], ["GitHub didn't accept the key"]
     login = me.get("login", "")
     repos, page = [], 1
     while True:
-        code, batch = auth.api_get(f"/user/repos?affiliation=owner&per_page=100&page={page}", token)
+        code, batch = gh.get(f"/user/repos?affiliation=owner&per_page=100&page={page}", token)
         if code != 200 or not isinstance(batch, list):
             break
         repos += batch
@@ -119,7 +129,7 @@ def find_github(token):
     cand = {n for n, r in by.items() if r.get("name", "").startswith("decal-")}
     if len(repos) <= 100:
         cand |= set(by)
-    code, found = auth.api_get(f"/search/repositories?q=topic:decal-profile+user:{login}&per_page=100", token)
+    code, found = gh.get(f"/search/repositories?q=topic:decal-profile+user:{login}&per_page=100", token)
     if code == 200:
         for r in found.get("items", []):
             by.setdefault(r["full_name"], r)
@@ -128,9 +138,9 @@ def find_github(token):
 
     def check(full):
         try:
-            code, f = auth.api_get(f"/repos/{full}/contents/profile.toml", token)
+            code, f = gh.get(f"/repos/{full}/contents/profile.toml", token)
             n = count(base64.b64decode(f["content"]).decode()) if code == 200 and "content" in f else None
-        except (auth.Offline, ValueError, KeyError):
+        except (gh.Offline, ValueError, KeyError):
             return None
         if n is None:
             return None
@@ -142,7 +152,7 @@ def find_github(token):
         entries = [e for e in ex.map(check, sorted(cand)) if e]
     notes = []
     if not entries:
-        code, _ = auth.api_get("/user/installations", token)
+        code, _ = gh.get("/user/installations", token)
         if code == 200:   # an app key: the app may not be on any profile repo yet
             notes.append(f"no profiles found: install Decal Profile on your profile repos: {auth.install_url('read')}")
         else:
@@ -151,13 +161,22 @@ def find_github(token):
 
 
 def active():
+    """The active profile's source: where a link points, the recorded source, a checkout's origin, else the folder."""
     d = os.environ.get("DECAL_PROFILE") or PROFILE_HOME
     if os.path.islink(d) or os.environ.get("DECAL_PROFILE"):
         return os.path.realpath(d)
     try:
         return open(os.path.join(d, ".decal-source")).read().strip()
     except OSError:
-        return os.path.realpath(d) if os.path.isdir(d) else ""
+        pass
+    if os.path.isdir(os.path.join(d, ".git")):
+        try:
+            r = subprocess.run(["git", "-C", d, "remote", "get-url", "origin"], capture_output=True, text=True)
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
+        except OSError:   # no git here: the folder itself
+            pass
+    return os.path.realpath(d) if os.path.isdir(d) else ""
 
 
 def listing(only=""):
@@ -170,7 +189,7 @@ def listing(only=""):
                 e, n = find_github(token)
                 out += e
                 notes += n
-            except auth.Offline:
+            except gh.Offline:
                 notes.append("couldn't reach GitHub")
     if only in ("", "local"):
         out += find_local() + find_sticks()
@@ -245,7 +264,7 @@ def readme(dest, name, made_from):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["list", "sticks", "empty", "readme"])
+    ap.add_argument("cmd", choices=["list", "sticks", "empty", "readme", "active"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--only", choices=["local", "github"], default="")
@@ -253,6 +272,8 @@ def main():
     if a.cmd == "list":
         d = listing(a.only)
         print(json.dumps(d) if a.json else text(d))
+    elif a.cmd == "active":
+        print(active())
     elif a.cmd == "sticks":
         print("\n".join(sticks()))
     elif a.cmd == "empty":

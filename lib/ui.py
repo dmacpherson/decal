@@ -5,7 +5,10 @@ Every action runs the same `decal` commands you could type (shown before they ru
 line always agree. A shared picker chooses what each one covers: the profile's tags and its modules."""
 import curses, glob, json, os, re, subprocess, sys, tempfile, threading
 
-import profiles  # noqa: E402  (lib/, next to this file: describe() and ago())
+import profiles, usb  # noqa: E402  (lib/, next to this file)
+from profiles import tilde  # noqa: E402
+from menu_logic import (MENU, STICK_ITEMS, apply_cmds, browser_rows, clean_env, drive_label, label,  # noqa: E402,F401
+                        pick_row, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header, usb_cmd)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DECAL = os.path.join(REPO, "decal")
@@ -16,21 +19,6 @@ PROFILE = os.environ.get("DECAL_PROFILE") or os.environ.get("DECAL_PROFILE_HOME"
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "decal", "profile")
 ENV = dict(os.environ, DECAL_NO_UPDATE="1")   # decal already updated itself when the menu opened
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-
-MENU = [  # key, word (the command), the sticker aside, what it does
-    ("1", "apply", "stick it on", "put a profile on this machine"),
-    ("2", "stamp", "take a print", "save this machine's setup as a profile"),
-    ("3", "usb", "a stick", "put decal on a USB stick"),
-    ("4", "remove", "peel it off", "undo what decal changed"),
-    ("5", "logs", "the fine print", "what the last run did"),
-    ("6", "update", "fresh sheet", ""),   # last: only shown when a newer decal is out
-]
-
-
-def label(word):
-    """A menu word as shown: USB in capitals, the rest capitalised."""
-    return "USB" if word == "usb" else word.capitalize()
-
 
 # --- talking to decal ------------------------------------------------------------------------------------------
 CHECK_TIMEOUT = 40
@@ -101,143 +89,18 @@ class Data:
         return f"{on} on" + (f", {part} partial" if part else "")
 
 
-def tilde(p):
-    for home in {os.path.realpath(os.path.expanduser("~")), os.path.expanduser("~")}:
-        if p == home or p.startswith(home + "/"):
-            return "~" + p[len(home):]
-    return p
+_STAMPABLE = []
 
 
 def stamp_modules():
-    out = []
-    for m in sorted(os.listdir(MODULES)):
-        f = os.path.join(MODULES, m, "module.sh")
-        if os.path.isfile(f) and not re.search(r"^STAMP_SKIP=1", open(f).read(), re.M):
-            out.append(m)
-    return out
+    """The modules stamp reads (decal decides; asked once per menu session)."""
+    if not _STAMPABLE:
+        r = subprocess.run([DECAL, "list", "--stampable"], capture_output=True, text=True, env=ENV)
+        if r.returncode != 0:
+            return []
+        _STAMPABLE.extend(r.stdout.split())
+    return _STAMPABLE
 
-
-# --- what each action runs (pure: tested on its own) ----------------------------------------------------------
-def apply_cmds(tags, mods, avail):
-    t = ["--tags", ",".join(tags)] if tags else []
-    if not mods:
-        return []
-    return [t + ["add", "all"]] if set(mods) == set(avail) else [t + ["add", *mods]]
-
-
-def stamp_cmd(mods, everything, dest="", gh=None, public=False):
-    c = ["stamp"] + ([] if everything else list(mods))
-    if dest:
-        c.append(dest)
-    if gh is not None:
-        c += ["-gh"] + ([gh] if gh else [])
-        if public:
-            c.append("--public")
-    return c
-
-
-def remove_cmds(tags, mods):
-    return [["remove", "all", "--only", t] for t in tags] + ([["remove", *mods]] if mods else [])
-
-
-
-
-def usb_cmd(profile, how, dmode, arm, to):
-    return ["usb", "--from", profile, "--how", how, "--decal", dmode, "--to", to] + (["--arm"] if arm else [])
-
-
-def drive_label(d):
-    parts = [d["label"]]
-    if d.get("ventoy"):
-        parts.append(f"{d.get('isos', 0)} ISOs")
-    parts.append(f"{d['size'] / 1e9:.1f} GB")
-    if not d.get("mount"):
-        parts.append("not mounted")
-    return " · ".join(parts)
-
-
-STICK_ITEMS = [("1", "apply-all", "Apply everything"), ("2", "choose", "Choose what to apply"),
-               ("3", "preview", "Preview first"), ("4", "save", "Save this machine"), ("5", "remove-all", "Take it all off"),
-               ("6", "status", "What's on this machine"), ("7", "other", "Use a different profile"),
-               ("8", "full", "Full menu")]
-
-
-def save_targets(conf, stick):
-    """Where "Save this machine" can go: where the stick's profile came from first, then the rest."""
-    p = conf.get("profile", "")
-    if p == "copy":
-        return [("the copy on this stick", os.path.join(stick, "profile"), "stick"),
-                ("both", "the copy on this stick and a GitHub repo", "both"),
-                ("somewhere else…", "any of your profiles, a file, or a new one", "elsewhere")]
-    return [(p.removeprefix("github:"), "signs in to GitHub to save", "github"),
-            ("somewhere else…", "any of your profiles, a file, or a new one", "elsewhere")]
-
-
-def clean_env(env, key, ghdir):
-    """The environment for saving to GitHub: only this session's write key; no GITHUB_TOKEN/GH_TOKEN (the stick's
-    read key), and gh pointed at an empty folder (a borrowed PC's gh login never touches your repo)."""
-    out = {k: v for k, v in env.items() if k not in ("GITHUB_TOKEN", "GH_TOKEN", "DECAL_WRITE_KEY")}
-    out["GH_CONFIG_DIR"] = ghdir
-    if key:
-        out["DECAL_WRITE_KEY"] = key   # decal started from a stick takes only this key to write with
-    return out
-
-
-def stick_header(conf, updated):
-    p = conf.get("profile", "")
-    what = "the profile copy on it" if p == "copy" else p.removeprefix("github:")
-    return f"From your USB stick: {what}" + (f" · updated {updated}" if updated else "")
-
-GROUPS = [("github", "On GitHub"), ("file", "On this machine"), ("stick", "On USB sticks"), ("recent", "Recently used")]
-
-
-def row_key(row):
-    """What identifies a row across refreshes: its profile's source, or its label (headings, actions)."""
-    return (row[3] or {}).get("source") or row[1]
-
-
-def pick_row(rows, key, i):
-    """The row index to highlight: the row with KEY, else the active profile, else the usual file, else the first."""
-    pickable = [n for n, r in enumerate(rows) if r[0] == "row"]
-    same = [n for n in pickable if key is not None and row_key(rows[n]) == key]
-    if same:
-        return same[0]
-    if key is None or i not in pickable:
-        act = [n for n in pickable if (rows[n][3] or {}).get("active")]
-        usual = [n for n in pickable if rows[n][2] == "the usual place"]
-        return (act or usual or pickable)[0]
-    act = [n for n in pickable if (rows[n][3] or {}).get("active")]
-    return act[0] if act else i
-
-
-def browser_rows(data, purpose, user):
-    """The browser's lines: (style, label, aside, value). Stamp leaves out recently used (others' profiles) and offers
-    the usual ~/decal-USER.tar.gz when it isn't there yet."""
-    rows, entries, act = [], data.get("entries", []), data.get("active", "")
-    if purpose == "apply" and act and not any(e.get("active") for e in entries):
-        rows += [("head", "Active", "", None), ("row", tilde(act), "← active", {"source": act, "kind": "active", "active": True})]
-    for kind, title in GROUPS:
-        if purpose == "stamp" and kind == "recent":
-            continue
-        es = [e for e in entries if e["kind"] == kind]
-        extra = []
-        if kind == "github":
-            if data.get("loading"):
-                extra = [("note", "Looking for your profiles…", "", None)]
-            elif data.get("signed_in") is False:
-                extra = [("row", "Sign in to see your GitHub profiles", "", {"action": "sign-in"})]
-        if kind == "file" and purpose == "stamp":
-            usual = os.path.join(os.path.expanduser("~"), f"decal-{user}.tar.gz")
-            if not any(e["source"] == usual for e in es):
-                extra = [("row", tilde(usual), "the usual place", {"source": usual, "kind": "file"})]
-        if not es and not extra:
-            continue
-        rows.append(("head", title, "", None))
-        rows += extra + [("row", e["name"], profiles.describe(e) + ("    ← active" if e.get("active") else ""), e) for e in es]
-    rows += [("note", n, "", None) for n in data.get("notes", [])]
-    rows += [("row", "+ Make a new profile", "", {"action": "new"}),
-             ("row", "› Enter a profile…", "a link, owner/name, a file or a folder", {"action": "enter"})]
-    return rows
 
 # --- screens ---------------------------------------------------------------------------------------------------
 class UI:
@@ -416,7 +279,7 @@ class UI:
                     self.put(y, 26, aside, curses.A_DIM)
                     continue
                 ok = mode != "apply" or self.available(name, on_t) or name in on_m   # tickable on its own too
-                box = "[x]" if name in on_m else ("[ ]" if ok else "[ ]")
+                box = "[x]" if name in on_m else "[ ]"
                 attr = (curses.A_REVERSE if cur else 0) | (0 if ok else curses.A_DIM)
                 self.put(y, 2, f"{box} {name:<18}", attr)
                 tg = ",".join(d.mod_tags.get(name, []))
@@ -642,19 +505,11 @@ class UI:
         self.run([usb_cmd(canon, how, dmode, arm, to)], "The stick is ready: double-click Decal on any Linux PC", "No stick written (see above)")
 
     def stick_main(self):
-        conf = {}
-        try:
-            for line in open(os.path.join(os.environ["DECAL_STICK"], "stick.conf")):
-                line = line.split("#", 1)[0].strip()
-                if "=" in line:
-                    k, val = line.split("=", 1)
-                    conf[k.strip()] = val.strip()
-        except OSError:
-            pass
+        conf = usb.read_conf(os.environ["DECAL_STICK"])
         i = 0
         while True:
             top = self.header()
-            self.put(top, 2, stick_header(conf, "just now"), self.c(5, curses.A_BOLD))
+            self.put(top, 2, stick_header(conf), self.c(5, curses.A_BOLD))
             for n, (key, word, label) in enumerate(STICK_ITEMS):
                 self.put(top + 2 + n, 2, key, self.c(4, curses.A_BOLD))
                 self.put(top + 2 + n, 5, f" {label} ", (curses.A_REVERSE if n == i else 0) | curses.A_BOLD)
@@ -704,14 +559,10 @@ class UI:
 
     def stick_save(self, conf):
         """Save this machine (from a stick): stamp it to the stick's copy, its GitHub repo, both, or anywhere."""
-        pick = self.picker("Save this machine · what to save", "stamp")
-        if not pick:
+        p = self.stamp_pick("Save this machine")
+        if not p:
             return
-        mods = pick[1]
-        every = set(mods) == set(stamp_modules())
-        if not self.view("Save this machine · preview", self.preview("stamp", [stamp_cmd(mods, every)]),
-                         "enter save it · ↑↓ scroll · esc back"):
-            return
+        mods, every = p
         stick = os.environ["DECAL_STICK"]
         to = self.choose("Save to", save_targets(conf, stick))
         if to is None:
@@ -724,24 +575,10 @@ class UI:
             if not repo:
                 return
         elif to == "elsewhere":
-            v = self.browse("Save to · where?", "stamp")
-            if v is None:
+            w = self.stamp_where("Save to · where?")
+            if not w:
                 return
-            if v.get("action") == "new":
-                self.do_new("this-machine")
-                return
-            if v.get("action") == "enter":
-                where = self.ask("Save to", "a .tar.gz, a folder, or owner/name on GitHub")
-                if not where:
-                    return
-                if re.fullmatch(r"[\w.-]+/[\w.-]+", where) and not os.path.exists(os.path.expanduser(where)):
-                    repo = where
-                else:
-                    dest = os.path.expanduser(where)
-            elif v["kind"] == "github":
-                repo = v["source"].removeprefix("github:")
-            else:
-                dest = v["source"]
+            dest, repo = w
         if to in ("stick", "both"):
             if self.run([stamp_cmd(mods, every, copy)], "Saved to the copy on this stick", "Couldn't save to the stick (see above)") != 0:
                 return
@@ -787,34 +624,39 @@ class UI:
                 return
         self.apply_picked()
 
-    def do_stamp(self):
-        pick = self.picker("Stamp · take a print · choose", "stamp")
+    def stamp_pick(self, title):
+        """Stamp's first steps (the stick's Save too): what to stamp, then its preview. (mods, everything) or None."""
+        pick = self.picker(f"{title} · choose", "stamp")
         if not pick:
-            return
+            return None
         mods = pick[1]
         every = set(mods) == set(stamp_modules())
-        if not self.view("Stamp · preview", self.preview("stamp", [stamp_cmd(mods, every)]), "enter save it · ↑↓ scroll · esc back"):
-            return
-        v = self.browse("Stamp · save it to", "stamp")
+        if not self.view(f"{title} · preview", self.preview("stamp", [stamp_cmd(mods, every)]), "enter save it · ↑↓ scroll · esc back"):
+            return None
+        return mods, every
+
+    def stamp_where(self, title):
+        """Where a stamp goes, from the profile browser: (dest, repo); None when it went to "new" or was cancelled."""
+        v = self.browse(title, "stamp")
         if v is None:
-            return
-        dest, gh, public = "", None, False
+            return None
         if v.get("action") == "new":
             self.do_new("this-machine")
-            return
+            return None
+        typed = ""
         if v.get("action") == "enter":
-            to = self.ask("Stamp · save it to", "a .tar.gz, a folder, or owner/name on GitHub")
-            if not to:
-                return
-            if re.fullmatch(r"[\w.-]+/[\w.-]+", to) and not os.path.exists(os.path.expanduser(to)):
-                gh = to
-            else:
-                dest = os.path.expanduser(to)
-        elif v["kind"] == "github":
-            gh = v["source"].removeprefix("github:")
-        else:
-            dest = v["source"]
-        self.run([stamp_cmd(mods, every, dest, gh, public)], "Stamped", "Stamp failed (see above)")
+            typed = self.ask(title, "a .tar.gz, a folder, or owner/name on GitHub")
+            if not typed:
+                return None
+        return stamp_dest(v, typed)
+
+    def do_stamp(self):
+        p = self.stamp_pick("Stamp · take a print")
+        w = p and self.stamp_where("Stamp · save it to")
+        if not w:
+            return
+        (mods, every), (dest, repo) = p, w
+        self.run([stamp_cmd(mods, every, dest, repo or None)], "Stamped", "Stamp failed (see above)")
 
     def do_remove(self):
         pick = self.picker("Remove · peel it off · choose", "remove")

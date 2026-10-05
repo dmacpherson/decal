@@ -10,7 +10,8 @@
 # DECAL_VERSION: latest (default: the newest release, checksum verified) | dev (the newest build of the dev branch,
 # checksum verified) | vX.Y.Z | a branch, e.g. main (newest commit).
 # Remembered, so updates stay on it. Already installed and current: nothing is downloaded (DECAL_REINSTALL=1 does
-# anyway). Options for decal itself: install.sh --update | --check (newer version? print it).
+# anyway). Options for decal itself: install.sh --update | --check (newer version? print it) |
+# --fetch-to DIR (download, check and unpack into DIR without installing; prints the unpacked folder).
 # DECAL_ARCHIVE=PATH: install that decal.tar.gz (with PATH.sha256) instead of downloading (a decal USB stick's copy).
 set -euo pipefail
 
@@ -41,13 +42,9 @@ _resolve() {
   esac
 }
 
-# _install TAG URL SUMURL CHANNEL HOME BIN : download, check, unpack, swap in, link
-_install() {
-  local tag=$1 url=$2 sumurl=$3 version=$4 home=$5 bin=$6
-  # unpacked beside the install (same filesystem), so swapping it in is a rename, not a copy out of /tmp
-  mkdir -p "$(dirname "$home")"
-  TMP_DL=$(mktemp -d "$(dirname "$home")/.decal-new.XXXXXX"); trap 'rm -rf "$TMP_DL"' EXIT   # global: runs after the last line
-  local tmp=$TMP_DL
+# _fetch TAG URL SUMURL DIR : download, check and unpack into DIR; prints the unpacked decal folder
+_fetch() {
+  local tag=$1 url=$2 sumurl=$3 tmp=$4 top
   say "downloading decal $tag"
   _get "$url" "$tmp/decal.tar.gz" || die "download failed: $url"
   if [[ $sumurl != - ]]; then
@@ -55,8 +52,18 @@ _install() {
     [[ $(_sha256 "$tmp/decal.tar.gz") == "$(cut -d' ' -f1 < "$tmp/sum")" ]] || die "checksum mismatch: the download is damaged or not decal's (nothing was changed)"
   fi
   mkdir -p "$tmp/x"; tar -xzf "$tmp/decal.tar.gz" -C "$tmp/x" || die "could not unpack the download"
-  local top; top=$(find "$tmp/x" -mindepth 1 -maxdepth 1 -type d | head -1)
+  top=$(find "$tmp/x" -mindepth 1 -maxdepth 1 -type d | head -1)
   [[ -n $top && -f $top/decal ]] || die "the download doesn't contain decal"
+  echo "$top"
+}
+
+# _install TAG URL SUMURL CHANNEL HOME BIN : download, check, unpack, swap in, link
+_install() {
+  local tag=$1 url=$2 sumurl=$3 version=$4 home=$5 bin=$6
+  # unpacked beside the install (same filesystem), so swapping it in is a rename, not a copy out of /tmp
+  mkdir -p "$(dirname "$home")"
+  TMP_DL=$(mktemp -d "$(dirname "$home")/.decal-new.XXXXXX"); trap 'rm -rf "$TMP_DL"' EXIT   # global: runs after the last line
+  local top; top=$(_fetch "$tag" "$url" "$sumurl" "$TMP_DL") || exit 1
   echo "$tag" > "$top/VERSION"; echo "$version" > "$top/.channel"; echo "$bin" > "$top/.bin"
   : > "$top/.installed"   # installed by this script: decal updates itself (a git checkout never does)
   # swap in: the old copy stays until the new one is in place; never a folder that isn't an install of this script
@@ -74,7 +81,11 @@ main() {
   # its own folder inside decal's data folder (~/.local/share/decal holds what modules keep, e.g. icons): replaced whole
   local home=${DECAL_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/decal/app}
   local bin=${DECAL_BIN:-$(cat "$home/.bin" 2>/dev/null || echo "$HOME/.local/bin")}   # where the last install linked it
-  local mode=install; case ${1:-} in --update) mode=update; shift ;; --check) mode=check; shift ;; esac
+  local mode=install dest=""
+  case ${1:-} in
+    --update) mode=update; shift ;; --check) mode=check; shift ;;
+    --fetch-to) mode=fetch; dest=${2:-}; [[ -n $dest ]] || die "--fetch-to needs a folder"; shift 2 ;;
+  esac
   if (( ${DECAL_FAKE_EUID:-$EUID} == 0 )) && [[ ${DECAL_ALLOW_ROOT:-0} != 1 ]]; then die "run as your normal user, not root (decal uses sudo itself when it needs to)"; fi
   local t; for t in tar python3; do have "$t" || die "$t is needed: install it with your package manager, then run this again"; done
   local version=${DECAL_VERSION:-$(cat "$home/.channel" 2>/dev/null || echo latest)}
@@ -88,6 +99,7 @@ main() {
     [[ -n ${tag:-} ]] || die "could not reach GitHub to find decal $version"
   fi
   if [[ $mode == check ]]; then [[ $tag != "$cur" ]] && { echo "$tag"; return 0; }; return 1; fi
+  if [[ $mode == fetch ]]; then mkdir -p "$dest"; _fetch "$tag" "$url" "$sumurl" "$dest"; return; fi   # no install
   if [[ $tag == "$cur" && -x $home/decal && ${DECAL_REINSTALL:-0} != 1 ]]; then
     # already there: nothing to download (DECAL_REINSTALL=1 fetches it again anyway)
     if [[ $mode == update ]]; then say "decal $tag is up to date"; return 0; fi

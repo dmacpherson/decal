@@ -16,10 +16,14 @@ NOISE = ["window-size", "window-maximized", "last-shown", "housekeeping", "gscon
 
 def warn(msg): print(msg, file=sys.stderr)
 
+def ext_bases():
+    """Where GNOME Shell extensions live: yours, then the system's."""
+    return (os.path.expanduser("~/.local/share/gnome-shell/extensions"), "/usr/share/gnome-shell/extensions",
+            "/usr/local/share/gnome-shell/extensions")
+
 def ext_schema_dirs():
     out = []
-    for base in (os.path.expanduser("~/.local/share/gnome-shell/extensions"),
-                 "/usr/share/gnome-shell/extensions", "/usr/local/share/gnome-shell/extensions"):
+    for base in ext_bases():
         if os.path.isdir(base):
             for e in sorted(os.listdir(base)):
                 d = os.path.join(base, e, "schemas")

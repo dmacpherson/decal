@@ -13,7 +13,6 @@ _src() {
   ls_fetch "$P_source" "${a[@]}" --version "$P_version" || die "could not fetch cursor themes from $P_source"
 }
 _themes_in() { find "$1" -name index.theme -printf '%h\n' 2>/dev/null | while IFS= read -r d; do if [[ -d $d/cursors ]]; then echo "$d"; fi; done | sort; }
-_ours() { grep -qxF "$1" "$REC" 2>/dev/null; }
 module_fetch() { _src >/dev/null; }
 
 _login_add() {
@@ -50,31 +49,19 @@ module_add() {
     step "installing cursor themes"
     while IFS= read -r d; do
       n=$(basename "$d"); avail+=("$n")
-      if [[ -e $ICONS/$n ]] && ! _ours "$n"; then warn "$ICONS/$n already exists and isn't from decal: left as is"; continue; fi
-      rm -rf "${ICONS:?}/$n"; cp -a "$d" "$ICONS/$n"
-      _ours "$n" || echo "$n" >> "$REC"
+      install_owned "$ICONS" "$n" "$d" "$REC"
     done < <(_themes_in "$src")
     printf '%s\n' "${avail[@]}" | grep -qxF "$P_theme" || die "cursor theme '$P_theme' not in $P_source (available: ${avail[*]:-none})"
-    if [[ ! -e $PREV ]]; then
-      { echo "cursor-theme=$(gsettings get org.gnome.desktop.interface cursor-theme)"
-        echo "cursor-size=$(gsettings get org.gnome.desktop.interface cursor-size)"; } > "$PREV"
-    fi
+    gs_save "$PREV" org.gnome.desktop.interface cursor-theme cursor-size
   fi
   run gsettings set org.gnome.desktop.interface cursor-theme "$P_theme"
   run gsettings set org.gnome.desktop.interface cursor-size "$P_size"
   if [[ $P_login == true ]]; then _login_add; else _login_remove; fi
 }
 module_remove() {
-  local k v n
   _login_remove
-  if [[ -r $PREV ]]; then
-    while IFS='=' read -r k v; do run gsettings set org.gnome.desktop.interface "$k" "$v"; done < "$PREV"
-    run rm -f "$PREV"
-  fi
-  if [[ -r $REC ]]; then
-    while IFS= read -r n; do if [[ -n $n ]]; then run rm -rf "${ICONS:?}/$n"; fi; done < "$REC"
-    run rm -f "$REC"
-  fi
+  gs_restore "$PREV" org.gnome.desktop.interface
+  rec_remove_all "$REC" "$ICONS"
 }
 module_status() {
   if [[ ! -r $REC ]]; then echo not-installed; return 0; fi
@@ -83,14 +70,4 @@ module_status() {
   elif [[ $P_login == true && $(gdm_mode) != none ]] && ! gdm_has cursor cursor-theme "'$P_theme'"; then echo "partial (login screen not set)"
   else echo installed; fi
 }
-# stamp: the theme you picked, bundled into the stamp if you installed it into your home (the system's own themes
-# come with the system: nothing to carry)
-module_stamp() {
-  have dconf || return 0
-  local t d b; t=$(dconf read /org/gnome/desktop/interface/cursor-theme 2>/dev/null | tr -d "'"); [[ -n $t ]] || return 0
-  for b in "${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons"; do if [[ -d $b/$t ]]; then d=$b/$t; break; fi; done
-  if [[ -z ${d:-} ]]; then stamp_note "cursor: $t (comes with the system: not stamped)"; return 0; fi
-  stamp_copy "$d" "themes/cursor/$t" >/dev/null
-  stamp_note "cursor: $t (bundled, $(du -sh "$d" 2>/dev/null | cut -f1))"
-  printf '[cursor]\nsource = "themes/cursor"\ntheme = "%s"\n' "$t"
-}
+module_stamp() { stamp_theme cursor cursor-theme "${XDG_DATA_HOME:-$HOME/.local/share}/icons" "$HOME/.icons"; }   # your theme, bundled when it's in your home

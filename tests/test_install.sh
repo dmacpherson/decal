@@ -19,11 +19,11 @@ if [ -e "$f" ] && { [ ! -e "$f.token" ] || grep -qF "$(cat "$f.token")" "$hdr" 2
 fi
 [ -z "$w" ] || { printf 404; exit 0; }; exit 22'
 API=https://api.github.com/repos/dmacpherson/decal; DL=https://github.com/dmacpherson/decal
-export DECAL_GITHUB_API=https://api.github.com   # curl is the fake above: GitHub's real addresses never leave this test
 # a release: decal's own files (+ a marker to tell versions apart), and its checksum
 release() {  # release TAG
   local d="$T_TMP/rel/$1"; mkdir -p "$d/decal"
   cp -a "$REPO/decal" "$REPO/install.sh" "$REPO/lib" "$REPO/modules" "$d/decal/"; echo "$1" > "$d/decal/MARK"
+  mkdir -p "$d/decal/usb/bin"; echo "x86 $1" > "$d/decal/usb/bin/Decal-x86_64"; echo "arm $1" > "$d/decal/usb/bin/Decal-aarch64"   # as build.yml adds them
   tar -czf "$d/decal.tar.gz" -C "$d" decal; (cd "$d" && sha256sum decal.tar.gz > decal.tar.gz.sha256)
   serve "$DL/releases/download/$1/decal.tar.gz" "$d/decal.tar.gz"; serve "$DL/releases/download/$1/decal.tar.gz.sha256" "$d/decal.tar.gz.sha256"
 }
@@ -113,17 +113,20 @@ assert_contains "$(cat "$T_TMP/o")" "nothing to stamp" "...(these fixture module
 # github:owner/repo profiles: no git; private repos with a token (never on curl's command line)
 mkdir -p "$T_TMP/gh/me-prof-abc"; printf '[eee-conf]\nword = "from-github"\n' > "$T_TMP/gh/me-prof-abc/profile.toml"
 tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-prof-abc
-serve https://api.github.com/repos/me/prof/tarball "$T_TMP/gh.tar.gz"; echo "Bearer s3cret" > "$WEB/$(key https://api.github.com/repos/me/prof/tarball).token"
+# the fake GitHub serves the repos' tarballs (tb OWNER/REPO FILE [public]); me/prof is private (key s3cret)
+GM="$T_TMP/ghmain"; mkdir -p "$GM/tarballs"; echo s3cret > "$GM/token"
+fake_github "$GM"; GMPID=$FAKE_PID
+tb() { cp "$2" "$GM/tarballs/${1/\//_}.tar.gz"; if [[ ${3:-} == public ]]; then : > "$GM/tarballs/${1/\//_}.public"; fi; }
+tb me/prof "$T_TMP/gh.tar.gz"
 : > "$LS_TEST_LOG"; : > "$STUBS/calls"
 out=$(GITHUB_TOKEN=s3cret "$REPO/decal" --yes apply github:me/prof 2>&1); assert_eq "$?" "0" "github: apply rc"
 assert_contains "$(cat "$LS_TEST_LOG")" "eee add from-github" "github: profile applied"
-assert_contains "$(cat "$STUBS/headers")" "Authorization: Bearer s3cret" "token sent as a header"
-assert_contains "$(grep 'repos/me/prof/tarball' "$STUBS/calls")" "-H @- " "...on curl's stdin, never in a file"
-assert_contains "$(grep 'repos/me/prof/tarball' "$STUBS/calls")" "--proto =https --proto-redir =https" "...https only, no http redirect"
+assert_contains "$(cat "$GM/log")" "GET /repos/me/prof/tarball auth=Bearer s3cret" "token sent as a header"
+assert_not_contains "$(cat "$GM/codeload_log")" "s3cret" "...and not passed on to the download host"
 assert_not_contains "$(calls)" "s3cret" "token not on the command line"
 assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "source recorded"
 printf '[eee-conf]\nword = "newer"\n' > "$T_TMP/gh/me-prof-abc/profile.toml"; tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-prof-abc
-serve https://api.github.com/repos/me/prof/tarball "$T_TMP/gh.tar.gz"
+tb me/prof "$T_TMP/gh.tar.gz"
 GITHUB_TOKEN=s3cret "$REPO/decal" --yes apply github:me/prof >/dev/null 2>&1
 assert_contains "$(cat "$DECAL_PROFILE_HOME/profile.toml")" "newer" "applied again: the newer copy"
 assert_eq "$(find "$T_TMP" -maxdepth 1 -name 'active.old-*' | wc -l)" "0" "no backup of a download from the same source"
@@ -132,10 +135,8 @@ assert_eq "$?" "1" "private repo without a token (no terminal to ask in): fails"
 assert_contains "$out" "github:me/prof not found or not allowed (private? set GITHUB_TOKEN" "and says how to fix it"
 # no key: decal asks, signs in (the fake GitHub's Decal app), and uses that key for this run only
 G="$T_TMP/ghapi"; mkdir -p "$G"; echo s3cret > "$G/token"; echo me/prof > "$G/seed"; echo ok > "$G/device_script"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-FAKE="http://127.0.0.1:$(cat "$G/port")"
-serve "$FAKE/repos/me/prof/tarball" "$T_TMP/gh.tar.gz"; echo "Bearer s3cret" > "$WEB/$(key "$FAKE/repos/me/prof/tarball").token"   # curl stub
+fake_github "$G" --keep-env; GHPID=$FAKE_PID; FAKE=$FAKE_URL   # its own fake, beside the main one
+mkdir -p "$G/tarballs"; cp "$T_TMP/gh.tar.gz" "$G/tarballs/me_prof.tar.gz"
 printf '1\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"
 out=$(env -u GITHUB_TOKEN -u GH_TOKEN DECAL_GITHUB="$FAKE" DECAL_GITHUB_API="$FAKE" DECAL_GITHUB_APP_READ=Iv-read:decal \
   DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" --yes apply github:me/prof 2>&1)
@@ -151,7 +152,7 @@ assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "...as g
 assert_eq "$(head -1 "$DECAL_USER_STATE/recent" | cut -f1)" "github:me/prof" "...and is remembered as recently used"
 # not yours: a stranger's repo without a terminal and without --yes stops, before anything changes
 mkdir -p "$T_TMP/gh2/stranger-prof-1"; printf '[eee-conf]\nword = "stranger"\n' > "$T_TMP/gh2/stranger-prof-1/profile.toml"
-tar -czf "$T_TMP/gh2.tar.gz" -C "$T_TMP/gh2" stranger-prof-1; serve https://api.github.com/repos/stranger/prof/tarball "$T_TMP/gh2.tar.gz"
+tar -czf "$T_TMP/gh2.tar.gz" -C "$T_TMP/gh2" stranger-prof-1; tb stranger/prof "$T_TMP/gh2.tar.gz" public
 : > "$LS_TEST_LOG"
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply stranger/prof 2>&1 < /dev/null); assert_eq "$?" "1" "someone else's profile, no terminal: stops"
 assert_contains "$out" "this profile is from stranger/prof, not you" "...says whose it is"
@@ -159,15 +160,15 @@ assert_contains "$out" "not applied: to apply it anyway, run decal --yes apply g
 assert_eq "$(cat "$LS_TEST_LOG")" "" "...nothing added"
 assert_contains "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "...and the active profile is unchanged"
 # with a terminal: p previews (nothing changes), then y applies
-printf 'p\ny\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"; : > "$STUBS/calls"
+printf 'p\ny\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"; : > "$GM/log"
 out=$(env -u GITHUB_TOKEN -u GH_TOKEN DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" apply stranger/prof 2>&1)
 assert_eq "$?" "0" "someone else's profile, previewed then confirmed: applied"
 assert_eq "$(grep -o 'p preview' "$T_TMP/screen" | wc -l)" "2" "...asked, previewed, asked again"
 assert_contains "$(cat "$LS_TEST_LOG")" "eee add stranger" "...then added (the fixture logs during the preview too)"
-assert_eq "$(grep -c 'stranger/prof/tarball' "$STUBS/calls")" "1" "...downloaded once: what was previewed is what's applied"
+assert_eq "$(grep -c 'stranger/prof/tarball' "$GM/log")" "1" "...downloaded once: what was previewed is what's applied"
 # use alone doesn't make it yours: only applying does
 mkdir -p "$T_TMP/gh3/other-x-1"; printf '[eee-conf]\nword = "x"\n' > "$T_TMP/gh3/other-x-1/profile.toml"
-tar -czf "$T_TMP/gh3.tar.gz" -C "$T_TMP/gh3" other-x-1; serve https://api.github.com/repos/other/x/tarball "$T_TMP/gh3.tar.gz"
+tar -czf "$T_TMP/gh3.tar.gz" -C "$T_TMP/gh3" other-x-1; tb other/x "$T_TMP/gh3.tar.gz" public
 env -u GITHUB_TOKEN -u GH_TOKEN "$REPO/decal" use other/x >/dev/null 2>&1
 assert_not_contains "$(cut -f1 "$DECAL_USER_STATE/recent")" "github:other/x" "use: not remembered as yours"
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply other/x 2>&1 < /dev/null); assert_eq "$?" "1" "...so apply still asks"
@@ -211,7 +212,7 @@ bash -n "$T_TMP/site/dev/install"; assert_eq "$?" "0" "site: /dev/install is val
 assert_file "$T_TMP/site/dev/install.sh" "site: /dev/install.sh too"; assert_file "$T_TMP/site/index.html" "site: index"
 # decal use asks too (the menu runs decal use, then add): someone else's profile can't slip in through it
 mkdir -p "$T_TMP/gh4/third-p-1"; printf '[eee-conf]\nword = "third"\n' > "$T_TMP/gh4/third-p-1/profile.toml"
-tar -czf "$T_TMP/gh4.tar.gz" -C "$T_TMP/gh4" third-p-1; serve https://api.github.com/repos/third/p/tarball "$T_TMP/gh4.tar.gz"
+tar -czf "$T_TMP/gh4.tar.gz" -C "$T_TMP/gh4" third-p-1; tb third/p "$T_TMP/gh4.tar.gz" public
 before=$(cat "$DECAL_PROFILE_HOME/.decal-source" 2>/dev/null)
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" use third/p 2>&1 < /dev/null); assert_eq "$?" "1" "use: someone else's profile, no terminal: stops"
 assert_contains "$out" "this profile is from third/p, not you" "use: says whose it is"; assert_contains "$out" "not used: to use it anyway, run decal --yes use github:third/p" "use: says how to go on"
@@ -223,4 +224,16 @@ out=$(TMPDIR="$T_TMP/ro" DECAL_VERSION=latest DECAL_NO_MENU=1 bash "$REPO/instal
 assert_eq "$(cat "$H/VERSION")" "v1.9.0" "...the new version in place"
 assert_eq "$(ls -A "$(dirname "$H")" | grep -c '^\.decal-new')" "0" "...no leftovers beside it"
 chmod 755 "$T_TMP/ro"
+# one release download: install.sh --fetch-to DIR fetches, checks and unpacks without installing (audit batch 4)
+release v2.0.0; latest v2.0.0; before=$(cat "$H/VERSION")
+out=$(DECAL_HOME="$H" DECAL_VERSION=latest bash "$REPO/install.sh" --fetch-to "$T_TMP/f" 2>/dev/null); assert_eq "$?" "0" "--fetch-to: rc"
+assert_eq "$(cat "$out/MARK" 2>/dev/null)" "v2.0.0" "--fetch-to: prints the unpacked decal"
+assert_eq "$(cat "$H/VERSION")" "$before" "...and installs nothing"
+echo "0000  decal.tar.gz" > "$T_TMP/fsum"; serve "$DL/releases/download/v2.0.0/decal.tar.gz.sha256" "$T_TMP/fsum"
+DECAL_VERSION=latest bash "$REPO/install.sh" --fetch-to "$T_TMP/f2" >/dev/null 2>&1; assert_eq "$?" "1" "--fetch-to: a damaged download refused"
+# decal usb in a checkout without launchers: takes them from the release through install.sh (no curl of its own)
+release v2.1.0; latest v2.1.0; mkdir -p "$T_TMP/up"; printf '[eee-conf]\nword = "u"\n' > "$T_TMP/up/profile.toml"
+out=$("$REPO/decal" usb --from "$T_TMP/up" --decal online --to "folder:$T_TMP/uf" --yes 2>&1); assert_eq "$?" "0" "usb: launchers from the release"
+assert_eq "$(cat "$T_TMP/uf/Decal" 2>/dev/null)" "x86 v2.1.0" "...the release's launcher on the stick"
+kill "$GMPID" 2>/dev/null
 t_done

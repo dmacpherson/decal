@@ -38,16 +38,12 @@ assert_contains "$out" "On this machine" "text: grouped"; assert_contains "$out"
 G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"
 printf 'tester/decal-profile\ntester/oddname topic\ntester/handmade public\ntester/decal-notes\nother/decal-x\n' > "$G/seed"
 for r in decal-profile oddname handmade; do mkdir -p "$G/contents/tester/$r"; printf '%s' "$TOML" > "$G/contents/tester/$r/profile.toml"; done
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")"
+fake_github "$G"; GHPID=$FAKE_PID
 J=$(GITHUB_TOKEN=s3cret python3 "$P" list --json --only github)
 assert_eq "$(q x "sorted(e['name'] for e in d['entries'])")" "['tester/decal-profile', 'tester/handmade', 'tester/oddname']" "github: profiles found three ways; decal-notes (no profile.toml) and others' repos left out"
 assert_eq "$(q x "[e['private'] for e in d['entries'] if e['name']=='tester/handmade']")" "[False]" "github: public/private"
 echo 120 > "$G/many"; kill "$GHPID"; wait "$GHPID" 2>/dev/null; rm -f "$G/port"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")"
+fake_github "$G"; GHPID=$FAKE_PID
 J=$(GITHUB_TOKEN=s3cret python3 "$P" list --json --only github)
 assert_eq "$(q x "sorted(e['name'] for e in d['entries'])")" "['tester/decal-profile', 'tester/oddname']" "over 100 repos: no full scan; topic and names still found"
 J=$(GITHUB_TOKEN=s3cret DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$P" list --json)
@@ -74,10 +70,10 @@ kill "$GHPID" 2>/dev/null
 # GitHub answering with a web page (a Wi-Fi login) or hanging up: a plain message, no traceback (audit batch 3)
 gh_odd() { python3 - "$1" <<'EOF'
 import os, sys, threading, http.server
-sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import github
+sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import github, gh
 if sys.argv[1] == "bare":   # a timeout with no words of its own
     def no(*a, **k): raise TimeoutError()
-    github.urllib.request.urlopen = no
+    gh.urllib.request.urlopen = no
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if sys.argv[1] == "drop":
@@ -86,7 +82,7 @@ class H(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"<html>Sign in to this Wi-Fi</html>")
     def log_message(self, *a): pass
 s = http.server.HTTPServer(("127.0.0.1", 0), H); threading.Thread(target=s.serve_forever, daemon=True).start()
-github.API = f"http://127.0.0.1:{s.server_port}"; os.environ["GITHUB_TOKEN"] = "s3cret"
+gh.API = f"http://127.0.0.1:{s.server_port}"; os.environ["GITHUB_TOKEN"] = "s3cret"
 try:
     github.call("GET", "/repos/tester/x"); print("no error")
 except github.Fail as e:
@@ -105,4 +101,8 @@ assert_not_contains "$out" "Traceback" "...without a traceback"; assert_contains
 assert_not_contains "$out" "\"Bad\"" "a stick profile that isn't text: left out"
 assert_contains "$out" "Ventoy" "...the other stick still listed"
 rm -rf "$DECAL_MEDIA/Bad" "$HOME/decal-bad"
+# a checkout as the active profile on a machine without git: no traceback (review)
+A="$T_TMP/nogit"; mkdir -p "$A/.git"; mkdir -p "$T_TMP/py"; ln -sf "$(command -v python3)" "$T_TMP/py/python3"
+out=$(DECAL_PROFILE_HOME="$A" PATH="$T_TMP/py" python3 "$P" active 2>&1); assert_not_contains "$out" "Traceback" "active without git: no traceback"
+assert_eq "$out" "$A" "...the folder itself"
 t_done

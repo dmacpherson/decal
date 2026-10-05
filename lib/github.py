@@ -3,44 +3,23 @@
 
 REPO is NAME (on your account) or OWNER/NAME. A missing repo is created, private unless --public. The repo then
 holds exactly the folder (files no longer in it are gone from the new commit; history keeps them). The token comes
-from GITHUB_TOKEN (never the command line); DECAL_GITHUB_API points elsewhere (tests). Prints the repo's
+from GITHUB_TOKEN (never the command line); DECAL_GITHUB_API points elsewhere (tests, via gh.py). Prints the repo's
 OWNER/NAME on success. github.py exists REPO: exit 0 when it exists, 1 when not; github.py whoami: the key's login."""
-import argparse, base64, http.client, json, os, sys, urllib.error, urllib.request
+import argparse, base64, os, sys
 
-API = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gh  # noqa: E402
 
 
 class Fail(Exception):
     pass
 
 
-def call(method, path, body=None, ok=(200, 201)):
-    req = urllib.request.Request(API + path, method=method, data=None if body is None else json.dumps(body).encode())
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("Authorization", "Bearer " + os.environ["GITHUB_TOKEN"])
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    if body is not None:
-        req.add_header("Content-Type", "application/json")
+def call(method, path, body=None):
     try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            data = r.read()
-            try:
-                return r.status, (json.loads(data) if data else {})
-            except ValueError:   # a web page, not GitHub (a Wi-Fi login)
-                raise Fail("couldn't reach GitHub (something else answered: a Wi-Fi login page?)")
-    except urllib.error.HTTPError as e:
-        if e.code in ok:
-            return e.code, {}
-        msg = ""
-        try:
-            msg = json.loads(e.read()).get("message", "")
-        except ValueError:
-            pass
-        return e.code, {"message": msg}
-    except urllib.error.URLError as e:
-        raise Fail(f"couldn't reach GitHub ({e.reason})")
-    except (OSError, http.client.HTTPException) as e:   # the connection dropped midway
-        raise Fail(f"couldn't reach GitHub ({str(e) or type(e).__name__})")
+        return gh.request(method, path, os.environ["GITHUB_TOKEN"], body, timeout=60)[:2]
+    except gh.Offline as e:
+        raise Fail(f"couldn't reach GitHub ({e})")
 
 
 def need(res, what):
@@ -52,12 +31,12 @@ def need(res, what):
 
 
 def push(folder, repo, public, message):
+    me = need(call("GET", "/user"), "who is this token for")["login"]
     if "/" not in repo:
-        repo = need(call("GET", "/user"), "who is this token for") ["login"] + "/" + repo
-    code, info = call("GET", f"/repos/{repo}", ok=(200, 404))
+        repo = me + "/" + repo
+    code, info = call("GET", f"/repos/{repo}")
     if code == 404:
         owner, name = repo.split("/", 1)
-        me = need(call("GET", "/user"), "who is this token for")["login"]
         path = "/user/repos" if owner == me else f"/orgs/{owner}/repos"
         info = need(call("POST", path, {"name": name, "private": not public, "auto_init": True,
                                         "description": "My Linux setup, stamped by decal"}), f"create {repo}")
@@ -101,7 +80,7 @@ def main():
         if a.cmd == "whoami":
             print(need(call("GET", "/user"), "who is this token for")["login"])
         elif a.cmd == "exists":
-            code, _ = call("GET", f"/repos/{a.folder}", ok=(200, 404))
+            code, _ = call("GET", f"/repos/{a.folder}")
             sys.exit(0 if code == 200 else 1 if code == 404 else 2)
         else:
             push(a.folder, a.repo, a.public, a.message)

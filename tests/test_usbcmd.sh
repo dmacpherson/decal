@@ -27,13 +27,13 @@ U --from "$P" --to "$T" --decal online --arm --yes >/dev/null
 assert_eq "$(cat "$T/.Decal/Decal-ARM")" "arm" "--arm: Decal-ARM in .Decal"; assert_nofile "$T/.Decal/decal.tar.gz" "online: no copy"
 # a GitHub profile with a saved key (given explicitly here; normally a Decal Profile sign-in)
 mkdir -p "$T_TMP/gh/me-p-1"; cp "$P/profile.toml" "$T_TMP/gh/me-p-1/"; tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-p-1
-stub curl 'out=""; w=""; for a; do case $prev in -o) out=$a;; -w) w=$a;; esac; prev=$a; done
-case ${@: -1} in *repos/me/p/tarball*) cp '"$T_TMP"'/gh.tar.gz "$out"; [ -z "$w" ] || printf 200;; *) [ -z "$w" ] || printf 404; exit 22;; esac'
+G="$T_TMP/ghapi"; mkdir -p "$G/tarballs"; echo s3cret > "$G/token"; cp "$T_TMP/gh.tar.gz" "$G/tarballs/me_p.tar.gz"   # the fake GitHub
+fake_github "$G"; GHPID=$FAKE_PID
 out=$(DECAL_STICK_KEY=r3ad GITHUB_TOKEN=s3cret U --from me/p --how saved-key --to "$T" --yes); assert_eq "$?" "0" "GitHub + saved key"
 assert_contains "$(cat "$T/.Decal/stick.conf")" "profile=github:me/p" "stick.conf: the repo"; assert_contains "$(cat "$T/.Decal/stick.conf")" "key=saved" "...key saved"
 assert_eq "$(cat "$T/.Decal/key")" "r3ad" "the given read key, not GITHUB_TOKEN"
 assert_eq "$(grep -rl s3cret "$T" | wc -l)" "0" "GITHUB_TOKEN never written to the stick"
-U --from me/p --how sign-in --to "$T" --yes >/dev/null; assert_nofile "$T/.Decal/key" "sign-in: no key on the stick"
+GITHUB_TOKEN=s3cret U --from me/p --how sign-in --to "$T" --yes >/dev/null; assert_nofile "$T/.Decal/key" "sign-in: no key on the stick"
 assert_contains "$(cat "$T/.Decal/stick.conf")" "key=ask" "...stick.conf says ask"
 # a key that can write is never put on a stick: classic and gh tokens refused (before anything is written)
 rm -rf "$T"; mkdir -p "$T"
@@ -59,9 +59,13 @@ out=$("$REPO/decal" usb --how 2>&1); assert_eq "$?" "1" "usb --how alone: fails"
 assert_contains "$out" "--how needs saved-key, sign-in, copy or latest" "...says what it needs"; assert_not_contains "$out" "parameter null" "...no shell jargon"
 out=$("$REPO/decal" --profile 2>&1); assert_contains "$out" "--profile needs a profile folder" "global option: says what it needs"; assert_not_contains "$out" "line " "...no line numbers"
 # GitHub out of reach: says so, not "HTTP 000"
-stub curl 'exit 7'; out=$("$REPO/decal" --yes use github:me/prof 2>&1); assert_contains "$out" "couldn't reach GitHub to get github:me/prof: check the internet connection" "offline: plain words"
+out=$(DECAL_GITHUB_API=http://127.0.0.1:9 "$REPO/decal" --yes use github:me/prof 2>&1); assert_contains "$out" "couldn't reach GitHub to get github:me/prof: check the internet connection" "offline: plain words"
 assert_not_contains "$out" "HTTP 000" "...no HTTP code"
 # --yes writes without asking, so it never guesses the drive (audit batch 3)
 out=$("$REPO/decal" usb --from "$P" --yes 2>&1); assert_eq "$?" "1" "--yes without --to: refused"
 assert_contains "$out" "--yes needs --to" "...says what to add"
+kill "$GHPID" 2>/dev/null
+# the end of input (Ctrl+D, a closed terminal) at "Write these?" writes nothing (review)
+mkdir -p "$T_TMP/eof"; out=$(DECAL_TTY_IN=/dev/null DECAL_TTY_OUT=/dev/null "$REPO/decal" usb --from "$P" --decal online --to "folder:$T_TMP/eof/x" 2>&1)
+assert_eq "$?" "1" "end of input at the question: stops"; assert_contains "$out" "nothing written" "...says so"; assert_nofile "$T_TMP/eof/x/Decal" "...nothing written"
 t_done

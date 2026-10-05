@@ -24,7 +24,9 @@ minutes. Use `UNTIL:text` steps rather than sleeps when adding flows.
 
 ## Architecture
 
-- **`decal`** (bash) is the entry point: option parsing, the command `case` at the bottom, and the runner. Each module
+- **`decal`** (bash) is the entry point: option parsing, the command `case` at the bottom, and the runner; the bigger
+  commands live in `lib/cmd_stamp.sh`, `lib/cmd_new.sh`, `lib/cmd_usb.sh` and profile sources/keys/trust in
+  `lib/stage.sh` (sourced: functions only). Each module
   runs in an isolated subshell (`run_module`) with its profile settings as `P_*` variables from `lib/profile.py shell`.
   `add`/`remove`/`apply` re-run themselves through a logging wrapper (spinner on the terminal, full log in
   `~/.local/state/decal/logs/`). A module whose settings, files and decal code are unchanged since its last add is
@@ -38,14 +40,14 @@ minutes. Use `UNTIL:text` steps rather than sleeps when adding flows.
 - **State**: system state under `$LS_STATE` (root-owned, `/var/lib/decal`), user state under `$LS_USER_STATE`
   (`~/.local/state/decal`: `applied/` fingerprints, `recent`, `tags`, logs). Tests redirect both (`DECAL_STATE`,
   `DECAL_USER_STATE`) and a fake root (`DECAL_ROOT`; use `sys_path` for system paths).
-- **Profiles and sources**: `stage_profile` (in `decal`) turns any source into a validated folder via
+- **Profiles and sources**: `stage_profile` (in `lib/stage.sh`) turns any source into a validated folder via
   `lib/source.py` (GitHub links / `owner/repo`, archive links, git, local paths; safe unpacking, https only);
   `activate_staged` makes it the active profile at `~/.config/decal/profile`. `lib/profiles.py` finds profiles
   (GitHub, `~/decal-*`, sticks, recent); `decal new` makes them; `decal stamp` reads the machine into one.
 - **GitHub**: `lib/auth.py` gets keys (device-flow sign-in with a QR code, or a pre-filled token page) through two
   GitHub Apps: **Decal Profile** (read, keys until revoked) and **Decal Profile Write** (8-hour keys, never saved).
-  Key order everywhere: `GITHUB_TOKEN`, `GH_TOKEN`, `gh auth token`, then ask (`gh_auth` in `decal`).
-  `lib/github.py` pushes stamps without git.
+  Key order everywhere: `GITHUB_TOKEN`, `GH_TOKEN`, `gh auth token`, then ask (`gh_auth` in `lib/stage.sh`).
+  `lib/github.py` pushes stamps without git; every API call (api.github.com) goes through `lib/gh.py`.
 - **Menu** (`lib/ui.py`, curses): every action runs `decal` commands you could type; pure helpers (`apply_cmds`,
   `usb_cmd`, `browser_rows`, …) are unit-tested, flows are driven in a pty. Stick mode when `DECAL_STICK` is set.
 - **USB sticks**: `decal usb` assembles `Decal` (launcher, `usb/launch.c`) + `.Decal/` (`usb/start.sh`,

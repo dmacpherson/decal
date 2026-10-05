@@ -7,6 +7,15 @@ export LS_REPO
 MODULES_DIR="${DECAL_MODULES_DIR:-$LS_REPO/modules}"
 # shellcheck source=lib/common.sh
 source "$LS_REPO/lib/common.sh"
+# the commands' own files (functions only; they run here, with decal's variables)
+# shellcheck source=lib/stage.sh
+source "$LS_REPO/lib/stage.sh"
+# shellcheck source=lib/cmd_stamp.sh
+source "$LS_REPO/lib/cmd_stamp.sh"
+# shellcheck source=lib/cmd_new.sh
+source "$LS_REPO/lib/cmd_new.sh"
+# shellcheck source=lib/cmd_usb.sh
+source "$LS_REPO/lib/cmd_usb.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -17,7 +26,7 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
   --only dev                 just the modules with a [section.dev], with dev's settings (implies --tags dev);
                              with remove: take away what dev adds (whole module if it is only there through dev)
   (no command, in a terminal) the menu: apply, stamp, remove, update (also: decal ui)
-  list                       modules and descriptions
+  list [--stampable]         modules and descriptions (--stampable: only the names stamp reads)
   status [module...]         installed / partial / not-installed / stale / not in profile
   tags                       the tags your profile uses, and which sections have them
   add    <module...|all>     apply (idempotent); all = every module in your profile
@@ -263,438 +272,23 @@ run_fancy() {
 # it counts as yours from now on). Only the active profile at $PROFILE_HOME, never a dry run.
 remember_active() {
   [[ ${LS_DRY_RUN:-0} != 1 && $PROFILE_DIR == "$PROFILE_HOME" ]] || return 0
-  local src=""
-  if [[ -L $PROFILE_HOME ]]; then src=$(readlink -f "$PROFILE_HOME")
-  elif [[ -r $PROFILE_HOME/.decal-source ]]; then src=$(cat "$PROFILE_HOME/.decal-source")
-  elif [[ -d $PROFILE_HOME/.git ]]; then src=$(git -C "$PROFILE_HOME" remote get-url origin 2>/dev/null || true); fi
+  local src; src=$(env -u DECAL_PROFILE DECAL_PROFILE_HOME="$PROFILE_HOME" python3 "$LS_REPO/lib/profiles.py" active 2>/dev/null || true)
   if [[ -n $src ]]; then python3 "$LS_REPO/lib/source.py" remember "$src" || true; fi
 }
 # the tags this machine's last add/apply used (the menu pre-ticks them; the command line never reads them)
 remember_tags() { if [[ ${LS_DRY_RUN:-0} != 1 ]]; then mkdir -p "$LS_USER_STATE"; printf '%s\n' "${DECAL_TAGS:-}" > "$LS_USER_STATE/tags"; fi; }
-INSTALL_URL="https://dmacpherson.github.io/decal/install"
-# module_has NAME FUNC : the module defines FUNC
-module_has() { ( cd "$MODULES_DIR/$1" && export MODULE_DIR="$PWD"; set +u; source ./module.sh >/dev/null 2>&1; declare -F "$2" >/dev/null ); }
-# do_stamp [PATH] [-gh [REPO]] [--public] : this machine's setup, changed from default only, as a profile.
-# Each module's module_stamp reads the machine (prints its TOML, files go to $STAMP_DIR, notes via stamp_note).
-# A module decal set up from your profile that is still in place is taken from the profile as you wrote it
-# (tags, sources, comments aside) unless it sets STAMP_LIVE=1 (those compare the machine with the defaults).
-do_stamp() {
-  local dest="" gh=0 repo="" public=0 signed=0 me m frag st rc from only=()
-  while (( $# )); do
-    case $1 in
-      -gh|--github) gh=1
-        if [[ ${2:-} =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$ && ${2:-} != *.tar.gz && ${2:-} != *.tgz ]]; then repo=$2; shift; fi ;;
-      --github=*) gh=1; repo=${1#--github=} ;;
-      --public) public=1 ;;
-      -*) die "stamp: unknown option $1" ;;
-      *) if [[ $1 != */* && $1 != *.* && -f $MODULES_DIR/$1/module.sh ]]; then only+=("$1")   # a module name
-         else [[ -z $dest ]] || die "stamp: one place to save it (got $dest and $1)"; dest=$1; fi ;;
-    esac; shift
-  done
-  me=${USER:-$(id -un)}
-  [[ -n $dest ]] || dest="$HOME/decal-$me.tar.gz"
-  [[ -n $repo ]] || repo="decal-$me"
-  export STAMP_DIR="$LS_RUNTMP/stamp/profile" STAMP_NOTES="$LS_RUNTMP/stamp/notes"
-  local body="$LS_RUNTMP/stamp/body.toml"; mkdir -p "$STAMP_DIR"; : > "$STAMP_NOTES"; : > "$body"
-  info "stamping this machine: only what's changed from the defaults"
-  for m in $(all_modules); do
-    [[ $(module_field "$m" STAMP_SKIP) != 1 ]] || continue
-    if (( ${#only[@]} )) && ! printf '%s\n' "${only[@]}" | grep -qxF "$m"; then continue; fi   # decal stamp MODULE...
-    frag=""; from=0
-    if [[ -f $PROFILE_DIR/profile.toml && -r $APPLIED/$m && $(module_field "$m" STAMP_LIVE) != 1 ]] && DECAL_TAGS=all in_profile "$m"; then
-      st=$(DECAL_TAGS=all run_module status "$m" 2>/dev/null || true); [[ $st != installed* ]] || from=1
-    fi
-    if (( from )); then
-      frag=$(python3 "$LS_REPO/lib/stamp.py" section "$m" --profile "$PROFILE_DIR" --modules "$MODULES_DIR" --to "$STAMP_DIR") \
-        || die "stamp: could not copy [$m] from your profile"
-      if [[ -n $frag ]]; then echo "$m: your profile's settings (decal set it up; tags kept)" >> "$STAMP_NOTES"; fi
-    elif module_has "$m" module_stamp; then
-      set +e; frag=$(run_module stamp "$m" 2>"$LS_RUNTMP/err"); rc=$?; set -e
-      if (( rc != 0 )); then warn "stamp $m: $(tail -1 "$LS_RUNTMP/err")"; frag=""; fi
-    fi
-    if [[ -n $frag ]]; then printf '%s\n\n' "$frag" >> "$body"; fi
-  done
-  [[ -s $body ]] || die "nothing to stamp: this machine is at its defaults"
-  { printf '# decal profile, stamped by %s on %s: only what differed from the defaults.\n' "$me" "$(date +%F)"
-    printf '# Apply it anywhere: decal apply <this folder, its .tar.gz, or github:owner/repo>. Edit freely.\n\n'
-    cat "$body"; } > "$STAMP_DIR/profile.toml"
-  DECAL_TAGS="" python3 "$LS_REPO/lib/profile.py" check --profile "$STAMP_DIR" --modules "$MODULES_DIR" \
-    || die "the stamp isn't a valid profile (a decal bug: please report it); nothing was saved"
-  info "in this stamp:"; sed 's/^/    /' "$STAMP_NOTES" >&2
-  if [[ ${LS_DRY_RUN:-0} == 1 ]]; then printf '\n'; cat "$STAMP_DIR/profile.toml"; info "dry run: nothing saved"; return 0; fi
-  local tok=""
-  if (( gh )); then   # the token first: the README names the repo, and a wrong token shouldn't come after the work
-    tok=$(gh_write_token)
-    local why="" rc=0
-    if [[ -n $tok ]]; then   # a key that's already there: can it save to the repo? (offline: let the push say)
-      why=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/auth.py" check "$repo" --need write --may-create 2>&1) || rc=$?
-      if (( rc >= 10 && rc <= 12 )); then warn "$why"; tok=""; else why=""; fi
-    fi
-    if [[ -z $tok ]]; then
-      if ! gh_auth "$repo" write --may-create; then
-        [[ -z $why ]] || die "GitHub didn't accept the token, and there's no terminal to sign in on (the token needs permission to create repos and write their contents)"
-        die "no GitHub key: sign in when asked, set GITHUB_TOKEN, or log in with gh auth login"
-      fi
-      tok=$GITHUB_TOKEN; signed=1
-    fi
-    if [[ $repo != */* ]]; then
-      local who; who=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami) || die "GitHub didn't accept the token (the token needs permission to create repos and write their contents)"
-      repo="$who/$repo"
-    fi
-  fi
-  local src; if (( gh )); then src="github:$repo"; else src=$(basename "$dest"); fi
-  # shellcheck disable=SC2016  # Markdown backticks, not command substitution
-  { printf '# My Linux setup\n\nA [decal](https://github.com/dmacpherson/decal) profile: `decal stamp` saved what was changed from the defaults on %s.\n\n' "$(date +%F)"
-    # shellcheck disable=SC2016
-    printf '## Put it on a machine\n\n```bash\ncurl -fsSL %s | bash -s -- %s\n```\n\n' "$INSTALL_URL" "$src"
-    printf '## In it\n\n'; sed 's/^/- /' "$STAMP_NOTES"; } > "$STAMP_DIR/README.md"
-  if [[ $dest == *.tar.gz || $dest == *.tgz ]]; then
-    mkdir -p "$(dirname "$dest")"
-    if [[ -e $dest ]]; then mv -f "$dest" "$dest.old"; fi
-    tar -czf "$dest" -C "$STAMP_DIR" .
-  else   # a folder: a new one, or one an earlier stamp made
-    if [[ -e $dest && ! -e $dest/.decal-stamp && -n $(ls -A "$dest" 2>/dev/null) ]]; then die "$dest isn't empty and isn't an earlier stamp: not writing into it"; fi
-    # write new, then swap: the earlier stamp stays whole until the new one is complete
-    rm -rf "$dest.decal-new" "$dest.decal-old"; mkdir -p "$dest.decal-new"
-    cp -a "$STAMP_DIR/." "$dest.decal-new/" || { rm -rf "$dest.decal-new"; die "could not save the stamp to $dest (the earlier one is untouched)"; }
-    : > "$dest.decal-new/.decal-stamp"
-    if [[ -e $dest ]]; then mv "$dest" "$dest.decal-old"; fi
-    mv "$dest.decal-new" "$dest"; rm -rf "$dest.decal-old"
-  fi
-  info "saved: $dest   (apply it anywhere: decal apply $dest)"
-  (( gh )) || return 0
-  local r
-  if (( public )); then warn "a public repo: anyone can see what's in it (pictures, app list, settings)"; fi
-  local pub=(); if (( public )); then pub=(--public); fi
-  r=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" push "$STAMP_DIR" "$repo" "${pub[@]}" --message "decal stamp $(date '+%F %H:%M')") \
-    || { if (( signed )); then local u; u=$(python3 "$LS_REPO/lib/auth.py" install-url --need write 2>/dev/null) && info "Decal Profile Write needs access to $repo: $u"; fi
-         die "could not save the stamp to GitHub (it is saved at $dest)"; }
-  info "on GitHub: https://github.com/$r"
-  info "on another machine: curl -fsSL $INSTALL_URL | bash -s -- github:$r"
-}
-# do_new NAME [--from this-machine|PROFILE|empty] [--to github|file[:PATH]|stick[:NAME]] [--public] [--use] : a new profile.
-# Never overwrites: an existing repo, file or stick profile stops it before any work.
-do_new() {
-  local name="" from=this-machine to=github public=0 use=0 dest="" repo="" tok="" src stage sticks n a
-  while (( $# )); do
-    case $1 in
-      --from) val "$1" "${2:-}" "this-machine, a profile, or empty"; from=$2; shift ;;
-      --to) val "$1" "${2:-}" "github, file, file:PATH, stick or stick:NAME"; to=$2; shift ;;
-      --public) public=1 ;;
-      --use) use=1 ;;
-      -*) die "new: unknown option $1" ;;
-      *) [[ -z $name ]] || die "new: one name (got $name and $1)"; name=$1 ;;
-    esac; shift
-  done
-  [[ $name =~ ^[A-Za-z0-9_.-]+$ ]] || die "new: a name like decal-work (letters, digits, - _ .)"
-  case $to in   # where, checked first
-    github) ;;
-    file) dest="$HOME/$name.tar.gz" ;;
-    file:*) dest=${to#file:}; dest=${dest/#\~/$HOME} ;;
-    stick|stick:*)
-      mapfile -t sticks < <(python3 "$LS_REPO/lib/profiles.py" sticks | sed '/^$/d')
-      (( ${#sticks[@]} )) || die "no USB stick found: plug in a USB stick and try again"
-      if [[ $to == stick:* ]]; then   # named: no question
-        for a in "${sticks[@]}"; do if [[ $(basename "$a") == "${to#stick:}" || $a == "${to#stick:}" ]]; then dest="$a/.Decal/profile"; fi; done
-        [[ -n $dest ]] || die "no USB stick named ${to#stick:} (plugged in: $(for a in "${sticks[@]}"; do printf '%s ' "$(basename "$a")"; done))"
-      elif (( ${#sticks[@]} == 1 )); then dest="${sticks[0]}/.Decal/profile"
-      else
-        { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "several USB sticks: say which with --to stick:NAME"
-        n=0; for a in "${sticks[@]}"; do n=$((n + 1)); printf '  %s) %s\n' "$n" "$(basename "$a")" >> "${DECAL_TTY_OUT:-/dev/tty}"; done
-        printf 'Which stick? ' >> "${DECAL_TTY_OUT:-/dev/tty}"; IFS= read -r a < "${DECAL_TTY_IN:-/dev/tty}"
-        if ! [[ $a =~ ^[0-9]+$ ]] || (( a < 1 || a > ${#sticks[@]} )); then die "no stick chosen"; fi
-        dest="${sticks[$((a - 1))]}/.Decal/profile"
-      fi ;;
-    *) die "new: --to github, file, file:PATH, stick or stick:NAME" ;;
-  esac
-  if [[ -n $dest && -e $dest ]]; then die "$dest already exists: use decal stamp to update it"; fi
-  if [[ $to == github ]]; then
-    tok=$(gh_write_token)
-    if [[ -z $tok ]]; then gh_auth "$name" write --may-create || die "no GitHub key: sign in when asked, set GITHUB_TOKEN, or log in with gh auth login"; tok=$GITHUB_TOKEN; fi
-    repo="$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami)/$name" || die "GitHub didn't accept the key"
-    if GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" exists "$repo"; then die "github:$repo already exists: use decal stamp -gh $repo to update it"; fi
-  fi
-  stage="$LS_RUNTMP/new/$name"
-  case $from in   # what goes in
-    this-machine) do_stamp "$stage" ;;
-    empty) python3 "$LS_REPO/lib/profiles.py" empty "$stage" ;;
-    *) stage_profile "$from"; mkdir -p "$stage"; cp -a "$STAGE_DIR/." "$stage/"; rm -rf "$stage/.git" "$stage/.decal-source" ;;
-  esac
-  rm -f "$stage/.decal-stamp"
-  python3 "$LS_REPO/lib/profiles.py" readme "$stage" "$name" "$( [[ $from == this-machine || $from == empty ]] && echo "$from" || echo "${STAGE_SRC:-$from}")"
-  case $to in   # where it goes
-    github)
-      local pub=(); if (( public )); then pub=(--public); fi
-      GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" push "$stage" "$repo" "${pub[@]}" --message "decal new: $name" >/dev/null \
-        || die "could not create github:$repo"
-      src="github:$repo" ;;
-    stick|stick:*) mkdir -p "$dest"; cp -a "$stage/." "$dest/"; : > "$dest/.decal-stamp"; src=$dest ;;
-    *) mkdir -p "$(dirname "$dest")"; tar -czf "$dest" -C "$stage" .; src=$dest ;;
-  esac
-  info "new profile: $src"
-  if (( use )); then set_profile "$src"; python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi
-}
-# usb_bin : a folder with the launchers (Decal-x86_64, Decal-aarch64): the release's usb/bin, else downloaded once
-usb_bin() {
-  local d=${DECAL_USB_BIN:-$LS_REPO/usb/bin} c="${XDG_CACHE_HOME:-$HOME/.cache}/decal/usb-bin" t
-  if [[ -f $d/Decal-x86_64 ]]; then echo "$d"; return 0; fi
-  if [[ -f $c/Decal-x86_64 ]]; then echo "$c"; return 0; fi
-  info "getting the stick launchers (this copy of decal doesn't have them)"
-  t=$(mktemp -d "$LS_RUNTMP/rel.XXXXXX")
-  if ! curl -fsSL --proto =https --proto-redir =https https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz -o "$t/d.tgz" \
-     || ! curl -fsSL --proto =https --proto-redir =https https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz.sha256 -o "$t/sum"; then
-    die "couldn't download the stick launchers"
-  fi
-  [[ $(sha256sum "$t/d.tgz" | cut -d' ' -f1) == "$(cut -d' ' -f1 < "$t/sum")" ]] || die "the launchers download is damaged"
-  tar -xzf "$t/d.tgz" -C "$t" decal/usb/bin 2>/dev/null || die "the latest release has no stick launchers yet"
-  mkdir -p "$c"; cp "$t/decal/usb/bin/"* "$c/"; echo "$c"
-}
-# do_usb [--from SRC] [--how saved-key|sign-in|copy|latest] [--decal newest|copy|online] [--arm]
-#        [--to MOUNTPOINT|DEVICE|folder[:PATH]] [--yes] : put decal on a USB stick (or in a folder)
-do_usb() {
-  local prof="" how="" dmode=newest arm=0 to="" yes=0 target files key="" kind src ver bin how_text a res
-  while (( $# )); do
-    case $1 in
-      --from) val "$1" "${2:-}" "a profile (a folder, a link or owner/name)"; prof=$2; shift ;;
-      --how) val "$1" "${2:-}" "saved-key, sign-in, copy or latest"; how=$2; shift ;;
-      --decal) val "$1" "${2:-}" "newest, copy or online"; dmode=$2; shift ;;
-      --to) val "$1" "${2:-}" "a mount point, a device, or folder[:PATH]"; to=$2; shift ;;
-      --arm) arm=1 ;; --yes|-y) yes=1 ;;
-      *) die "usb: unknown option $1" ;;
-    esac; shift
-  done
-  if [[ ${DECAL_YES:-} == 1 ]]; then yes=1; fi   # --yes is decal's own option (it reaches here as DECAL_YES)
-  [[ $dmode =~ ^(newest|copy|online)$ ]] || die "usb: --decal newest, copy or online"
-  # where
-  case $to in
-    folder) target="$HOME/decal-usb" ;;
-    folder:*) target=${to#folder:}; target=${target/#\~/$HOME} ;;
-    /dev/*) target=$(python3 "$LS_REPO/lib/usb.py" mount "$to") || exit 1 ;;
-    "") (( ! yes )) || die "usb: --yes needs --to (which drive to write: a mount point, a device, or folder)"
-        mapfile -t a < <(python3 "$LS_REPO/lib/usb.py" drives | awk -F'\t' '$3 != "" {print $3}')
-        (( ${#a[@]} == 1 )) || die "usb: which drive? --to a mount point, a device, or folder (decal usb in a terminal asks)"
-        target=${a[0]} ;;
-    *) [[ -d $to ]] || die "usb: $to isn't a folder or a mounted drive"; target=$to ;;
-  esac
-  # which profile (the active one by default)
-  if [[ -z $prof ]]; then
-    if [[ -L $PROFILE_HOME ]]; then prof=$(readlink -f "$PROFILE_HOME"); else prof=$(cat "$PROFILE_HOME/.decal-source" 2>/dev/null || true); fi
-    [[ -n $prof ]] || die "usb: which profile? --from SOURCE (there's no active profile)"
-  fi
-  stage_profile "$prof"; kind=$STAGE_KIND; src=$STAGE_SRC
-  if [[ $kind == github ]]; then
-    if [[ -z $how ]]; then if python3 "$LS_REPO/lib/source.py" public "$src"; then how=latest; else how=saved-key; fi; fi
-  else
-    [[ -z $how || $how == copy ]] || die "usb: $src isn't on GitHub: the stick gets a copy (--how copy)"
-    how=copy
-  fi
-  [[ $how =~ ^(saved-key|sign-in|copy|latest)$ ]] || die "usb: --how saved-key, sign-in, copy or latest"
-  # the key: always a fresh read key, never GITHUB_TOKEN / GH_TOKEN / gh
-  if [[ $how == saved-key ]]; then
-    if [[ -n ${DECAL_STICK_KEY:-} ]]; then key=$DECAL_STICK_KEY
-    else
-      { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "usb: a saved key needs a terminal to sign in (or DECAL_STICK_KEY)"
-      info "the stick gets its own read-only key (your gh login or GITHUB_TOKEN are never put on a stick)"
-      key=$(env -u GITHUB_TOKEN -u GH_TOKEN python3 "$LS_REPO/lib/auth.py" get "${src#github:}" --need read) || die "no key: nothing written"
-    fi
-  fi
-  if [[ -n $key ]] && ! GITHUB_TOKEN=$key python3 "$LS_REPO/lib/auth.py" stick-ok 2>/dev/null; then
-    die "that key can write to your repos: it's not put on a stick (use Sign in with GitHub, or a read-only token)"
-  fi
-  bin=$(usb_bin) || exit 1
-  ver=$(cat "$LS_REPO/VERSION" 2>/dev/null || echo "dev-$(git -C "$LS_REPO" rev-parse --short HEAD 2>/dev/null || echo local)")
-  files="$LS_RUNTMP/stick"; rm -rf "$files"; mkdir -p "$files/.Decal"
-  cp "$bin/Decal-x86_64" "$files/Decal"
-  if (( arm )); then cp "$bin/Decal-aarch64" "$files/.Decal/Decal-ARM"; fi
-  cp "$LS_REPO/usb/start.sh" "$files/.Decal/start.sh"
-  case $how in
-    copy) mkdir -p "$files/.Decal/profile"; cp -a "$STAGE_DIR/." "$files/.Decal/profile/"
-          rm -rf "$files/.Decal/profile/.git" "$files/.Decal/profile/.decal-source"; : > "$files/.Decal/profile/.decal-stamp"
-          how_text="a copy of $src" ;;
-    saved-key) ( umask 077; printf '%s\n' "$key" > "$files/.Decal/key" ); how_text="$src (with a read-only key)" ;;
-    sign-in) how_text="$src (signs in each time)" ;;
-    latest) how_text="$src (public: always the latest)" ;;
-  esac
-  if [[ $dmode != online ]]; then   # this decal's own files (installed or a checkout), without .git, tests or docs
-    tar -czf "$files/.Decal/decal.tar.gz" -C "$(dirname "$LS_REPO")" --exclude=.git --exclude=tests --exclude=docs \
-      --exclude=__pycache__ --exclude=.superpowers --transform "s,^$(basename "$LS_REPO"),decal," "$(basename "$LS_REPO")"
-    (cd "$files/.Decal" && sha256sum decal.tar.gz > decal.tar.gz.sha256)
-  fi
-  { echo "# Made by decal $ver on $(date +%F). Run decal usb to change it."
-    if [[ $how == copy ]]; then echo "profile=copy"; else echo "profile=$src"; fi
-    case $how in saved-key) echo "key=saved" ;; sign-in) echo "key=ask" ;; *) echo "key=none" ;; esac
-    echo "decal=$dmode"; echo "version=$ver"; } > "$files/.Decal/stick.conf"
-  sed -e "s|{profile}|$how_text|" -e "s|{version}|$ver ($dmode)|" -e "s|{made}|$(date +%F)|" "$LS_REPO/usb/README.txt" > "$files/.Decal/README.txt"
-  local fs; fs=$(findmnt -no FSTYPE --target "$target" 2>/dev/null || true)
-  if [[ $fs == vfat || $fs == msdos ]]; then
-    printf '\nThis stick is FAT32: Linux mounts it so nothing on it can be started by double-clicking. Start decal\nfrom a terminal instead:  bash .Decal/start.sh   (or reformat the stick as exFAT; Ventoy sticks are exFAT).\n' >> "$files/.Decal/README.txt"
-  fi
-  info "on $target:"; (cd "$files" && find Decal .Decal -type f | sort | sed 's/^/    /') >&2
-  if (( ! yes )); then
-    { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "usb: nothing written: add --yes to write without asking"
-    printf 'Write these to %s? [Y/n] ' "$target" >> "${DECAL_TTY_OUT:-/dev/tty}"; IFS= read -r a < "${DECAL_TTY_IN:-/dev/tty}" || a=n
-    [[ ${a:-y} == [Yy]* ]] || die "nothing written"
-  fi
-  res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || exit 1   # usb.py says why
-  info "done: double-click Decal on any Linux PC (Ctrl+H shows the .Decal folder)"
-  if (( arm )); then info "ARM machines: double-click .Decal/Decal-ARM"; fi
-  if [[ $fs == vfat || $fs == msdos ]]; then warn "this stick is FAT32: double-clicking Decal won't work on it; start it with: bash .Decal/start.sh (or use an exFAT stick)"; fi
-  if [[ $res == upgraded ]]; then warn "the old hand-made setup was replaced: revoke its token on GitHub (Settings → Developer settings → tokens)"; fi
-  if [[ $target == "$HOME"/* || $to == folder* ]]; then info "copy Decal and .Decal/ together; zipping or some cloud drives drop the 'can run' bit Decal needs"; fi
-}
 # tidy_cache : one version per source, nothing unused for 30 days (after a successful apply/fetch)
 tidy_cache() { if [[ ${LS_DRY_RUN:-0} != 1 ]]; then python3 "$LS_REPO/lib/fetch.py" --prune || warn "could not tidy the download cache"; fi; }
-find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single sub-folder)
-  if [[ -f $1/profile.toml ]]; then echo "$1"; return 0; fi
-  local subs=("$1"/*/)
-  if [[ ${#subs[@]} -eq 1 && -f ${subs[0]}profile.toml ]]; then echo "${subs[0]%/}"; return 0; fi
-  return 1
-}
-# gh_tarball OWNER/REPO REF OUT : a GitHub repo as a .tar.gz without git. Private repos need a key: GITHUB_TOKEN,
-# GH_TOKEN or a `gh auth login`; without one, in a terminal, it asks (sign in with GitHub, or a token you make)
-gh_token() {   # from a USB stick (a borrowed PC): only the stick's own key (start.sh sets GITHUB_TOKEN), never GH_TOKEN or gh
-  if [[ -n ${DECAL_STICK:-} ]]; then printf '%s' "${GITHUB_TOKEN:-}"; return 0; fi
-  local t=${GITHUB_TOKEN:-${GH_TOKEN:-}}; if [[ -z $t ]] && have gh; then t=$(gh auth token 2>/dev/null || true); fi; printf '%s' "$t"
-}
-# gh_write_token : a key to write to GitHub with: from a USB stick (a borrowed PC) never the PC's GITHUB_TOKEN, GH_TOKEN
-# or gh login, only this menu session's key (DECAL_WRITE_KEY) or a fresh sign-in; elsewhere, the usual order
-gh_write_token() { if [[ -n ${DECAL_STICK:-} ]]; then printf '%s' "${DECAL_WRITE_KEY:-}"; else gh_token; fi; }
-# gh_auth REPO read|write [--may-create] : ask on the terminal for a key (lib/auth.py: sign in with a code or QR,
-# or paste a token); exported as GITHUB_TOKEN for the rest of this run, never saved. No terminal or cancelled: fails
-gh_auth() {
-  if [[ -z ${DECAL_TTY_IN:-} ]]; then { : < /dev/tty; } 2>/dev/null || return 1; fi
-  local t; t=$(python3 "$LS_REPO/lib/auth.py" get "$1" --need "$2" "${@:3}") || return 1
-  [[ -n $t ]] || return 1
-  export GITHUB_TOKEN=$t
-}
-gh_tarball() {
-  local url="${DECAL_GITHUB_API:-https://api.github.com}/repos/$1/tarball${2:+/$2}" tok code asked=0
-  have curl || die "curl is needed to download $1"
-  tok=$(gh_token)
-  while :; do
-    # the key goes to curl on its stdin (printf is a builtin): never on a command line, never in a file
-    code=$(if [[ -n $tok ]]; then printf 'Authorization: Bearer %s\n' "$tok"; fi \
-           | curl -sSL --proto =https --proto-redir =https --connect-timeout 10 -H @- -o "$3" -w '%{http_code}' "$url" 2>/dev/null) \
-      || code=${code:-000}
-    [[ $code == 200 ]] && return 0
-    if [[ $code =~ ^(401|403|404)$ && $asked == 0 ]]; then
-      asked=1
-      if gh_auth "$1" read; then tok=$GITHUB_TOKEN; continue; fi
-    fi
-    case $code in
-      401|403|404) die "github:$1 not found or not allowed (private? set GITHUB_TOKEN, or log in with gh auth login)" ;;
-      000) die "couldn't reach GitHub to get github:$1: check the internet connection" ;;
-      *) die "could not download github:$1 (GitHub answered $code)" ;;
-    esac
-  done
-}
-# stage_profile SOURCE : SOURCE as a validated folder holding profile.toml, in STAGE_DIR (a folder source as is;
-# anything else downloaded/unpacked into a temp folder); STAGE_KIND and STAGE_SRC (canonical) set too. Not run in
-# a subshell: a sign-in it needs lasts the whole run.
-stage_profile() {
-  local r note tmp rc
-  r=$(python3 "$LS_REPO/lib/source.py" resolve "$1") || exit 1   # the reason is already on stderr
-  IFS=$'\t' read -r STAGE_KIND STAGE_SRC note <<<"$r"
-  if [[ -n $note ]]; then info "$note"; fi
-  case $STAGE_KIND in
-    dir)
-      [[ -f $STAGE_SRC/profile.toml ]] || die "$STAGE_SRC has no profile.toml"
-      STAGE_DIR=$(cd "$STAGE_SRC" && pwd -P); STAGE_SRC=$STAGE_DIR ;;
-    archive)
-      tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
-      python3 "$LS_REPO/lib/source.py" unpack "$STAGE_SRC" "$tmp/x" || die "could not unpack $STAGE_SRC"
-      STAGE_DIR=$(find_profile_root "$tmp/x") || die "$STAGE_SRC contains no profile.toml" ;;
-    github)
-      [[ $STAGE_SRC =~ ^github:([^@]+)(@(.+))?$ ]] || die "not a GitHub source: $STAGE_SRC"
-      tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
-      gh_tarball "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}" "$tmp/p.tar.gz"
-      python3 "$LS_REPO/lib/source.py" unpack "$tmp/p.tar.gz" "$tmp/x" || die "could not unpack $STAGE_SRC"
-      STAGE_DIR=$(find_profile_root "$tmp/x") || die "$STAGE_SRC has no profile.toml" ;;
-    url)
-      tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX"); rc=0
-      python3 "$LS_REPO/lib/source.py" fetch "$STAGE_SRC" "$tmp/x" >/dev/null || rc=$?
-      if (( rc == 0 )); then
-        STAGE_DIR=$(find_profile_root "$tmp/x") || die "$STAGE_SRC: the archive has no profile.toml"
-      elif (( rc == 3 )) && have git && git clone -q "$STAGE_SRC" "$tmp/p" 2>/dev/null && [[ -f $tmp/p/profile.toml ]]; then
-        STAGE_KIND=git; STAGE_DIR=$tmp/p
-      else
-        (( rc != 3 )) || die "$STAGE_SRC isn't a decal profile (not an archive with a profile.toml, nor a git repo with one)"
-        exit 1   # source.py said why
-      fi ;;
-    git)
-      tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
-      git clone -q "${STAGE_SRC#git+}" "$tmp/p" || die "git clone failed: ${STAGE_SRC#git+}"
-      [[ -f $tmp/p/profile.toml ]] || die "${STAGE_SRC#git+} has no profile.toml"
-      STAGE_DIR=$tmp/p ;;
-  esac
-  python3 "$LS_REPO/lib/profile.py" check --profile "$STAGE_DIR" --modules "$MODULES_DIR" \
-    || die "$STAGE_SRC: the profile is invalid (the active profile was not changed)"
-}
-# set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: only staged)
-set_profile() { stage_profile "$1"; activate_staged; }
-# activate_staged : the profile stage_profile got (STAGE_*) becomes the active one. A replaced real folder is kept as
-# a dated backup, except a newer download of the same GitHub repo or link.
-activate_staged() {
-  local t=$PROFILE_HOME
-  _aside() {  # move the active profile out of the way (a symlink is just dropped)
-    local b
-    if [[ -L $t ]]; then rm -f "$t"
-    elif [[ -e $t ]]; then b="$t.old-$(date +%Y%m%d-%H%M%S)"; [[ ! -e $b ]] || b+="-$$"; mv "$t" "$b"; info "previous profile kept at $b"; fi
-    mkdir -p "$(dirname "$t")"
-  }
-  _beside() {  # the new profile beside the active one first (same filesystem: the swap is then renames, never a copy)
-    mkdir -p "$(dirname "$t")"; rm -rf "$t.decal-new" "$t.decal-old"
-    cp -a "$STAGE_DIR" "$t.decal-new" || { rm -rf "$t.decal-new"; die "couldn't put the profile in place (the active one is untouched)"; }
-  }
-  if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$STAGE_DIR; return 0; fi
-  case $STAGE_KIND in
-    dir)
-      if [[ -e $t && $(readlink -f "$t") == "$STAGE_DIR" ]]; then PROFILE_DIR=$t; info "$STAGE_DIR is already the active profile"; return 0; fi
-      _aside; ln -s "$STAGE_DIR" "$t" ;;
-    git)
-      if [[ -d $t/.git && ! -L $t && $(git -C "$t" remote get-url origin 2>/dev/null) == "${STAGE_SRC#git+}" ]]; then
-        git -C "$t" pull -q --ff-only || die "git pull failed in $t"
-      else _beside; _aside; mv "$t.decal-new" "$t"; fi ;;
-    *)   # archive, github, url: an unpacked copy
-      echo "$STAGE_SRC" > "$STAGE_DIR/.decal-source"
-      _beside
-      if [[ $STAGE_KIND != archive && -d $t && ! -L $t && $(cat "$t/.decal-source" 2>/dev/null) == "$STAGE_SRC" ]]; then
-        mv "$t" "$t.decal-old"   # a newer download of the same source: no backup, gone once the new one is in
-      else _aside; fi
-      mv "$t.decal-new" "$t"; rm -rf "$t.decal-old" ;;
-  esac
-  PROFILE_DIR=$t
-  info "active profile: $t -> $(readlink -f "$t")"
-}
-# trust SOURCE : a profile that isn't yours (lib/source.py yours): say whose it is, offer a preview, ask.
-# --yes / DECAL_YES=1 skips the question; no terminal: stops with how to go on.
-trust() {   # trust SOURCE [VERB] : VERB is what "y" does (apply it / use it)
-  local src=$1 verb=${2:-apply} login="" tok a fd done=applied
-  if [[ $verb == use ]]; then done=used; fi
-  if [[ ${DECAL_YES:-} == 1 ]]; then return 0; fi   # asked not to ask (the installer: you typed the source)
-  if [[ $src == github:* ]]; then tok=$(gh_token); if [[ -n $tok ]]; then login=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami 2>/dev/null || true); fi; fi
-  if python3 "$LS_REPO/lib/source.py" yours "$src" --login "$login"; then return 0; fi
-  warn "this profile is from ${src#github:}, not you: it can install software and change system settings"
-  if [[ -z ${DECAL_TTY_IN:-} ]] && ! { : < /dev/tty; } 2>/dev/null; then die "not $done: to $verb it anyway, run decal --yes $verb $src"; fi
-  exec {fd}<"${DECAL_TTY_IN:-/dev/tty}"
-  while :; do
-    printf 'p preview what it would change · y %s it · n stop [p]: ' "$verb" >> "${DECAL_TTY_OUT:-/dev/tty}"
-    IFS= read -r a <&"$fd" || a=n
-    case ${a:-p} in
-      p|P) DECAL_NO_UPDATE=1 DECAL_YES=1 DECAL_PROFILE=$STAGE_DIR "$LS_REPO/decal" --dry-run add all || true ;;
-      y|Y) exec {fd}<&-; return 0 ;;
-      *) die "not $done" ;;
-    esac
-  done
-}
-
 LS_RUNTMP="$(mktemp -d "${TMPDIR:-/tmp}/decal.XXXXXX")"; export LS_RUNTMP
 export TMPDIR="$LS_RUNTMP"   # temp files modules make go with the run (removed on exit)
 trap 'rm -rf "$LS_RUNTMP"' EXIT
 
 case $cmd in
-  list)
-    for m in $(all_modules); do printf '%-18s %s\n' "$m" "$(module_field "$m" MODULE_DESC)"; done ;;
+  list)   # --stampable: only the names stamp reads (the menu's stamp picker)
+    for m in $(all_modules); do
+      if [[ ${1:-} != --stampable ]]; then printf '%-18s %s\n' "$m" "$(module_field "$m" MODULE_DESC)"
+      elif [[ $(module_field "$m" STAMP_SKIP) != 1 ]]; then echo "$m"; fi
+    done ;;
   status)
     check_tags
     if [[ $# -gt 0 ]]; then names=$(resolve "$@") || exit 1; else names=$(all_modules); fi

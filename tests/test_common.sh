@@ -60,4 +60,34 @@ assert_nofile "$T_TMP/sw.decal-new" "swrite: no leftover"
 mkdir -p "$DECAL_ROOT/etc"; printf 'orig\n' > "$DECAL_ROOT/etc/swap.conf"; printf 'ours\n' | etc_write tst /etc/swap.conf
 i=$(stat -c %i "$DECAL_ROOT/etc/swap.conf"); etc_restore tst /etc/swap.conf
 assert_eq "$(cat "$DECAL_ROOT/etc/swap.conf")" "orig" "etc_restore: content"; assert_not_contains "$(stat -c %i "$DECAL_ROOT/etc/swap.conf")" "$i" "etc_restore: replaced whole"
+# what a module put in place, recorded and taken away again (cursor, icons, gtk-theme, tools share these)
+D="$T_TMP/themes"; R="$T_TMP/themes.rec"; mkdir -p "$D/Mine" "$T_TMP/src/A" "$T_TMP/src/Mine"; echo a > "$T_TMP/src/A/f"; echo yours > "$D/Mine/f"
+install_owned "$D" A "$T_TMP/src/A" "$R"; assert_eq "$(cat "$D/A/f")" "a" "install_owned: copied"; rec_has "$R" A; assert_eq "$?" "0" "...and recorded"
+out=$(install_owned "$D" Mine "$T_TMP/src/Mine" "$R" 2>&1); assert_contains "$out" "isn't from decal: left as is" "install_owned: yours left alone"
+assert_eq "$(cat "$D/Mine/f")" "yours" "...untouched"; rec_has "$R" Mine; assert_eq "$?" "1" "...and not recorded"
+echo a2 > "$T_TMP/src/A/f"; install_owned "$D" A "$T_TMP/src/A" "$R"; assert_eq "$(cat "$D/A/f")" "a2" "install_owned: ours replaced"
+assert_eq "$(grep -c . "$R")" "1" "...recorded once"
+rec_remove_all "$R" "$D"; assert_nofile "$D/A" "rec_remove_all: ours gone"; assert_file "$D/Mine/f" "...yours kept"; assert_nofile "$R" "...and the record"
+# the settings a module changes: saved once (the first add), put back on remove
+stub gsettings 'case $1 in get) echo "'"'"'was-$3'"'"'";; esac'
+P="$T_TMP/x.prev"; gs_save "$P" org.gnome.desktop.interface cursor-theme cursor-size
+assert_eq "$(cat "$P")" "cursor-theme='was-cursor-theme'"$'\n'"cursor-size='was-cursor-size'" "gs_save: the current values"
+stub gsettings 'case $1 in get) echo "'"'"'later'"'"'";; esac'; gs_save "$P" org.gnome.desktop.interface cursor-theme
+assert_contains "$(cat "$P")" "was-cursor-theme" "gs_save: only once (re-adding keeps the first values)"
+LS_DRY_RUN=1 gs_save "$T_TMP/dry.prev" s k; assert_nofile "$T_TMP/dry.prev" "gs_save: nothing in a dry run"
+: > "$STUBS/calls"; gs_restore "$P" org.gnome.desktop.interface
+assert_contains "$(calls)" "gsettings set org.gnome.desktop.interface cursor-size 'was-cursor-size'" "gs_restore: put back"; assert_nofile "$P" "...and forgotten"
+# stamp_theme: your theme, bundled when it's installed in your home; the system's own isn't carried
+export STAMP_DIR="$T_TMP/stamp" STAMP_NOTES="$T_TMP/notes"; mkdir -p "$STAMP_DIR" "$T_TMP/hi/Mine"; echo x > "$T_TMP/hi/Mine/index.theme"
+stub dconf 'echo "'"'"'Mine'"'"'"'
+assert_eq "$(stamp_theme cursor cursor-theme "$T_TMP/nothere" "$T_TMP/hi")" $'[cursor]\nsource = "themes/cursor"\ntheme = "Mine"' "stamp_theme: the profile section"
+assert_file "$STAMP_DIR/themes/cursor/Mine/index.theme" "...the theme bundled"; assert_contains "$(cat "$STAMP_NOTES")" "cursor: Mine (bundled" "...noted"
+stub dconf 'echo "'"'"'Adwaita'"'"'"'
+assert_eq "$(stamp_theme icons icon-theme "$T_TMP/hi")" "" "stamp_theme: a system theme isn't stamped"
+assert_contains "$(cat "$STAMP_NOTES")" "icons: Adwaita (comes with the system: not stamped)" "...and says so"
+# asking on the terminal (DECAL_TTY_IN/OUT stand in for it in tests)
+DECAL_TTY_IN=/nonexistent have_tty; assert_eq "$?" "1" "have_tty: none"
+printf 'two\n' > "$T_TMP/tty-in"; DECAL_TTY_IN="$T_TMP/tty-in" have_tty; assert_eq "$?" "0" "have_tty: there"
+DECAL_TTY_IN="$T_TMP/tty-in" DECAL_TTY_OUT="$T_TMP/tty-out" tty_ask "Which? "; assert_eq "$REPLY" "two" "tty_ask: the answer in REPLY"
+assert_eq "$(cat "$T_TMP/tty-out")" "Which? " "...after the question"
 t_done

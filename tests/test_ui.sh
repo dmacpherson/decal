@@ -103,8 +103,8 @@ assert_eq "$(py2 'ui.usb_cmd("/p", "copy", "copy", True, "folder")')" "['usb', '
 assert_eq "$(py2 'ui.drive_label({"label": "Ventoy", "size": 57700000000, "mount": "/m", "ventoy": True, "isos": 14})')" "Ventoy · 14 ISOs · 57.7 GB" "drive label: Ventoy"
 assert_eq "$(py2 'ui.drive_label({"label": "SPARE", "size": 8000000000, "mount": ""})')" "SPARE · 8.0 GB · not mounted" "drive label: unmounted"
 assert_eq "$(py2 '[w for k, w, l in ui.STICK_ITEMS]')" "['apply-all', 'choose', 'preview', 'save', 'remove-all', 'status', 'other', 'full']" "stick menu: the order (Save this machine after Preview)"
-assert_eq "$(py2 'ui.stick_header({"profile": "github:me/p"}, "just now")')" "From your USB stick: me/p · updated just now" "stick header"
-assert_eq "$(py2 'ui.stick_header({"profile": "copy"}, "")')" "From your USB stick: the profile copy on it" "stick header: a copy"
+assert_eq "$(py2 'ui.stick_header({"profile": "github:me/p"})')" "From your USB stick: me/p · updated just now" "stick header"
+assert_eq "$(py2 'ui.stick_header({"profile": "copy"})')" "From your USB stick: the profile copy on it · updated just now" "stick header: a copy"
 # stick mode: started from a stick, the menu shows the header and its choices
 SK="$T_TMP/sk/.Decal"; mkdir -p "$SK"; printf 'profile=github:me/p\nkey=saved\ndecal=newest\n' > "$SK/stick.conf"
 DECAL_STICK="$SK" D "$REPO/decal" ui -- q
@@ -128,10 +128,9 @@ assert_contains "$(cat "$T_TMP/screen")" "Saved to the copy on this stick" "save
 assert_contains "$(cat "$SV/profile/profile.toml")" "on = true" "save: the stick's copy updated in place"
 # a GitHub stick: Save signs in fresh with Decal Profile Write (the stick's read key in GITHUB_TOKEN is ignored)
 G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"; echo tester/decal-p > "$G/seed"; printf 'ok\nok\n' > "$G/device_script"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
+fake_github "$G" --keep-env; GHPID=$FAKE_PID
 SG="$T_TMP/sg/.Decal"; mkdir -p "$SG"; printf 'profile=github:tester/decal-p\nkey=saved\ndecal=copy\n' > "$SG/stick.conf"
-DECAL_STICK="$SG" GITHUB_TOKEN=r3ad-only DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")" \
+DECAL_STICK="$SG" GITHUB_TOKEN=r3ad-only DECAL_GITHUB="$FAKE_URL" DECAL_GITHUB_API="$FAKE_URL" \
   DECAL_GITHUB_APP_WRITE=Iv-write:decal-write D "$REPO/decal" ui -- 4 "UNTIL:enter next" ENTER "UNTIL:enter save it" ENTER "UNTIL:somewhere else" ENTER "UNTIL:Choose [1]" 1 ENTER "UNTIL:go back to the menu" ENTER "UNTIL:q quit" q
 assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "save to GitHub: signed in with Decal Profile Write"
 assert_file "$G/tester_decal-p.json" "...the stamp pushed"
@@ -146,4 +145,17 @@ assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import ui;
 # the main menu: USB in capitals, keys in order (audit batch 3)
 assert_eq "$(py 'ui.label("usb")')" "USB" "USB, not Usb"; assert_eq "$(py 'ui.label("apply")')" "Apply" "the rest capitalised"
 assert_eq "$(py '" ".join(k for k, *_ in ui.MENU)')" "1 2 3 4 5 6" "keys read 1 to 6 in order"
+# where a stamp goes, from the browser's pick (stamp and the stick's Save share it)
+assert_eq "$(py 'ui.stamp_dest({"kind": "github", "source": "github:me/p"})')" "('', 'me/p')" "stamp_dest: a GitHub profile"
+assert_eq "$(py 'ui.stamp_dest({"kind": "file", "source": "/x/decal-me.tar.gz"})')" "('/x/decal-me.tar.gz', '')" "stamp_dest: a file"
+assert_eq "$(py 'ui.stamp_dest({"action": "enter"}, "me/new")')" "('', 'me/new')" "stamp_dest: typed owner/name"
+assert_eq "$(cd "$T_TMP" && py 'ui.stamp_dest({"action": "enter"}, "~/x.tar.gz")')" "('$HOME/x.tar.gz', '')" "stamp_dest: a typed path"
+# one answer to "which profile is active" (decal and the menu ask profiles.py)
+A="$T_TMP/act"; mkdir -p "$A"; git -C "$A" init -q; git -C "$A" remote add origin https://example.com/me/p.git
+assert_eq "$(DECAL_PROFILE_HOME="$A" env -u DECAL_PROFILE python3 "$REPO/lib/profiles.py" active)" "https://example.com/me/p.git" "active: a git checkout's origin"
+echo "github:me/p" > "$A/.decal-source"
+assert_eq "$(DECAL_PROFILE_HOME="$A" env -u DECAL_PROFILE python3 "$REPO/lib/profiles.py" active)" "github:me/p" "active: the recorded source"
+# the stick menu reads stick.conf the way decal usb wrote it
+SC="$T_TMP/sc/.Decal"; mkdir -p "$SC"; printf '# made\nprofile=github:me/p  # mine\nkey=saved\n' > "$SC/stick.conf"
+assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import usb; print(usb.read_conf('$SC'))")" "{'profile': 'github:me/p', 'key': 'saved'}" "read_conf: the .Decal folder's stick.conf"
 t_done

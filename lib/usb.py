@@ -59,10 +59,11 @@ def mount(device):
     return r.stdout.strip().split(" at ", 1)[1].rstrip(".")
 
 
-def read_conf(t):
+def read_conf(dot_decal):
+    """A stick's .Decal/stick.conf as a dict ({} when there's none); DOT_DECAL is the .Decal folder."""
     out = {}
     try:
-        for line in open(os.path.join(t, ".Decal", "stick.conf")):
+        for line in open(os.path.join(dot_decal, "stick.conf")):
             line = line.split("#", 1)[0].strip()
             if "=" in line:
                 k, v = line.split("=", 1)
@@ -135,7 +136,7 @@ def main():
     elif a.cmd == "mount":
         print(mount(a.args[0]))
     elif a.cmd == "conf":
-        print(json.dumps(read_conf(a.args[0])))
+        print(json.dumps(read_conf(os.path.join(a.args[0], ".Decal"))))
     elif a.cmd == "old":
         sys.exit(0 if old_layout(a.args[0]) else 1)
     else:

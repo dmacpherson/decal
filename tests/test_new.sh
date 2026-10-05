@@ -48,9 +48,8 @@ assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "$HOME/decal-d.tar.gz" ".
 
 # to GitHub: signs in with the write app when there's no key; a repo that exists is refused
 G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"; echo tester/decal-taken > "$G/seed"; echo ok > "$G/device_script"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_APP_WRITE=Iv-write:decal-write
+fake_github "$G"; GHPID=$FAKE_PID
+export DECAL_GITHUB_APP_WRITE=Iv-write:decal-write
 printf '1\n' > "$T_TMP/keys"
 out=$(DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" N decal-e --from empty); assert_eq "$?" "0" "empty → GitHub (signed in)"
 assert_contains "$out" "new profile: github:tester/decal-e" "...says where"
@@ -63,4 +62,7 @@ GITHUB_TOKEN=s3cret N decal-f --from empty --public >/dev/null
 assert_eq "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["private"])' "$G/tester_decal-f.json")" "False" "--public"
 out=$(N 'bad name' --from empty --to file); assert_eq "$?" "1" "a name with a space: refused"
 kill "$GHPID" 2>/dev/null
+# --to file:PATH is a file (a .tar.gz), whatever its name (review)
+out=$(N decal-f --from empty --to "file:$T_TMP/plainname"); assert_eq "$?" "0" "file:PATH without .tar.gz"
+assert_eq "$(file -b --mime-type "$T_TMP/plainname" 2>/dev/null || (gzip -t "$T_TMP/plainname" && echo application/gzip))" "application/gzip" "...is a .tar.gz all the same"
 t_done

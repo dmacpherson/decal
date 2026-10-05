@@ -179,6 +179,18 @@ No separate stick menu: the normal one, with that header and order. No "temporar
 - The start.sh wget path of `reachable` has no test (curl is always on the test machine).
 - Release note: the menu keys moved (3 is USB, 4 Remove, 5 Logs, 6 Update when there is one).
 
+### Audit batch 4 (simplicity): deferred minors
+
+- `gh.request` follows redirects with the key (urllib's default), as `auth.api_get`/`github.call` did before; GitHub's
+  API only redirects within itself. `source.download`'s `_KeyStaysHome` could serve it too.
+- `usb_bin` follows the install's channel: on a branch channel the archive has no launchers (they're built by CI), so
+  `decal usb` says the release has none; it could fall back to the latest release.
+- The menu's `Data.load` still parses `decal tags`/`decal status` text with regexes; `parse_tags`/`parse_status`
+  (or `--json` on those commands) would make it testable on its own. The picker's tick rules could be a pure `toggle`.
+- `do_usb` picks the default `--how` and writes `stick.conf` inline (`usb.py conf-text` was suggested).
+- A new profile's README is written in two places (`cmd_stamp.sh` and `profiles.py readme`); the default stamp place
+  is in bash (`cmd_stamp.sh`) and Python (`profiles.usual_stamp`).
+
 ## Part 4: Save back from a stick
 
 From the stick's menu, **Save this machine** (after Preview first): the module picker and preview, then "Save to":
