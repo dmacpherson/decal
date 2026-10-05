@@ -140,4 +140,8 @@ sed -i 's/^app = "ptyxis"$/app = "ghostty"/' "$PROFILE_DIR/profile.toml"; grep -
 rm -rf "$XDG_CONFIG_HOME/decal/terminal"; : > "$STUBS/calls"
 out=$(DECAL_PLATFORM=debian mod module_add 2>&1); assert_eq "$?" "0" "unavailable terminal: not a failure"
 assert_contains "$out" "ghostty isn't available on debian" "...says why"; assert_nofile "$XDG_CONFIG_HOME/decal/terminal/Brewfile" "...and nothing was set up first"
+# Homebrew decal installed is kept on remove (it may hold your own tools), and remove says so and how to take it off
+mkdir -p "$DECAL_USER_STATE"; : > "$DECAL_USER_STATE/terminal.homebrew"
+out=$(mod module_remove 2>&1); assert_contains "$out" "Homebrew (installed by decal) is kept" "remove: says Homebrew stays"
+assert_contains "$out" "uninstall.sh" "...and how to remove it"; assert_nofile "$DECAL_USER_STATE/terminal.homebrew" "...the record cleared"
 t_done

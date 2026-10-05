@@ -286,6 +286,10 @@ EOF
     run brew uninstall $(cat "$LS_USER_STATE/terminal.brew"); run rm -f "$LS_USER_STATE/terminal.brew"
   fi
   run rm -f "$LS_USER_STATE/terminal.remove-brew"
+  if [[ -e $LS_USER_STATE/terminal.homebrew ]]; then   # it may hold tools of your own by now: kept, with how to remove it
+    info "Homebrew (installed by decal) is kept: it may hold your own tools. To remove it: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)\""
+    run rm -f "$LS_USER_STATE/terminal.homebrew"
+  fi
 }
 
 # remove --only TAG: P_brew holds only the formulae the tag added; uninstalled when decal installed them and

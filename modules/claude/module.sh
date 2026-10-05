@@ -36,10 +36,11 @@ _desktop_add() {
       gpg --show-keys --with-colons "$key" 2>/dev/null | grep -q "^fpr:*$KEY_FPR:" \
         || die "the signing key from $KEY_URL doesn't have Anthropic's fingerprint $KEY_FPR: not installed"
     fi
-    swrite "$(sys_path "$KEY")" < "$key"
+    : | swrite "$ST/repo"   # the record first: an interrupted add can still be undone
+    if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] write $(sys_path "$KEY") (Anthropic's signing key)"
+    else swrite "$(sys_path "$KEY")" < "$key"; fi
     printf '%s\n' "$REPO" | swrite "$(sys_path "$LIST")"
-    : | swrite "$ST/repo"
-    srun apt-get update
+    rm -f "${LS_RUNTMP:-/nonexistent}/apt-updated"   # the backend refreshes its lists before the next install
   fi
   pkg_install claude claude-desktop
   if [[ $P_cowork == true ]]; then _kvm_add; else _kvm_remove; fi

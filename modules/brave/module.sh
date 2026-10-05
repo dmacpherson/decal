@@ -5,6 +5,7 @@ MODULE_DESC="Brave settings its Sync keeps per device (look, toolbar, new tab pa
 # Brave rewrites them when it closes, so they're only changed while it isn't running.
 PREV="$LS_USER_STATE/brave.prev.json"          # each setting's value from before decal
 PREV_LS="$LS_USER_STATE/brave-local-state.prev.json"
+PREFS_REC="$LS_USER_STATE/brave.prefs-path"   # the Preferences file decal changed: undo goes back to that one
 # extensions: Chrome Web Store ids, installed by Brave itself on its next start from a file each in its
 # "External Extensions" folder (Chromium's way for other programs to add one); deleting the file uninstalls it
 EXT_REC="$LS_USER_STATE/brave.extensions"
@@ -64,7 +65,10 @@ module_add() {
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] merge Brave settings: $P_preferences $P_local_state"; return 0; fi
   step "applying Brave settings"
   mkdir -p "$LS_USER_STATE"
-  local f s p; while IFS=$'\t' read -r f s p; do _py apply "$f" "$s" "$p"; done < <(_pairs)
+  local f s p; while IFS=$'\t' read -r f s p; do
+    if [[ $p == "$PREV" && ! -e $PREV ]]; then printf '%s\n' "$f" > "$PREFS_REC"; fi   # the first time it's changed
+    _py apply "$f" "$s" "$p"
+  done < <(_pairs)
 }
 
 # remove --only TAG: P_extensions holds only the extensions the tag added
@@ -77,9 +81,12 @@ module_remove() {
   if _running; then die "close Brave first (it rewrites its settings when it closes)"; fi
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] restore Brave settings"; return 0; fi
   local f
-  if [[ -r $PREV ]] && f=$(_prefs); then _py restore "$f" "$PREV"; fi
+  if [[ -r $PREV ]]; then
+    f=$(cat "$PREFS_REC" 2>/dev/null); [[ -r $f ]] || f=$(_prefs) || f=""   # older records: the profile's choice
+    if [[ -n $f ]]; then _py restore "$f" "$PREV"; fi
+  fi
   if [[ -r $PREV_LS ]] && f=$(_local_state); then _py restore "$f" "$PREV_LS"; fi
-  rm -f "$PREV" "$PREV_LS"
+  rm -f "$PREV" "$PREV_LS" "$PREFS_REC"
 }
 
 module_status() {

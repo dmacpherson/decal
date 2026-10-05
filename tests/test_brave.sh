@@ -59,4 +59,13 @@ sed -i '/^extensions = /d; /^\[brave.me\]/d' "$PROFILE_DIR/profile.toml"
 # Brave never opened: nothing to merge into yet
 rm -rf "$B"; out=$(run_mod add 2>&1); assert_eq "$?" "0" "never-opened Brave: no failure"
 assert_contains "$out" "open it once" "says to open Brave once"
+# undo goes to the browser profile decal changed, even after [brave] profile changes or the section is gone (audit batch 2)
+run_mod remove >/dev/null 2>&1
+P1="$(dirname "$B")/Profile 1"; mkdir -p "$P1"; echo '{"brave":{"new_tab_page":{"show_clock":false}}}' > "$P1/Preferences"
+sed -i 's/^\[brave\]$/&\nprofile = "Profile 1"/' "$PROFILE_DIR/profile.toml"; run_mod add >/dev/null 2>&1
+assert_eq "$(q brave.new_tab_page.show_clock "$P1/Preferences")" "true" "applied to Profile 1"
+cp "$B/Preferences" "$T_TMP/default-before"
+sed -i '/^profile = "Profile 1"$/d' "$PROFILE_DIR/profile.toml"; run_mod remove >/dev/null 2>&1
+assert_eq "$(q brave.new_tab_page.show_clock "$P1/Preferences")" "false" "undo restored Profile 1 (the one decal changed)"
+assert_eq "$(cat "$B/Preferences")" "$(cat "$T_TMP/default-before")" "...and left Default alone"
 t_done
