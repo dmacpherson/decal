@@ -6,7 +6,7 @@ import os, pty, re, select, struct, sys, time, fcntl, termios
 
 i = sys.argv.index("--")
 out, cmd, keys = sys.argv[1], sys.argv[2:i], sys.argv[i + 1:]
-NAMES = {"ENTER": "\r", "ESC": "\x1b", "SPACE": " ", "UP": "\x1b[A", "DOWN": "\x1b[B", "TAB": "\t"}
+NAMES = {"ENTER": "\r", "ESC": "\x1b", "SPACE": " ", "UP": "\x1b[A", "DOWN": "\x1b[B", "TAB": "\t", "END": "\x1b[F"}
 
 pid, fd = pty.fork()
 if pid == 0:

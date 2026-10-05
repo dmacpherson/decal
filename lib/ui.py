@@ -3,7 +3,9 @@
 
 Every action runs the same `decal` commands you could type (shown before they run), so the menu and the command
 line always agree. A shared picker chooses what each one covers: the profile's tags and its modules."""
-import curses, glob, os, re, subprocess, sys
+import curses, glob, json, os, re, subprocess, sys, threading
+
+import profiles  # noqa: E402  (lib/, next to this file: describe() and ago())
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DECAL = os.path.join(REPO, "decal")
@@ -121,6 +123,39 @@ def remove_cmds(tags, mods):
     return [["remove", "all", "--only", t] for t in tags] + ([["remove", *mods]] if mods else [])
 
 
+
+GROUPS = [("github", "On GitHub"), ("file", "On this machine"), ("stick", "On USB sticks"), ("recent", "Recently used")]
+
+
+def browser_rows(data, purpose, user):
+    """The browser's lines: (style, label, aside, value). Stamp leaves out recently used (others' profiles) and offers
+    the usual ~/decal-USER.tar.gz when it isn't there yet."""
+    rows, entries, act = [], data.get("entries", []), data.get("active", "")
+    if purpose == "apply" and act and not any(e.get("active") for e in entries):
+        rows += [("head", "Active", "", None), ("row", tilde(act), "← active", {"source": act, "kind": "active", "active": True})]
+    for kind, title in GROUPS:
+        if purpose == "stamp" and kind == "recent":
+            continue
+        es = [e for e in entries if e["kind"] == kind]
+        extra = []
+        if kind == "github":
+            if data.get("loading"):
+                extra = [("note", "Looking for your profiles…", "", None)]
+            elif data.get("signed_in") is False:
+                extra = [("row", "Sign in to see your GitHub profiles", "", {"action": "sign-in"})]
+        if kind == "file" and purpose == "stamp":
+            usual = os.path.join(os.path.expanduser("~"), f"decal-{user}.tar.gz")
+            if not any(e["source"] == usual for e in es):
+                extra = [("row", tilde(usual), "the usual place", {"source": usual, "kind": "file"})]
+        if not es and not extra:
+            continue
+        rows.append(("head", title, "", None))
+        rows += extra + [("row", e["name"], profiles.describe(e) + ("    ← active" if e.get("active") else ""), e) for e in es]
+    rows += [("note", n, "", None) for n in data.get("notes", [])]
+    rows += [("row", "+ Make a new profile", "", {"action": "new"}),
+             ("row", "› Enter a profile…", "a link, owner/name, a file or a folder", {"action": "enter"})]
+    return rows
+
 # --- screens ---------------------------------------------------------------------------------------------------
 class UI:
     def __init__(self, scr):
@@ -133,6 +168,7 @@ class UI:
                 curses.init_pair(i, c, -1)
         except curses.error:
             pass
+        self.wait = -1   # the key timeout (ms) screens set; -1: wait for a key
         self.d = Data()
         self.reload()
 
@@ -175,7 +211,28 @@ class UI:
         self.scr.erase(); self.put(2, 2, text, curses.A_DIM); self.scr.refresh()
 
     def key(self):
-        k = self.scr.get_wch()
+        try:
+            k = self.scr.get_wch()
+        except curses.error:   # nothing pressed within the timeout
+            return None
+        if k == "\x1b":   # with a timeout set, curses can hand an arrow key over as its raw bytes: read the rest
+            seq = ""
+            self.scr.timeout(30)
+            try:
+                while len(seq) < 2:
+                    try:
+                        seq += self.scr.get_wch()
+                    except (curses.error, TypeError):
+                        break
+            finally:
+                self.scr.timeout(self.wait)
+            named = {"[A": "up", "OA": "up", "[B": "down", "OB": "down", "[H": "home", "OH": "home",
+                     "[F": "end", "OF": "end"}.get(seq)
+            if named:
+                return named
+            for ch in reversed(seq):   # not a key we know: Esc, and the rest stays for next time
+                curses.unget_wch(ch)
+            return "esc"
         return {"\n": "enter", "\r": "enter", "\x1b": "esc", " ": "space", "\x7f": "backspace", "\b": "backspace",
                 curses.KEY_ENTER: "enter", curses.KEY_UP: "up", curses.KEY_DOWN: "down", curses.KEY_BACKSPACE: "backspace",
                 curses.KEY_NPAGE: "pgdn", curses.KEY_PPAGE: "pgup", curses.KEY_HOME: "home", curses.KEY_END: "end",
@@ -337,23 +394,163 @@ class UI:
             out += [f"$ decal {' '.join(c)}", text.rstrip(), ""]
         return "\n".join(out)
 
+    def profiles_json(self, only):
+        rc, out = decal("profiles", "--json", f"--only={only}")
+        try:
+            return json.loads(out[out.index("{"):]) if rc == 0 else {}
+        except ValueError:
+            return {}
+
+    def browse(self, title, purpose):
+        """The profile browser: local entries at once, GitHub filled in by a background thread."""
+        state = {"data": self.profiles_json("local"), "gh": None}
+        state["data"].setdefault("entries", [])
+
+        def github():
+            state["gh"] = self.profiles_json("github")
+
+        def start():
+            state["gh"] = None
+            threading.Thread(target=github, daemon=True).start()
+
+        start()
+        user = os.environ.get("USER") or "me"
+        i, picked = None, None   # picked: the chosen row's label, so the cursor stays on it as GitHub fills in
+        self.wait = 200
+        self.scr.timeout(self.wait)
+        try:
+            while True:
+                d = dict(state["data"])
+                gh = state["gh"]
+                if gh is None:
+                    d["loading"], d["signed_in"] = True, True
+                else:
+                    seen = {e["source"] for e in gh.get("entries", [])}
+                    d["entries"] = gh.get("entries", []) + [e for e in d["entries"] if e["source"] not in seen]
+                    d["signed_in"], d["notes"] = gh.get("signed_in"), gh.get("notes", [])
+                    d["loading"] = False
+                rows = browser_rows(d, purpose, user)
+                pickable = [n for n, r in enumerate(rows) if r[0] == "row"]
+                same = [n for n in pickable if rows[n][1] == picked]
+                i = same[0] if same else i
+                if i is None or i not in pickable:
+                    act = [n for n in pickable if (rows[n][3] or {}).get("active")]
+                    usual = [n for n in pickable if rows[n][2] == "the usual place"]
+                    i = (act or usual or pickable)[0]
+                top = self.header(title)
+                h = self.scr.getmaxyx()[0] - top - 2
+                first = max(0, i - h + 1)
+                for n, (style, label, aside, _) in enumerate(rows[first:first + h]):
+                    y = top + n
+                    if style == "head":
+                        self.put(y, 2, label, self.c(4, curses.A_BOLD))
+                    elif style == "note":
+                        self.put(y, 4, label, curses.A_DIM)
+                    else:
+                        self.put(y, 4, f" {label:<30} ", (curses.A_REVERSE if first + n == i else 0) | curses.A_BOLD)
+                        self.put(y, 37, aside, curses.A_DIM)
+                self.footer("↑↓ move · enter choose · r refresh · esc back")
+                picked = rows[i][1]
+                k = self.key()
+                if k is None:
+                    continue
+                pos = pickable.index(i)
+                moved = {"up": pickable[(pos - 1) % len(pickable)], "down": pickable[(pos + 1) % len(pickable)],
+                         "home": pickable[0], "end": pickable[-1]}.get(k)
+                if moved is not None:
+                    i, picked = moved, rows[moved][1]
+                    continue
+                if k == "r":
+                    state["data"] = self.profiles_json("local"); start()
+                elif k in ("esc", "q"):
+                    return None
+                elif k == "enter":
+                    v = rows[i][3]
+                    if v.get("action") == "sign-in":
+                        self.sign_in(); start()
+                        continue
+                    return v
+        finally:
+            self.wait = -1
+            self.scr.timeout(-1)
+
+    def sign_in(self):
+        """Sign in for this menu session: the key lives in ENV (passed to every decal command), never on disk."""
+        curses.endwin()
+        r = subprocess.run([sys.executable, os.path.join(REPO, "lib", "auth.py"), "get", "-", "--need", "read"],
+                           stdout=subprocess.PIPE, text=True, env=ENV)
+        if r.returncode == 0 and r.stdout.strip():
+            ENV["GITHUB_TOKEN"] = r.stdout.strip()
+        self.scr.refresh()
+
+    def trusted(self, src):
+        """Someone else's profile: say so before using it (the preview comes later, before anything changes)."""
+        lib = os.path.join(REPO, "lib")
+        r = subprocess.run([sys.executable, os.path.join(lib, "source.py"), "resolve", src], capture_output=True, text=True, env=ENV)
+        if r.returncode != 0:
+            self.view("Apply · that profile", r.stderr.strip() or "decal couldn't read that", "esc back")
+            return False
+        canon = r.stdout.split("\t")[1]
+        login = ""
+        if canon.startswith("github:") and ENV.get("GITHUB_TOKEN"):
+            w = subprocess.run([sys.executable, os.path.join(lib, "github.py"), "whoami"], capture_output=True, text=True, env=ENV)
+            login = w.stdout.strip()
+        y = subprocess.run([sys.executable, os.path.join(lib, "source.py"), "yours", canon, "--login", login], env=ENV)
+        if y.returncode == 0:
+            return True
+        who = canon.removeprefix("github:")
+        return self.view("Apply · someone else's profile",
+                         f"This profile is from {who}, not you.\n\nIt can install software and change system settings.\n"
+                         "You'll see a preview of every change before anything happens.",
+                         "enter go on · esc back")
+
+    def do_new(self, start_from=""):
+        how = start_from or self.choose("New profile · start from", [
+            ("this machine", "a stamp of how it's set up now", "this-machine"),
+            ("a copy of a profile…", "then change it", "copy"),
+            ("empty", "every section commented out", "empty")])
+        if how is None:
+            return None
+        frm = how
+        if how == "copy":
+            v = self.browse("New profile · copy which one?", "apply")
+            if not v or v.get("action"):
+                return None
+            frm = v["source"]
+        where = self.choose("New profile · where", [("GitHub", "a private repo on your account", "github"),
+                                                   ("this machine", "~/NAME.tar.gz", "file"),
+                                                   ("the USB stick", ".Decal/profile", "stick")])
+        if where is None:
+            return None
+        me = os.environ.get("USER") or "me"
+        name = self.ask("New profile · name", "letters, digits, - _ .", f"decal-{me}")
+        if not name:
+            return None
+        use = self.choose("New profile · use it now?", [("yes", "make it the active profile", True), ("no", "", False)])
+        if use is None:
+            return None
+        cmd = ["new", name, "--from", frm, "--to", where] + (["--use"] if use else [])
+        self.run([cmd], f"New profile: {name}", "Couldn't make it (see above)")
+        return name
+
     # --- the actions -------------------------------------------------------------------------------------------
     def do_apply(self):
-        opts = [("the active profile", self.d.where, "active")] if self.d.profile else []
-        opts += [("a folder or .tar.gz…", "", "path"), ("a GitHub repo…", "owner/name", "github"),
-                 ("a git URL…", "", "git")]
-        how = self.choose("Apply · stick it on · which profile?", opts)
-        if how is None:
+        v = self.browse("Apply · stick it on · which profile?", "apply")
+        if v is None:
             return
-        if how != "active":
-            prompts = {"path": "the folder or .tar.gz (e.g. ~/decal-me.tar.gz)", "github": "owner/name (private: it asks for a token)",
-                       "git": "the git URL"}
-            src = self.ask("Apply · which profile?", prompts[how])
+        if v.get("action") == "new":
+            self.do_new()
+            return
+        if v.get("action") == "enter":
+            src = self.ask("Apply · which profile?", "a link, owner/name, a file or a folder")
             if not src:
                 return
             src = os.path.expanduser(src)
-            if how == "github" and not src.startswith("github:"):
-                src = "github:" + src
+        else:
+            src = v["source"]
+        if not v.get("active"):
+            if not self.trusted(src):
+                return
             if self.run([["use", src]], "that's the active profile now", "couldn't use it (see above)") != 0:
                 return
         pick = self.picker("Apply · stick it on · choose", "apply")
@@ -373,28 +570,25 @@ class UI:
         every = set(mods) == set(stamp_modules())
         if not self.view("Stamp · preview", self.preview("stamp", [stamp_cmd(mods, every)]), "enter save it · ↑↓ scroll · esc back"):
             return
-        me = os.environ.get("USER") or "me"
-        where = self.choose("Stamp · save it to", [
-            (f"~/decal-{me}.tar.gz", "the usual place (the last one kept as .old)", "file"),
-            ("somewhere else…", "a .tar.gz or a folder", "path"),
-            ("GitHub", f"a private repo, decal-{me} (and the file too)", "github")])
-        if where is None:
+        v = self.browse("Stamp · save it to", "stamp")
+        if v is None:
             return
         dest, gh, public = "", None, False
-        if where == "path":
-            dest = self.ask("Stamp · save it to", "a .tar.gz or a folder")
-            if not dest:
+        if v.get("action") == "new":
+            self.do_new("this-machine")
+            return
+        if v.get("action") == "enter":
+            to = self.ask("Stamp · save it to", "a .tar.gz, a folder, or owner/name on GitHub")
+            if not to:
                 return
-            dest = os.path.expanduser(dest)
-        elif where == "github":
-            gh = self.ask("Stamp · GitHub", "the repo: name or owner/name", f"decal-{me}")
-            if gh is None:
-                return
-            vis = self.choose("Stamp · who can see it?", [("private", "only you (recommended)", False),
-                                                          ("public", "anyone: pictures, apps, settings", True)])
-            if vis is None:
-                return
-            public = vis
+            if re.fullmatch(r"[\w.-]+/[\w.-]+", to) and not os.path.exists(os.path.expanduser(to)):
+                gh = to
+            else:
+                dest = os.path.expanduser(to)
+        elif v["kind"] == "github":
+            gh = v["source"].removeprefix("github:")
+        else:
+            dest = v["source"]
         self.run([stamp_cmd(mods, every, dest, gh, public)], "Stamped", "Stamp failed (see above)")
 
     def do_remove(self):
