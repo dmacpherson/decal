@@ -299,8 +299,16 @@ do_stamp() {
   local tok=""
   if (( gh )); then   # the token first: the README names the repo, and a wrong token shouldn't come after the work
     tok=$(gh_token)
+    local why="" rc=0
+    if [[ -n $tok ]]; then   # a key that's already there: can it save to the repo? (offline: let the push say)
+      why=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/auth.py" check "$repo" --need write --may-create 2>&1) || rc=$?
+      if (( rc >= 10 && rc <= 12 )); then warn "$why"; tok=""; else why=""; fi
+    fi
     if [[ -z $tok ]]; then
-      gh_auth "$repo" write --may-create || die "no GitHub key: sign in when asked, set GITHUB_TOKEN, or log in with gh auth login"
+      if ! gh_auth "$repo" write --may-create; then
+        [[ -z $why ]] || die "GitHub didn't accept the token, and there's no terminal to sign in on (the token needs permission to create repos and write their contents)"
+        die "no GitHub key: sign in when asked, set GITHUB_TOKEN, or log in with gh auth login"
+      fi
       tok=$GITHUB_TOKEN; signed=1
     fi
     if [[ $repo != */* ]]; then

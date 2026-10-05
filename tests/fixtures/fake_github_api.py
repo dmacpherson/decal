@@ -4,7 +4,10 @@ python3 fake_github_api.py STATE_DIR. Serves on 127.0.0.1 (port written to STATE
 (STATE_DIR/token). Repos live in memory; each ref update writes STATE_DIR/<owner>_<repo>.json with the commit's files
 (path -> text) and count. Optional STATE_DIR files: seed (repos that exist: owner/name per line), hidden (owner/name N:
 404 for the next N lookups, N=forever never), readonly (no push permission), device_script (one of pending, slow,
-expired, denied, ok per poll; hold: pending for good), device_fail (the code request fails). Device requests are logged to device_log."""
+expired, denied, ok per poll; hold: pending for good), device_fail (the code request fails),
+installations (the Write app's installs for /user/installations: all, selected, or selected N = all after N
+lookups; missing: 403, as for a token that isn't an app's), drop N (close the next N /repos lookups without an
+answer), html (answer /user and the device code request with an HTML page). Device requests go to device_log."""
 import base64, hashlib, json, os, sys, urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -13,6 +16,7 @@ TOKEN = open(os.path.join(STATE, "token")).read().strip()
 USER = "tester"
 repos, blobs, trees, commits = {}, {}, {}, {}
 hidden = {}   # owner/name -> lookups still answered 404 (None: forever)
+counters = {}  # countdowns read from state files (installations, drop)
 
 
 def sha(x):
@@ -44,6 +48,21 @@ def next_poll():
     return word or "ok"
 
 
+def countdown(name):
+    """The word in STATE/name ("selected 2": "selected" for 2 reads, then "all"); None without the file."""
+    lines = state(name)
+    if not lines:
+        return None
+    parts = lines[0].split()
+    if len(parts) == 2 and parts[1].isdigit():
+        left = counters.setdefault(name, int(parts[1]))
+        if left > 0:
+            counters[name] = left - 1
+            return parts[0]
+        return "all" if name == "installations" else ""
+    return parts[0]
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -58,6 +77,11 @@ class H(BaseHTTPRequestHandler):
             f.write(f"{method} {self.path} auth={self.headers.get('Authorization', '')}\n")
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n) if n else b""
+        if os.path.exists(os.path.join(STATE, "html")) and (self.path == "/user" or self.path.startswith("/login/device/code")):
+            data = b"<html><body>Sign in to this Wi-Fi</body></html>"
+            self.send_response(200); self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            return
         if self.path.startswith("/login/"):
             form = {k: v[0] for k, v in urllib.parse.parse_qs(raw.decode()).items()}
             return self.device(form)
@@ -67,12 +91,20 @@ class H(BaseHTTPRequestHandler):
         p = self.path.strip("/").split("/")
         if p == ["user"]:
             return self.reply(200, {"login": USER})
+        if p == ["user", "installations"]:
+            sel = countdown("installations")
+            if sel is None:
+                return self.reply(403, {"message": "Resource not accessible by personal access token"})
+            return self.reply(200, {"total_count": 1, "installations": [{"app_slug": "decal-write", "repository_selection": sel}]})
         if method == "POST" and p == ["user", "repos"]:
             full = f"{USER}/{body['name']}"
             c = sha({"init": full}); commits[c] = {"tree": None, "parents": []}
             repos[full] = {"private": body.get("private"), "default_branch": "main", "head": c, "commits": 1}
             return self.reply(201, {"full_name": full, "default_branch": "main", "private": body.get("private")})
         if p[0] == "repos" and len(p) >= 3:
+            if countdown("drop") == "drop":   # a network blip: no answer at all
+                self.close_connection = True
+                return
             full = f"{p[1]}/{p[2]}"
             r = repos.get(full)
             if full in hidden:

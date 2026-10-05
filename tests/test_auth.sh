@@ -180,5 +180,30 @@ print("ok" if ok else "stuck", "echo-while-waiting" if waiting_echo else "no-ech
 PY
 )
 assert_eq "$out" "ok no-echo-while-waiting echo-after 1" "real terminal: Esc works, echo off while waiting and back on after"
+# saving to a repo the Write app can't see (installed on picked repos only): wait for the install, as reading does
+fake_up; echo "selected" > "$G/installations"
+assert_eq "$(chk s3cret me/new --need write --may-create)" "11" "check: a new repo, app on picked repos: can't create it"
+assert_eq "$(chk s3cret decal-tester --need write --may-create)" "11" "check: no owner yet: the owner is looked up, same answer"
+echo "all" > "$G/installations"
+assert_eq "$(chk s3cret me/new --need write --may-create)" "0" "check: a new repo, app on all repos: fine"
+echo "selected 2" > "$G/installations"; fake_up; echo ok > "$G/device_script"
+assert_eq "$(ask '1\n' decal-tester --need write --may-create)" "s3cret" "stamp sign-in: waits until the app can create the repo"
+assert_contains "$(cat "$T_TMP/screen")" "Decal Profile Write can't see tester/decal-tester yet" "says so, with the owner"
+assert_contains "$(cat "$T_TMP/screen")" '2. Choose "All repositories"' "a repo decal may create: all repositories"
+rm -f "$G/installations"; fake_up
+
+# a captive portal (HTML instead of GitHub's answer): plain words, no traceback
+: > "$G/html"; fake_up
+out=$(GITHUB_TOKEN=s3cret python3 "$A" check me/prof --need read 2>&1); assert_eq "$?" "13" "check: an HTML answer counts as not reaching GitHub"
+assert_not_contains "$out" "Traceback" "check: no traceback"
+out=$(ask '1\n3\n' me/prof --need read 2>&1); assert_eq "$?" "1" "sign in: an HTML answer: no key"
+assert_contains "$(cat "$T_TMP/screen")" "couldn't reach GitHub" "sign in: says it couldn't reach GitHub"
+assert_not_contains "$out$(cat "$T_TMP/screen")" "Traceback" "sign in: no traceback"
+rm "$G/html"; fake_up
+
+# a network blip while waiting for the install: keep waiting, keep the approved key
+echo "drop 1" > "$G/drop"; fake_up; echo ok > "$G/device_script"
+assert_eq "$(ask '1\n' me/prof --need read)" "s3cret" "a blip during the install wait: still signed in"
+rm "$G/drop"; fake_up
 kill "$GHPID" 2>/dev/null
 t_done

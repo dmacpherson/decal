@@ -8,7 +8,7 @@
 
 A key from signing in is only printed, never saved. DECAL_GITHUB / DECAL_GITHUB_API point elsewhere (tests);
 DECAL_GITHUB_APP_READ / DECAL_GITHUB_APP_WRITE ("CLIENT_ID:slug") use other apps (forks, tests)."""
-import argparse, contextlib, json, os, re, select, shutil, subprocess, sys, termios, time, tty as ttymod, urllib.error, urllib.parse, urllib.request
+import argparse, contextlib, http.client, json, os, re, select, shutil, subprocess, sys, termios, time, tty as ttymod, urllib.error, urllib.parse, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import qrcodegen  # noqa: E402  (vendored next to this file)
@@ -38,23 +38,25 @@ def api_get(path, token):
             return r.status, json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         return e.code, {}
-    except (urllib.error.URLError, OSError) as e:
-        raise Offline(str(e))
+    except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as e:
+        raise Offline(str(e))   # no answer, or not GitHub's (a Wi-Fi login page)
 
 
 def check(repo, need, token, may_create=False):
     """OK when TOKEN can read (or write) REPO; with MAY_CREATE a missing repo is fine (stamp creates it)."""
     try:
-        code, _ = api_get("/user", token)
+        code, me = api_get("/user", token)
         if code == 401:
             return BAD_KEY
-        if "/" not in repo:   # stamp before it knows the owner: the key works, the repo comes later
-            return OK if code == 200 else BAD_KEY
+        if "/" not in repo:   # stamp before it knows the owner: the key's account
+            if code != 200:
+                return BAD_KEY
+            repo = f"{me.get('login')}/{repo}"
         code, info = api_get(f"/repos/{repo}", token)
         if code == 401:
             return BAD_KEY
         if code == 404 and may_create:
-            return OK
+            return OK if can_create(token) else CANT_SEE
         if code != 200:
             return CANT_SEE
         if need == "write" and not info.get("permissions", {}).get("push", False):
@@ -63,6 +65,15 @@ def check(repo, need, token, may_create=False):
     except Offline:
         return OFFLINE
 
+
+
+def can_create(token):
+    """A repo the key can't see may be created: yes, unless it's an app key whose app is on picked repos only (it
+    could neither create a new repo nor see one that's already there and not picked)."""
+    code, d = api_get("/user/installations", token)
+    if code != 200:   # not an app's key (a token you made): GitHub decides when decal creates it
+        return True
+    return any(i.get("repository_selection") == "all" for i in d.get("installations", []))
 
 
 class Tty:
@@ -171,8 +182,8 @@ def post_form(url, data):
             return json.loads(e.read() or b"{}") | {"error": f"HTTP {e.code}"}
         except ValueError:
             return {"error": f"HTTP {e.code}"}
-    except (urllib.error.URLError, OSError) as e:
-        raise Offline(str(e))
+    except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as e:
+        raise Offline(str(e))   # no answer, or not GitHub's (a Wi-Fi login page)
 
 
 def wait_for_token(tty, cid, d):
@@ -214,20 +225,27 @@ def wait_for_access(tty, repo, need, token, may_create):
     give_up = time.monotonic() + float(os.environ.get("DECAL_AUTH_WAIT", "600"))
     told = False
     while True:
+        if "/" not in repo:   # stamp before it knows the owner: the account that just signed in
+            try:
+                code, me = api_get("/user", token)
+                if code == 200:
+                    repo = f"{me.get('login')}/{repo}"
+            except Offline:
+                pass
         c = check(repo, need, token, may_create)
         if c == OK:
             tty.say("Signed in.")
             return token
-        if c != CANT_SEE:
+        if c not in (CANT_SEE, OFFLINE):   # OFFLINE: a blip, keep the approved key and try again
             tty.say(WHY[c].format(repo=repo))
             return None
         if time.monotonic() >= give_up:
             tty.say(f"decal still can't see {repo}: check the name (it may be misspelled), or that the app is installed on it")
             return None
-        if not told:
+        if not told and c == CANT_SEE:
             url = install_url(need)
             opened = open_browser(url)
-            tty.say("", *install_layout(need, repo, url, qr_lines(url), tty.width(), opened))
+            tty.say("", *install_layout(need, repo, url, qr_lines(url), tty.width(), opened, may_create))
             told = True
         if tty.key(every) == "\x1b":
             return None
@@ -353,12 +371,13 @@ def layout(repo, need, code, url, qr, width, opened=False, copied=False):
            ["", "Waiting for GitHub...   Esc cancel \u00b7 t paste a token instead"]
 
 
-def install_layout(need, repo, url, qr, width, opened=False):
+def install_layout(need, repo, url, qr, width, opened=False, may_create=False):
     """The app can't see REPO yet: install it here (the page, maybe opened for you) or from a phone (the QR code)."""
     name = "Decal Profile" if need == "read" else "Decal Profile Write"
     left = ["On this computer", "\u2500" * 16, "1. Open the install page",
             "   (opened in your browser)" if opened else "   (the link below)",
-            '2. Choose "Only select', f'   repositories": {repo.split("/")[-1]}', "3. Press Install"]
+            *(['2. Choose "All repositories"', f'   (decal creates {repo.split("/")[-1]})'] if may_create else
+              ['2. Choose "Only select', f'   repositories": {repo.split("/")[-1]}']), "3. Press Install"]
     right = ["On your phone", "\u2500" * 13] + qr + ["Scan to install from your phone"]
     return [f"{name} can't see {repo} yet: install it on that repo (or check the name)", ""] + \
            columns(left, right, width) + ["", "  " + url, "", "Waiting for it...   Esc cancel"]
@@ -409,7 +428,10 @@ def main():
     else:
         if not a.repo:
             ap.error("check needs a repo")
-        sys.exit(check(a.repo, a.need, os.environ.get("GITHUB_TOKEN", ""), a.may_create))
+        c = check(a.repo, a.need, os.environ.get("GITHUB_TOKEN", ""), a.may_create)
+        if c != OK:
+            print(WHY[c].format(repo=a.repo), file=sys.stderr)
+        sys.exit(c)
 
 if __name__ == "__main__":
     main()
