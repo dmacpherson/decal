@@ -161,4 +161,7 @@ assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import usb
 # GitHub listings land only when no newer one started (an older one never replaces a fresher one)
 assert_eq "$(py '(lambda s: (ui.latest(s, 1, "old"), ui.latest(s, 2, "new"), s["gh"])[-1])({"run": 2, "gh": None})')" "new" "latest: the newest run's listing"
 assert_eq "$(py '(lambda s: (ui.latest(s, 1, "old"), s["gh"])[-1])({"run": 2, "gh": "fresh"})')" "fresh" "latest: an older run's listing is dropped"
+# decal usb in a terminal: the USB steps, then back to the shell (not into the full menu) (minors)
+python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "$REPO/decal" usb -- "UNTIL:which profile" ESC; assert_eq "$?" "0" "decal usb: Esc at the first step ends it"
+assert_not_contains "$(cat "$T_TMP/screen")" "stick it on" "...without opening the full menu"
 t_done

@@ -68,4 +68,20 @@ kill "$GHPID" 2>/dev/null
 # the end of input (Ctrl+D, a closed terminal) at "Write these?" writes nothing (review)
 mkdir -p "$T_TMP/eof"; out=$(DECAL_TTY_IN=/dev/null DECAL_TTY_OUT=/dev/null "$REPO/decal" usb --from "$P" --decal online --to "folder:$T_TMP/eof/x" 2>&1)
 assert_eq "$?" "1" "end of input at the question: stops"; assert_contains "$out" "nothing written" "...says so"; assert_nofile "$T_TMP/eof/x/Decal" "...nothing written"
+# the read key is fetched after "Write these?", so answering no never makes one (minors)
+printf 'n\n' > "$T_TMP/no"; rm -rf "$T_TMP/k1"; fake_github "$G"
+out=$(GITHUB_TOKEN=s3cret DECAL_STICK_KEY=ghp_classic DECAL_TTY_IN="$T_TMP/no" DECAL_TTY_OUT=/dev/null "$REPO/decal" usb --from me/p --how saved-key --to "folder:$T_TMP/k1" 2>&1)
+assert_contains "$out" "nothing written" "no at the question: nothing written"; assert_not_contains "$out" "can write" "...and no key was looked at"
+assert_contains "$out" ".Decal/key" "...the key is in the list it showed"
+# new --to stick:NAME: a tidy list of what's plugged in; a trailing / matches; no name is refused
+mkdir -p "$DECAL_MEDIA/My Stick" "$DECAL_MEDIA/Other"
+out=$("$REPO/decal" new decal-q --from empty --to stick:Nope 2>&1); assert_contains "$out" "(plugged in: My Stick, Other" "stick:NAME: the plugged-in sticks, comma-separated"
+out=$("$REPO/decal" new decal-q --from empty --to "stick:$DECAL_MEDIA/Other/" 2>&1); assert_eq "$?" "0" "stick:PATH/ with a trailing slash"
+out=$("$REPO/decal" new decal-q --from empty --to stick: 2>&1); assert_eq "$?" "1" "stick: with no name: refused"; assert_contains "$out" "stick:NAME needs a stick's name" "...says what it needs"
+rm -rf "$DECAL_MEDIA/My Stick" "$DECAL_MEDIA/Other"
+# the decal copy from a git checkout: its tracked files only, and -dirty when it has edits
+GC="$T_TMP/gc"; git clone -q "$REPO" "$GC"; for f in decal install.sh lib usb modules; do cp -a "$REPO/$f" "$GC/"; done; echo junk > "$GC/lib/untracked-junk"; echo "# edit" >> "$GC/decal"
+"$GC/decal" usb --from "$P" --to "folder:$T_TMP/gcs" --yes >/dev/null 2>&1; assert_eq "$?" "0" "usb from a git checkout"
+assert_not_contains "$(tar -tzf "$T_TMP/gcs/.Decal/decal.tar.gz")" "untracked-junk" "...untracked files left out"
+assert_contains "$(cat "$T_TMP/gcs/.Decal/stick.conf")" "-dirty" "...the version says it has edits"
 t_done

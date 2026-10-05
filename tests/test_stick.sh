@@ -66,10 +66,28 @@ if command -v cc >/dev/null; then
   (cd / && "$L/Decal"); assert_eq "$(cat "$T_TMP/out")" "ran $L/.Decal/start.sh" "launcher: runs .Decal/start.sh from any folder"
   cp "$T_TMP/Decal" "$L/.Decal/Decal-ARM"; rm "$T_TMP/out"; (cd / && "$L/.Decal/Decal-ARM")
   assert_eq "$(cat "$T_TMP/out")" "ran $L/.Decal/start.sh" "launcher inside .Decal (ARM): the start.sh next to it"
+  mv "$L/.Decal" "$L/.Decal.old"; rm -f "$T_TMP/out"; (cd / && "$L/Decal")   # pulled out mid-update (minors)
+  assert_eq "$(cat "$T_TMP/out" 2>/dev/null)" "ran $L/.Decal.old/start.sh" "launcher: .Decal missing → the previous setup in .Decal.old"
+  mv "$L/.Decal.old" "$L/.Decal"
   rm "$L/.Decal/start.sh"; : > "$L/.Decal/README.txt"; stub xdg-open; : > "$STUBS/calls"; "$L/Decal"
   assert_contains "$(calls)" "xdg-open $L/.Decal/README.txt" "launcher: no start.sh → the README"
 else
   echo "  (no C compiler: launcher not tested here; the release workflow builds and checks it)"
 fi
 assert_contains "$(cat "$REPO/usb/README.txt")" "{profile}" "README template has the profile placeholder"
+# no terminal program found: the README opens (it says how to start decal by hand) instead of a menu with no screen
+conf profile=github:me/prof key=ask decal=copy; : > "$ST/.Decal/README.txt"; stub xdg-open; : > "$STUBS/calls"
+env -u DECAL_STICK_IN_TERM DECAL_TERMINALS="none-here" bash "$ST/.Decal/start.sh" < /dev/null >/dev/null 2>&1; assert_eq "$?" "1" "no terminal: stops"
+assert_contains "$(calls)" "xdg-open $ST/.Decal/README.txt" "...and opens the README"; assert_not_contains "$(calls)" " use " "...before doing anything"
+# offline, with decal already installed on this PC: that one is used, never replaced by an older stick copy
+copy; conf profile=github:me/prof key=ask decal=newest version=v0.4.0; stub curl 'exit 7'
+mkdir -p "$HOME/.local/share/decal/app"; echo v9.9.9 > "$HOME/.local/share/decal/app/VERSION"
+out=$(S); assert_not_contains "$(calls)" "copy-install" "offline, decal installed: the stick's copy isn't installed over it"
+assert_contains "$out" "using the decal already on this PC (v9.9.9)" "...says so"
+rm -rf "$HOME/.local/share/decal/app"
+# the online check without curl (wget only): an error answer still means GitHub answered
+mkdir -p "$T_TMP/w"; f=$(sed -n '/^reachable()/,/^}/p' "$ST/.Decal/start.sh")
+for c in 0 8 4; do printf '#!/bin/sh\nexit %s\n' "$c" > "$T_TMP/w/wget"; chmod +x "$T_TMP/w/wget"
+  PATH="$T_TMP/w" /usr/bin/bash -c "$f; reachable" && r=yes || r=no
+  assert_eq "$r" "$([[ $c == 4 ]] && echo no || echo yes)" "reachable with wget only, wget exit $c"; done
 t_done

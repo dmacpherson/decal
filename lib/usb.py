@@ -4,12 +4,13 @@
   usb.py drives [--json]     removable/USB filesystems: mounted ones, and ones udisksctl can mount
   usb.py mount DEVICE        mount it (udisksctl, no sudo); prints the mount point
   usb.py conf TARGET         a stick's stick.conf as JSON ({} when there's none)
+  usb.py conf-text --profile P --key K --decal D --version V   stick.conf's text (decal usb writes it)
   usb.py old TARGET          exit 0 when TARGET has the hand-made layout (decal-me, Decal/decal-me.sh)
   usb.py write TARGET SRC    put SRC's Decal and .Decal/ on TARGET: .Decal.new first, then swapped in, so a stick
                              pulled out midway has the old setup or the new one; upgrades the hand-made layout
 
 DECAL_LSBLK: a JSON file used instead of running lsblk (tests)."""
-import argparse, glob, json, os, shutil, subprocess, sys
+import argparse, datetime, glob, json, os, shutil, subprocess, sys
 
 FS = {"vfat", "exfat", "ntfs", "ntfs3", "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs"}
 OLD_FILES = ["decal-me", os.path.join("Decal", "decal-me.sh"), os.path.join("Decal", "decal-token.txt"),
@@ -73,6 +74,16 @@ def read_conf(dot_decal):
     return out
 
 
+def conf_text(profile, key, decal, version, made=None):
+    """stick.conf's text (start.sh and the menu read it back); a value can't hold a new line or a #."""
+    vals = {"profile": profile, "key": key, "decal": decal, "version": version}
+    for k, v in vals.items():
+        if not v or any(c in v for c in "\n\r#"):
+            raise ValueError(f"{k}: {v!r} can't go in stick.conf")
+    made = made or datetime.date.today().isoformat()
+    return f"# Made by decal {version} on {made}. Run decal usb to change it.\n" + "".join(f"{k}={v}\n" for k, v in vals.items())
+
+
 def _copytree(src, dst):   # FAT/exFAT keep no modes or owners: plain copies
     shutil.copytree(src, dst, copy_function=shutil.copyfile)
 
@@ -100,14 +111,20 @@ def write(target, src):
             except FileNotFoundError:
                 pass
     if os.path.isdir(d):   # a Decal folder can't share the launcher's name (FAT/exFAT ignore case, too)
+        name = next((n for n in os.listdir(target) if n.lower() == "decal" and os.path.isdir(os.path.join(target, n))), "Decal")
+        d = os.path.join(target, name)
         if os.listdir(d):
-            keep, n = os.path.join(target, "Decal-old"), 1
+            keep, n = os.path.join(target, f"{name}-old"), 1
             while os.path.exists(keep):   # never onto an earlier one
                 n += 1
-                keep = os.path.join(target, f"Decal-old-{n}")
+                keep = os.path.join(target, f"{name}-old-{n}")
             os.rename(d, keep)
+            if name != "Decal":   # not decal's: say where it went
+                print(f"note: this stick can't hold a {name} folder next to the Decal launcher (it ignores case): "
+                      f"moved it to {os.path.basename(keep)}", file=sys.stderr)
         else:
             os.rmdir(d)
+        d = os.path.join(target, "Decal")
     tmp = os.path.join(target, "Decal.new")
     shutil.copyfile(os.path.join(src, "Decal"), tmp)
     try:
@@ -126,15 +143,22 @@ def write(target, src):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["drives", "mount", "conf", "old", "write"])
+    ap.add_argument("cmd", choices=["drives", "mount", "conf", "conf-text", "old", "write"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--json", action="store_true")
+    for o in ("profile", "key", "decal", "version"):
+        ap.add_argument(f"--{o}", default="")
     a = ap.parse_args()
     if a.cmd == "drives":
         ds = drives()
         print(json.dumps(ds) if a.json else "\n".join(f"{d['device']}\t{d['label']}\t{d['mount']}" for d in ds))
     elif a.cmd == "mount":
         print(mount(a.args[0]))
+    elif a.cmd == "conf-text":
+        try:
+            print(conf_text(a.profile, a.key, a.decal, a.version), end="")
+        except ValueError as e:
+            sys.exit(f"error: {e}")
     elif a.cmd == "conf":
         print(json.dumps(read_conf(os.path.join(a.args[0], ".Decal"))))
     elif a.cmd == "old":

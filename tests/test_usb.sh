@@ -65,4 +65,10 @@ assert_not_contains "$out" "Traceback" "...without a traceback"; chmod u+w "$RO"
 mkdir -p "$T_TMP/py"; ln -sf "$(command -v python3)" "$T_TMP/py/python3"
 out=$(PATH="$T_TMP/py" python3 "$U" mount /dev/sdc1 2>&1); assert_eq "$?" "1" "no udisksctl: fails"
 assert_contains "$out" "mount the stick, then use --to with its folder" "...says how to go on"; assert_not_contains "$out" "Traceback" "...without a traceback"
+# stick.conf is written here (decal usb gives the answers), and read back the same
+SC="$T_TMP/scw/.Decal"; mkdir -p "$SC"
+python3 "$U" conf-text --profile github:me/p --key saved --decal newest --version v0.4.0 > "$SC/stick.conf"
+assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import usb; print(usb.read_conf('$SC'))")" "{'profile': 'github:me/p', 'key': 'saved', 'decal': 'newest', 'version': 'v0.4.0'}" "conf-text: read back the same"
+assert_contains "$(head -1 "$SC/stick.conf")" "# Made by decal v0.4.0" "...with its header"
+out=$(python3 "$U" conf-text --profile $'x\nkey=saved' --key none --decal copy --version v 2>&1); assert_eq "$?" "1" "conf-text: a value with a new line refused"
 t_done

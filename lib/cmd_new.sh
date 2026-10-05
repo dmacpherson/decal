@@ -23,8 +23,10 @@ do_new() {
       mapfile -t sticks < <(python3 "$LS_REPO/lib/profiles.py" sticks | sed '/^$/d')
       (( ${#sticks[@]} )) || die "no USB stick found: plug in a USB stick and try again"
       if [[ $to == stick:* ]]; then   # named: no question
-        for a in "${sticks[@]}"; do if [[ $(basename "$a") == "${to#stick:}" || $a == "${to#stick:}" ]]; then dest="$a/.Decal/profile"; fi; done
-        [[ -n $dest ]] || die "no USB stick named ${to#stick:} (plugged in: $(for a in "${sticks[@]}"; do printf '%s ' "$(basename "$a")"; done))"
+        n=${to#stick:}; n=${n%/}
+        [[ -n $n ]] || die "new: --to stick:NAME needs a stick's name (or its folder)"
+        for a in "${sticks[@]}"; do if [[ $(basename "$a") == "$n" || $a == "$n" ]]; then dest="$a/.Decal/profile"; fi; done
+        [[ -n $dest ]] || die "no USB stick named $n (plugged in: $(for a in "${sticks[@]}"; do basename "$a"; done | paste -sd, - | sed 's/,/, /g'))"
       elif (( ${#sticks[@]} == 1 )); then dest="${sticks[0]}/.Decal/profile"
       else
         have_tty || die "several USB sticks: say which with --to stick:NAME"

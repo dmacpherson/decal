@@ -1,4 +1,5 @@
-/* decal USB stick launcher: double-click it. Runs .Decal/start.sh next to it (that script opens a terminal);
+/* decal USB stick launcher: double-click it. Runs .Decal/start.sh next to it (that script opens a terminal), or
+ * .Decal.old's when a stick was pulled out mid-update;
  * from inside .Decal (Decal-ARM), the start.sh next to it. Without one, opens the README.
  * Built static by the release workflow: gcc -Os -static -s (musl). */
 #include <libgen.h>
@@ -9,6 +10,8 @@
 
 static int found(char *out, size_t n, const char *dir, const char *name) {
   snprintf(out, n, "%s/.Decal/%s", dir, name);
+  if (access(out, R_OK) == 0) return 1;
+  snprintf(out, n, "%s/.Decal.old/%s", dir, name);   /* pulled out mid-update: the previous setup, whole */
   if (access(out, R_OK) == 0) return 1;
   snprintf(out, n, "%s/%s", dir, name);   /* the launcher is in .Decal itself */
   return access(out, R_OK) == 0;

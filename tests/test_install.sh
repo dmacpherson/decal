@@ -22,7 +22,7 @@ API=https://api.github.com/repos/dmacpherson/decal; DL=https://github.com/dmacph
 # a release: decal's own files (+ a marker to tell versions apart), and its checksum
 release() {  # release TAG
   local d="$T_TMP/rel/$1"; mkdir -p "$d/decal"
-  cp -a "$REPO/decal" "$REPO/install.sh" "$REPO/lib" "$REPO/modules" "$d/decal/"; echo "$1" > "$d/decal/MARK"
+  cp -a "$REPO/decal" "$REPO/install.sh" "$REPO/lib" "$REPO/modules" "$REPO/usb" "$d/decal/"; echo "$1" > "$d/decal/MARK"
   mkdir -p "$d/decal/usb/bin"; echo "x86 $1" > "$d/decal/usb/bin/Decal-x86_64"; echo "arm $1" > "$d/decal/usb/bin/Decal-aarch64"   # as build.yml adds them
   tar -czf "$d/decal.tar.gz" -C "$d" decal; (cd "$d" && sha256sum decal.tar.gz > decal.tar.gz.sha256)
   serve "$DL/releases/download/$1/decal.tar.gz" "$d/decal.tar.gz"; serve "$DL/releases/download/$1/decal.tar.gz.sha256" "$d/decal.tar.gz.sha256"
@@ -190,7 +190,7 @@ out=$(DECAL_ARCHIVE="$T_TMP/none.tar.gz" bash "$REPO/install.sh" 2>&1); assert_e
 # the dev channel: the rolling "dev" pre-release (named dev-<commit>), checksum checked, remembered, updated
 devrel() {  # devrel NAME : a dev build called NAME at releases/download/dev
   local d="$T_TMP/dev/$1"; mkdir -p "$d/decal"
-  cp -a "$REPO/decal" "$REPO/install.sh" "$REPO/lib" "$REPO/modules" "$d/decal/"; echo "$1" > "$d/decal/MARK"
+  cp -a "$REPO/decal" "$REPO/install.sh" "$REPO/lib" "$REPO/modules" "$REPO/usb" "$d/decal/"; echo "$1" > "$d/decal/MARK"
   tar -czf "$d/decal.tar.gz" -C "$d" decal; (cd "$d" && sha256sum decal.tar.gz > decal.tar.gz.sha256)
   serve "$DL/releases/download/dev/decal.tar.gz" "$d/decal.tar.gz"; serve "$DL/releases/download/dev/decal.tar.gz.sha256" "$d/decal.tar.gz.sha256"
   serve_text "$API/releases/tags/dev" "{\"tag_name\": \"dev\", \"name\": \"$1\"}"; }
@@ -248,5 +248,14 @@ tar -czf "$T_TMP/gh5.tar.gz" -C "$T_TMP/gh5" fifth-r-1; tb fifth/r "$T_TMP/gh5.t
 printf 'y\n' > "$T_TMP/keys"
 env -u GITHUB_TOKEN -u GH_TOKEN DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" use fifth/r >/dev/null 2>&1; assert_eq "$?" "0" "use: asked, yes"
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" add all 2>&1 < /dev/null); assert_eq "$?" "0" "...then add doesn't ask again"
+# decal usb on an install that follows a branch: its archive has no launchers (CI builds those), so the latest
+# release's are used (minors)
+NB="$T_TMP/nobin"; mkdir -p "$NB"; cp -a "$T_TMP/rel/v2.1.0/decal" "$NB/"; rm -rf "$NB/decal/usb/bin"; tar -czf "$NB/a.tar.gz" -C "$NB" decal
+serve_text "$API/commits/main" '{"sha": "1111111111111111111111111111111111111111"}'
+serve "$DL/archive/1111111111111111111111111111111111111111.tar.gz" "$NB/a.tar.gz"; latest v2.1.0
+BR="$T_TMP/branch"; DECAL_VERSION=main DECAL_HOME="$BR/decal" DECAL_BIN="$BR/bin" DECAL_NO_MENU=1 bash "$REPO/install.sh" >/dev/null 2>&1
+rm -rf "$XDG_CACHE_HOME/decal/usb-bin"
+out=$(DECAL_NO_UPDATE=1 "$BR/decal/decal" usb --from "$T_TMP/up" --decal online --to "folder:$T_TMP/bf" --yes 2>&1); assert_eq "$?" "0" "usb on a branch install: rc"
+assert_eq "$(cat "$T_TMP/bf/Decal" 2>/dev/null)" "x86 v2.1.0" "...the latest release's launcher"
 kill "$GMPID" 2>/dev/null
 t_done

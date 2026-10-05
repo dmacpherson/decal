@@ -729,8 +729,9 @@ def main():
 
     def run(scr):
         ui = UI(scr)
-        if start == "usb":
+        if start == "usb":   # decal usb in a terminal: just its steps, then back to the shell
             ui.do_usb()
+            return
         if os.environ.get("DECAL_STICK"):
             ui.stick_main()
         else:
