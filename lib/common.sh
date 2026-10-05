@@ -88,12 +88,10 @@ state_append() {
   { [[ -n $cur ]] && printf '%s\n' "$cur"; printf '%s\n' "$2"; } | sort -u | swrite "$f"
 }
 
-# stamp helpers (module_stamp): a line for the summary; copy a file/folder into the stamp (prints REL);
-# a TOML list of strings
 # --- asking on the terminal (DECAL_TTY_IN / DECAL_TTY_OUT stand in for it in tests) ---
 have_tty() { { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null; }
-# tty_ask PROMPT : one answer, in REPLY ("" at the end of input)
-tty_ask() { printf '%s' "$1" >> "${DECAL_TTY_OUT:-/dev/tty}"; REPLY=""; IFS= read -r REPLY < "${DECAL_TTY_IN:-/dev/tty}" || true; }
+# tty_ask PROMPT : one answer, in REPLY; fails at the end of input (Ctrl+D), so the caller says what that means
+tty_ask() { printf '%s' "$1" >> "${DECAL_TTY_OUT:-/dev/tty}"; REPLY=""; IFS= read -r REPLY < "${DECAL_TTY_IN:-/dev/tty}"; }
 # --- what a module put in place: one name per line in a record, so remove takes exactly that ---
 rec_has() { grep -qxF "$2" "$1" 2>/dev/null; }            # rec_has REC NAME
 rec_add() { rec_has "$1" "$2" || echo "$2" >> "$1"; }     # rec_add REC NAME
@@ -133,6 +131,8 @@ stamp_theme() {
   stamp_note "$m: $t (bundled, $(du -sh "$d" 2>/dev/null | cut -f1))"
   printf '[%s]\nsource = "themes/%s"\ntheme = "%s"\n' "$m" "$m" "$t"
 }
+# stamp helpers (module_stamp): a line for the summary; copy a file/folder into the stamp (prints REL);
+# a TOML list of strings
 stamp_note() { printf '%s\n' "$*" >> "$STAMP_NOTES"; }
 stamp_copy() { mkdir -p "$STAMP_DIR/$(dirname "$2")"; cp -aL "$1" "$STAMP_DIR/$2"; printf '%s' "$2"; }
 toml_list() { local x items=() IFS=,; for x; do x=${x//\\/\\\\}; items+=("\"${x//\"/\\\"}\""); done; printf '[%s]' "${items[*]}" | sed 's/","/", "/g'; }

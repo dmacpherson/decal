@@ -172,11 +172,16 @@ class _NoDowngrade(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def _origin(url):
+    u = urllib.parse.urlparse(url)
+    return u.scheme, u.hostname, u.port or {"https": 443, "http": 80}.get(u.scheme)
+
+
 class _KeyStaysHome(_NoDowngrade):
     """A redirect to another host (GitHub hands downloads to codeload) doesn't take the key along."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new is not None and urllib.parse.urlparse(newurl).hostname != urllib.parse.urlparse(req.full_url).hostname:
+        if new is not None and _origin(newurl) != _origin(req.full_url):   # as curl: another scheme, host or port
             new.remove_header("Authorization")
         return new
 
@@ -197,7 +202,7 @@ def download(url, path, token=None):
 
 def github(repo, out, ref=""):
     """OWNER/REPO (at REF) as a .tar.gz, with the key in GITHUB_TOKEN when there is one."""
-    download(f"{gh.API}/repos/{repo}/tarball" + (f"/{ref}" if ref else ""), out, os.environ.get("GITHUB_TOKEN") or None)
+    download(f"{gh.API}/repos/{repo}/tarball" + (f"/{urllib.parse.quote(ref, safe='/')}" if ref else ""), out, os.environ.get("GITHUB_TOKEN") or None)
 
 
 def fetch(url, dest):

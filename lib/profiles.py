@@ -170,9 +170,12 @@ def active():
     except OSError:
         pass
     if os.path.isdir(os.path.join(d, ".git")):
-        r = subprocess.run(["git", "-C", d, "remote", "get-url", "origin"], capture_output=True, text=True)
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
+        try:
+            r = subprocess.run(["git", "-C", d, "remote", "get-url", "origin"], capture_output=True, text=True)
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
+        except OSError:   # no git here: the folder itself
+            pass
     return os.path.realpath(d) if os.path.isdir(d) else ""
 
 

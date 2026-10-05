@@ -95,7 +95,10 @@ _STAMPABLE = []
 def stamp_modules():
     """The modules stamp reads (decal decides; asked once per menu session)."""
     if not _STAMPABLE:
-        _STAMPABLE.extend(decal("list", "--stampable")[1].split())
+        r = subprocess.run([DECAL, "list", "--stampable"], capture_output=True, text=True, env=ENV)
+        if r.returncode != 0:
+            return []
+        _STAMPABLE.extend(r.stdout.split())
     return _STAMPABLE
 
 

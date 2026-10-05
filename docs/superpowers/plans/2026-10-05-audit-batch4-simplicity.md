@@ -20,7 +20,7 @@ no behaviour changes (the existing suites are the safety net, new shared pieces 
 4. **Theme modules share their steps** (H4). `lib/common.sh`: `rec_has`/`rec_add`, `rec_remove_all`,
    `install_owned`, `gs_save`/`gs_restore`, `stamp_theme`; cursor, icons, gtk-theme, tools and wallpaper use them.
 5. **`decal` split by job** (H5). `lib/stage.sh` (sources, trust, activation), `lib/cmd_stamp.sh`, `lib/cmd_new.sh`,
-   `lib/cmd_usb.sh`; one `gh_write_key`, `save_profile`, `copy_profile`, `have_tty`; `INSTALL_URL` at the top.
+   `lib/cmd_usb.sh`; one `gh_write_key`, `save_profile`, `copy_profile`, `have_tty`; `INSTALL_URL` at the top of `lib/cmd_stamp.sh`, its one user.
 6. **The menu split and deduplicated** (M1, M3, M4, M5, dead code). Pure helpers → `lib/menu_logic.py`; `GROUPS`
    and `tilde` once (profiles.py); the stick menu reads `stick.conf` with `usb.read_conf`; `profiles.py active` is
    the one answer to "which profile is active" (decal uses it); `stamp_modules` asks decal instead of grepping;

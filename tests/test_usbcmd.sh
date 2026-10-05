@@ -65,4 +65,7 @@ assert_not_contains "$out" "HTTP 000" "...no HTTP code"
 out=$("$REPO/decal" usb --from "$P" --yes 2>&1); assert_eq "$?" "1" "--yes without --to: refused"
 assert_contains "$out" "--yes needs --to" "...says what to add"
 kill "$GHPID" 2>/dev/null
+# the end of input (Ctrl+D, a closed terminal) at "Write these?" writes nothing (review)
+mkdir -p "$T_TMP/eof"; out=$(DECAL_TTY_IN=/dev/null DECAL_TTY_OUT=/dev/null "$REPO/decal" usb --from "$P" --decal online --to "folder:$T_TMP/eof/x" 2>&1)
+assert_eq "$?" "1" "end of input at the question: stops"; assert_contains "$out" "nothing written" "...says so"; assert_nofile "$T_TMP/eof/x/Decal" "...nothing written"
 t_done

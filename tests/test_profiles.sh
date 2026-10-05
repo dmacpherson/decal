@@ -101,4 +101,8 @@ assert_not_contains "$out" "Traceback" "...without a traceback"; assert_contains
 assert_not_contains "$out" "\"Bad\"" "a stick profile that isn't text: left out"
 assert_contains "$out" "Ventoy" "...the other stick still listed"
 rm -rf "$DECAL_MEDIA/Bad" "$HOME/decal-bad"
+# a checkout as the active profile on a machine without git: no traceback (review)
+A="$T_TMP/nogit"; mkdir -p "$A/.git"; mkdir -p "$T_TMP/py"; ln -sf "$(command -v python3)" "$T_TMP/py/python3"
+out=$(DECAL_PROFILE_HOME="$A" PATH="$T_TMP/py" python3 "$P" active 2>&1); assert_not_contains "$out" "Traceback" "active without git: no traceback"
+assert_eq "$out" "$A" "...the folder itself"
 t_done

@@ -29,7 +29,7 @@ do_new() {
       else
         have_tty || die "several USB sticks: say which with --to stick:NAME"
         n=0; for a in "${sticks[@]}"; do n=$((n + 1)); printf '  %s) %s\n' "$n" "$(basename "$a")" >> "${DECAL_TTY_OUT:-/dev/tty}"; done
-        tty_ask 'Which stick? '; a=$REPLY
+        tty_ask 'Which stick? ' || REPLY=""; a=$REPLY
         if ! [[ $a =~ ^[0-9]+$ ]] || (( a < 1 || a > ${#sticks[@]} )); then die "no stick chosen"; fi
         dest="${sticks[$((a - 1))]}/.Decal/profile"
       fi ;;
@@ -54,7 +54,8 @@ do_new() {
       GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" push "$stage" "$repo" "${pub[@]}" --message "decal new: $name" >/dev/null \
         || die "could not create github:$repo"
       src="github:$repo" ;;
-    *) save_profile "$stage" "$dest"; src=$dest ;;   # a file, or the stick's folder
+    stick|stick:*) save_profile "$stage" "$dest"; src=$dest ;;   # the stick's folder
+    *) mkdir -p "$(dirname "$dest")"; tar -czf "$dest" -C "$stage" .; src=$dest ;;   # a file, whatever its name
   esac
   info "new profile: $src"
   if (( use )); then set_profile "$src"; python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi

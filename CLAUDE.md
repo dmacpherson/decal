@@ -46,8 +46,8 @@ minutes. Use `UNTIL:text` steps rather than sleeps when adding flows.
   (GitHub, `~/decal-*`, sticks, recent); `decal new` makes them; `decal stamp` reads the machine into one.
 - **GitHub**: `lib/auth.py` gets keys (device-flow sign-in with a QR code, or a pre-filled token page) through two
   GitHub Apps: **Decal Profile** (read, keys until revoked) and **Decal Profile Write** (8-hour keys, never saved).
-  Key order everywhere: `GITHUB_TOKEN`, `GH_TOKEN`, `gh auth token`, then ask (`gh_auth` in `decal`).
-  `lib/github.py` pushes stamps without git; every API call goes through `lib/gh.py`.
+  Key order everywhere: `GITHUB_TOKEN`, `GH_TOKEN`, `gh auth token`, then ask (`gh_auth` in `lib/stage.sh`).
+  `lib/github.py` pushes stamps without git; every API call (api.github.com) goes through `lib/gh.py`.
 - **Menu** (`lib/ui.py`, curses): every action runs `decal` commands you could type; pure helpers (`apply_cmds`,
   `usb_cmd`, `browser_rows`, …) are unit-tested, flows are driven in a pty. Stick mode when `DECAL_STICK` is set.
 - **USB sticks**: `decal usb` assembles `Decal` (launcher, `usb/launch.c`) + `.Decal/` (`usb/start.sh`,

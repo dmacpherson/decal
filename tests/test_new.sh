@@ -62,4 +62,7 @@ GITHUB_TOKEN=s3cret N decal-f --from empty --public >/dev/null
 assert_eq "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["private"])' "$G/tester_decal-f.json")" "False" "--public"
 out=$(N 'bad name' --from empty --to file); assert_eq "$?" "1" "a name with a space: refused"
 kill "$GHPID" 2>/dev/null
+# --to file:PATH is a file (a .tar.gz), whatever its name (review)
+out=$(N decal-f --from empty --to "file:$T_TMP/plainname"); assert_eq "$?" "0" "file:PATH without .tar.gz"
+assert_eq "$(file -b --mime-type "$T_TMP/plainname" 2>/dev/null || (gzip -t "$T_TMP/plainname" && echo application/gzip))" "application/gzip" "...is a .tar.gz all the same"
 t_done

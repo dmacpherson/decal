@@ -139,4 +139,26 @@ GITHUB_TOKEN=wrong python3 "$SRC" github nobody/x "$U/g4.tgz"; assert_eq "$?" "4
 python3 "$SRC" github open/p "$U/g5.tgz"; assert_eq "$?" "0" "github: public, no key"
 DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$SRC" github me/prof "$U/g6.tgz" 2>/dev/null; assert_eq "$?" "3" "github: out of reach: 3"
 kill "$GHPID" 2>/dev/null; export DECAL_GITHUB=http://127.0.0.1:9 DECAL_GITHUB_API=http://127.0.0.1:9
+# the key stays with the host AND port it was given to; a ref with any letters is sent safely (review)
+python3 - "$REPO" <<'PY' > "$U/redir.out" 2>&1
+import os, sys, threading, http.server
+sys.path.insert(0, os.path.join(sys.argv[1], "lib")); import source
+seen = []
+class B(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        seen.append(self.headers.get("Authorization", "")); self.send_response(200); self.end_headers(); self.wfile.write(b"x")
+    def log_message(self, *a): pass
+b = http.server.HTTPServer(("127.0.0.1", 0), B)
+class A(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(302); self.send_header("Location", f"http://127.0.0.1:{b.server_port}/t"); self.end_headers()
+    def log_message(self, *a): pass
+a = http.server.HTTPServer(("127.0.0.1", 0), A)
+for s in (a, b): threading.Thread(target=s.serve_forever, daemon=True).start()
+source.download(f"http://127.0.0.1:{a.server_port}/x", os.devnull, "SECRET")
+print("other port got:", repr(seen[0]))
+PY
+assert_contains "$(cat "$U/redir.out")" "other port got: ''" "a redirect to another port on the same host: no key"
+out=$(DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$SRC" github me/prof "$U/g7.tgz" --ref "brånch" 2>&1); assert_eq "$?" "3" "a ref with non-ASCII letters: no traceback (out of reach here: 3)"
+assert_not_contains "$out" "Traceback" "...no traceback"
 t_done

@@ -94,7 +94,7 @@ do_usb() {
   info "on $target:"; (cd "$files" && find Decal .Decal -type f | sort | sed 's/^/    /') >&2
   if (( ! yes )); then
     have_tty || die "usb: nothing written: add --yes to write without asking"
-    tty_ask "Write these to $target? [Y/n] "; [[ ${REPLY:-y} == [Yy]* ]] || die "nothing written"
+    tty_ask "Write these to $target? [Y/n] " || REPLY=n; [[ ${REPLY:-y} == [Yy]* ]] || die "nothing written"
   fi
   res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || exit 1   # usb.py says why
   info "done: double-click Decal on any Linux PC (Ctrl+H shows the .Decal folder)"

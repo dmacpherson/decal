@@ -26,7 +26,7 @@ def request(method, path, token=None, body=None, timeout=30):
     except urllib.error.HTTPError as e:
         try:
             msg = json.loads(e.read()).get("message", "")
-        except (ValueError, AttributeError, OSError):
+        except (ValueError, AttributeError, OSError, http.client.HTTPException):
             msg = ""
         return e.code, {"message": msg}, e.headers
     except urllib.error.URLError as e:

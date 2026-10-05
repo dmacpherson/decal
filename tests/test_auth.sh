@@ -54,8 +54,8 @@ assert_eq "$(DECAL_GITHUB_APP_READ=junk py 'print(auth.app("read"))')" "None" "a
 G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"; echo me/prof > "$G/seed"
 fake_up() {  # (re)start the fake GitHub: it reads seed/hidden when it starts
   if [[ -n ${GHPID:-} ]]; then kill "$GHPID" 2>/dev/null; wait "$GHPID" 2>/dev/null; fi
-  rm -f "$G/port"; fake_github "$G"; GHPID=$FAKE_PID
-  }
+  fake_github "$G"; GHPID=$FAKE_PID
+}
 fake_up
 chk() { GITHUB_TOKEN=$1 python3 "$A" check "${@:2}" >/dev/null 2>&1; echo $?; }
 assert_eq "$(chk s3cret me/prof --need read)" "0" "check: a good key reads"
