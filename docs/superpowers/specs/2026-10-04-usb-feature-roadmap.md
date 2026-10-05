@@ -130,6 +130,19 @@ copy) — nothing applied yet — then opens decal's normal menu with the stick'
 
 No separate stick menu: the normal one, with that header and order. No "temporary mode".
 
+### Part 3: deferred minors (fix when touching that code)
+
+- start.sh blames any failed `decal use` on the key (offline, a declined sign-in…); the dead key stays exported for
+  the menu session.
+- start.sh with no known terminal carries on without one (curses fails): fall back to opening the README.
+- Offline in `newest` mode, the stick's copy can replace a newer decal already installed.
+- A stick pulled out between the two renames has only `.Decal.old`/`.Decal.new`: the launcher could try `.Decal.old`.
+- An unrelated lowercase `decal/` folder on a FAT stick would be moved to `Decal-old` (FAT ignores case).
+- The decal copy from a git checkout includes untracked files and uncommitted edits: use `git ls-files`, mark `-dirty`.
+- A saved key is obtained before the confirmation and the launcher download (unused if you answer no).
+- The menu's usb entry drops into the full menu after `decal usb` instead of exiting.
+- `source.py public` treats "offline" as private, so a public repo is offered a saved key.
+
 ## Part 4: Save back from a stick
 
 From the stick's menu: stamp the machine it's plugged into and push it to the person's GitHub profile, signing in
