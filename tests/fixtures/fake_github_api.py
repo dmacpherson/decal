@@ -7,7 +7,9 @@ python3 fake_github_api.py STATE_DIR. Serves on 127.0.0.1 (port written to STATE
 expired, denied, ok per poll; hold: pending for good), device_fail (the code request fails),
 installations (the Write app's installs for /user/installations: all, selected, or selected N = all after N
 lookups; missing: 403, as for a token that isn't an app's), drop N (close the next N /repos lookups without an
-answer), html (answer /user and the device code request with an HTML page). Device requests go to device_log.
+answer), html (answer /user and the device code request with an HTML page), tarballs/OWNER_REPO.tar.gz (served at
+/repos/OWNER/REPO/tarball[/REF] with the token, or without when tarballs/OWNER_REPO.public exists; like GitHub, via a
+redirect to another host name, http://localhost:PORT/codeload/..., whose requests go to codeload_log). Device requests go to device_log.
 seed lines may add "public" and "topic"; many (N plain repos for tester); contents/OWNER/REPO/PATH (served by the
 contents API, as are pushed files); PUT topics are logged to topics.log."""
 import base64, hashlib, json, os, sys, urllib.parse
@@ -87,6 +89,23 @@ class H(BaseHTTPRequestHandler):
         if os.path.exists(os.path.join(STATE, "html")) and (self.path == "/user" or self.path.startswith("/login/device/code")):
             data = b"<html><body>Sign in to this Wi-Fi</body></html>"
             self.send_response(200); self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            return
+        tb = self.path.strip("/").split("/")
+        if len(tb) in (4, 5) and tb[0] == "repos" and tb[3] == "tarball":
+            f = os.path.join(STATE, "tarballs", f"{tb[1]}_{tb[2]}.tar.gz")
+            if not os.path.exists(f) or (self.headers.get("Authorization") != f"Bearer {TOKEN}"
+                                         and not os.path.exists(f[:-len(".tar.gz")] + ".public")):
+                return self.reply(404, {"message": "Not Found"})
+            self.send_response(302)
+            self.send_header("Location", f"http://localhost:{self.server.server_port}/codeload/{tb[1]}/{tb[2]}")
+            self.send_header("Content-Length", "0"); self.end_headers()
+            return
+        if tb[0] == "codeload":
+            with open(os.path.join(STATE, "codeload_log"), "a") as f:
+                f.write(f"{method} {self.path} auth={self.headers.get('Authorization', '')}\n")
+            data = open(os.path.join(STATE, "tarballs", f"{tb[1]}_{tb[2]}.tar.gz"), "rb").read()
+            self.send_response(200); self.send_header("Content-Type", "application/x-gzip")
             self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
             return
         if self.path.startswith("/login/"):

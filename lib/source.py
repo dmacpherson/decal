@@ -8,6 +8,8 @@
   source.py remember SOURCE       put SOURCE first in the recently-used list (10 kept; never a key)
   source.py yours SOURCE [--login L]  exit 0 when SOURCE is yours: local, recently used, or L's on GitHub
   source.py public github:O/R     exit 0 when the repo is public (answers without a key)
+  source.py github O/R OUT [--ref REF]   the repo as a .tar.gz (key from GITHUB_TOKEN); exit 4 when not found or
+                                  not allowed, 3 when GitHub can't be reached
 
 https only; DECAL_ALLOW_HTTP_LOCAL=1 also allows http://127.0.0.1 (tests)."""
 import argparse, datetime, os, re, stat, sys, tarfile, tempfile, urllib.error, urllib.parse, urllib.request, zipfile
@@ -25,12 +27,12 @@ RECENT = os.path.join(STATE, "recent")
 
 
 class Bad(Exception):
-    pass
+    code = None   # a download's HTTP status (0: no answer)
 
 
 def allowed(url):
     u = urllib.parse.urlparse(url)
-    return u.scheme == "https" or (u.scheme == "http" and u.hostname == "127.0.0.1"
+    return u.scheme == "https" or (u.scheme == "http" and u.hostname in ("127.0.0.1", "localhost")
                                    and os.environ.get("DECAL_ALLOW_HTTP_LOCAL") == "1")
 
 
@@ -170,16 +172,32 @@ class _NoDowngrade(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def download(url, path):
+class _KeyStaysHome(_NoDowngrade):
+    """A redirect to another host (GitHub hands downloads to codeload) doesn't take the key along."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlparse(newurl).hostname != urllib.parse.urlparse(req.full_url).hostname:
+            new.remove_header("Authorization")
+        return new
+
+
+def download(url, path, token=None):
+    """URL to PATH: https only (no redirect to http), within the size limit; TOKEN as a header, for that host only."""
     if not allowed(url):
         raise Bad("use an https:// link (http:// can be changed on the way)")
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token} if token else {})
     try:
-        with urllib.request.build_opener(_NoDowngrade).open(url, timeout=60) as r, open(path, "wb") as out:
+        with urllib.request.build_opener(_KeyStaysHome).open(req, timeout=60) as r, open(path, "wb") as out:
             _copy(r, out, 0)
     except urllib.error.HTTPError as e:
-        raise Bad(f"couldn't download {url} (HTTP {e.code})")
+        b = Bad(f"couldn't download {url} (HTTP {e.code})"); b.code = e.code; raise b
     except (urllib.error.URLError, OSError) as e:
-        raise Bad(f"couldn't download {url} ({getattr(e, 'reason', e)})")
+        b = Bad(f"couldn't download {url} ({getattr(e, 'reason', e)})"); b.code = 0; raise b
+
+
+def github(repo, out, ref=""):
+    """OWNER/REPO (at REF) as a .tar.gz, with the key in GITHUB_TOKEN when there is one."""
+    download(f"{gh.API}/repos/{repo}/tarball" + (f"/{ref}" if ref else ""), out, os.environ.get("GITHUB_TOKEN") or None)
 
 
 def fetch(url, dest):
@@ -231,9 +249,10 @@ def public(source):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["resolve", "unpack", "fetch", "remember", "yours", "public"])
+    ap.add_argument("cmd", choices=["resolve", "unpack", "fetch", "remember", "yours", "public", "github"])
     ap.add_argument("args", nargs="+")
     ap.add_argument("--login", default="")
+    ap.add_argument("--ref", default="")
     ap.add_argument("--links", choices=["none", "inside"], default="none")
     a = ap.parse_args()
     try:
@@ -248,6 +267,15 @@ def main():
             print("archive")
         elif a.cmd == "remember":
             remember(a.args[0])
+        elif a.cmd == "github":   # 4: not found or not allowed (private?) · 3: GitHub out of reach
+            try:
+                github(a.args[0], a.args[1], a.ref)
+            except Bad as e:
+                if e.code in (401, 403, 404):
+                    sys.exit(4)
+                if e.code == 0:
+                    sys.exit(3)
+                raise
         elif a.cmd == "public":
             sys.exit(0 if public(a.args[0]) else 1)
         else:
