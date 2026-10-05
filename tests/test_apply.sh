@@ -126,4 +126,10 @@ out=$("$S" --yes use "file://$GS" 2>&1); assert_eq "$?" "0" "git source with a l
 G2="$T_TMP/gitplus"; cp -a "$GS" "$G2"; "$S" --yes use "git+file://$G2" >/dev/null 2>&1
 grep -qxF "git+file://$G2" "$DECAL_USER_STATE/asked" && grep -qxF "file://$G2" "$DECAL_USER_STATE/asked"
 assert_eq "$?" "0" "git+ source: remembered with and without git+"
+# an archive that carries its own .git: never kept, so its made-up origin can't say whose the profile is (security review)
+AG="$T_TMP/agit"; mkdir -p "$AG/.git/objects" "$AG/.git/refs"; cp "$P/profile.toml" "$AG/"; echo 'ref: refs/heads/main' > "$AG/.git/HEAD"
+printf '[remote "origin"]\n\turl = /home/anything\n' > "$AG/.git/config"; tar -czf "$T_TMP/agit.tar.gz" -C "$AG" .
+"$S" --yes use "$T_TMP/agit.tar.gz" >/dev/null 2>&1; assert_eq "$?" "0" "an archive with a .git: used"
+assert_nofile "$DECAL_PROFILE_HOME/.git" "...without its .git"
+assert_eq "$(env -u DECAL_PROFILE DECAL_PROFILE_HOME="$DECAL_PROFILE_HOME" python3 "$REPO/lib/profiles.py" active)" "$T_TMP/agit.tar.gz" "...whose it is: where decal got it"
 t_done

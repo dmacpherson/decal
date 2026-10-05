@@ -91,7 +91,7 @@ stage_profile() {
       if (( rc == 0 )); then
         STAGE_DIR=$(find_profile_root "$tmp/x") || die "$STAGE_SRC: the archive has no profile.toml"
       elif (( rc == 3 )) && have git && git clone -q "$STAGE_SRC" "$tmp/p" 2>/dev/null && [[ -f $tmp/p/profile.toml ]]; then
-        STAGE_KIND=git; STAGE_DIR=$tmp/p
+        STAGE_KIND=git; STAGE_DIR=$tmp/p; links_inside "$tmp/p" "$STAGE_SRC"
       else
         (( rc != 3 )) || die "$STAGE_SRC isn't a decal profile (not an archive with a profile.toml, nor a git repo with one)"
         exit 1   # source.py said why
@@ -139,9 +139,9 @@ activate_staged() {
         git -C "$t" pull -q --ff-only || die "git pull failed in $t"
         links_inside "$t" "$STAGE_SRC"
       else _beside; _aside; mv "$t.decal-new" "$t"; fi ;;
-    *)   # archive, github, url: an unpacked copy
+    *)   # archive, github, url: an unpacked copy; a .git it carries goes (only a checkout decal made has one)
       echo "$STAGE_SRC" > "$STAGE_DIR/.decal-source"
-      _beside
+      _beside; rm -rf "$t.decal-new/.git"
       if [[ $STAGE_KIND != archive && -d $t && ! -L $t && $(cat "$t/.decal-source" 2>/dev/null) == "$STAGE_SRC" ]]; then
         mv "$t" "$t.decal-old"   # a newer download of the same source: no backup, gone once the new one is in
       else _aside; fi
