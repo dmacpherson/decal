@@ -158,4 +158,7 @@ assert_eq "$(DECAL_PROFILE_HOME="$A" env -u DECAL_PROFILE python3 "$REPO/lib/pro
 # the stick menu reads stick.conf the way decal usb wrote it
 SC="$T_TMP/sc/.Decal"; mkdir -p "$SC"; printf '# made\nprofile=github:me/p  # mine\nkey=saved\n' > "$SC/stick.conf"
 assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import usb; print(usb.read_conf('$SC'))")" "{'profile': 'github:me/p', 'key': 'saved'}" "read_conf: the .Decal folder's stick.conf"
+# GitHub listings land only when no newer one started (an older one never replaces a fresher one)
+assert_eq "$(py '(lambda s: (ui.latest(s, 1, "old"), ui.latest(s, 2, "new"), s["gh"])[-1])({"run": 2, "gh": None})')" "new" "latest: the newest run's listing"
+assert_eq "$(py '(lambda s: (ui.latest(s, 1, "old"), s["gh"])[-1])({"run": 2, "gh": "fresh"})')" "fresh" "latest: an older run's listing is dropped"
 t_done

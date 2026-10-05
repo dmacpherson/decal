@@ -161,4 +161,17 @@ PY
 assert_contains "$(cat "$U/redir.out")" "other port got: ''" "a redirect to another port on the same host: no key"
 out=$(DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$SRC" github me/prof "$U/g7.tgz" --ref "brånch" 2>&1); assert_eq "$?" "3" "a ref with non-ASCII letters: no traceback (out of reach here: 3)"
 assert_not_contains "$out" "Traceback" "...no traceback"
+# zip theme archives: links that stay inside are kept (when asked), others refused (as for tar)
+python3 - "$U/zl.zip" "$U/zo.zip" <<'PY'
+import sys, zipfile, stat
+def mk(path, link):
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("T/cursors/left_ptr", "c")
+        i = zipfile.ZipInfo("T/cursors/default"); i.external_attr = (stat.S_IFLNK | 0o777) << 16
+        z.writestr(i, link)
+mk(sys.argv[1], "left_ptr"); mk(sys.argv[2], "../../../../etc/passwd")
+PY
+python3 "$SRC" unpack --links inside "$U/zl.zip" "$U/zl"; assert_eq "$(readlink "$U/zl/T/cursors/default")" "left_ptr" "zip: a link inside kept"
+out=$(python3 "$SRC" unpack --links inside "$U/zo.zip" "$U/zo" 2>&1); assert_contains "$out" "points outside the archive" "zip: a link out refused"
+out=$(python3 "$SRC" unpack "$U/zl.zip" "$U/zn" 2>&1); assert_contains "$out" "links and special files aren't allowed" "zip: links refused unless asked for"
 t_done

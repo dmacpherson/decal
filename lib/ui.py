@@ -8,7 +8,8 @@ import curses, glob, json, os, re, subprocess, sys, tempfile, threading
 import profiles, usb  # noqa: E402  (lib/, next to this file)
 from profiles import tilde  # noqa: E402
 from menu_logic import (MENU, STICK_ITEMS, apply_cmds, browser_rows, clean_env, drive_label, label,  # noqa: E402,F401
-                        pick_row, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header, usb_cmd)
+                        latest, pick_row, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header,
+                        usb_cmd)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DECAL = os.path.join(REPO, "decal")
@@ -350,15 +351,14 @@ class UI:
 
     def browse(self, title, purpose):
         """The profile browser: local entries at once, GitHub filled in by a background thread."""
-        state = {"data": self.profiles_json("local"), "gh": None}
+        state = {"data": self.profiles_json("local"), "gh": None, "run": 0}
         state["data"].setdefault("entries", [])
 
-        def github():
-            state["gh"] = self.profiles_json("github")
-
-        def start():
+        def start():   # each listing is numbered: only the newest lands (after r or a sign-in)
+            state["run"] += 1
             state["gh"] = None
-            threading.Thread(target=github, daemon=True).start()
+            run = state["run"]
+            threading.Thread(target=lambda: latest(state, run, self.profiles_json("github")), daemon=True).start()
 
         start()
         user = os.environ.get("USER") or "me"

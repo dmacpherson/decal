@@ -113,4 +113,9 @@ stub cp 'case "$*" in *.decal-new*) exit 1;; esac; exec /usr/bin/cp "$@"'
 assert_eq "$(cat "$DECAL_PROFILE_HOME/profile.toml")" "$before" "...the active profile is untouched"
 rm -f "$STUBS/cp"
 "$S" apply "$T_TMP/p.zip" >/dev/null 2>&1; assert_eq "$(ls -A "$(dirname "$DECAL_PROFILE_HOME")" | grep -c 'decal-new\|decal-old')" "0" "a normal apply leaves nothing beside it"
+# a git profile with a link that leads out of it is refused (a theme or path could go through it)
+GR="$T_TMP/gitprof"; mkdir -p "$GR"; cp "$P/profile.toml" "$GR/"; ln -s /etc "$GR/escape"
+git -C "$GR" init -q; git -C "$GR" -c user.email=t@t -c user.name=t add -A; git -C "$GR" -c user.email=t@t -c user.name=t commit -qm p
+out=$("$S" --yes use "file://$GR" 2>&1); assert_eq "$?" "1" "git source with a link out: refused"
+assert_contains "$out" "a link that leads outside it: escape" "...says which"
 t_done

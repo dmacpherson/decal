@@ -146,3 +146,10 @@ def stamp_dest(v, typed=""):
     if v.get("kind") == "github":
         return "", v["source"].removeprefix("github:")
     return v["source"], ""
+
+
+def latest(state, run, value):
+    """A background GitHub listing lands only when no newer one has started since (a slow, older one never replaces
+    a fresher one)."""
+    if run == state.get("run"):
+        state["gh"] = value

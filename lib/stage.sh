@@ -99,11 +99,19 @@ stage_profile() {
     git)
       tmp=$(mktemp -d "$LS_RUNTMP/profile.XXXXXX")
       git clone -q "${STAGE_SRC#git+}" "$tmp/p" || die "git clone failed: ${STAGE_SRC#git+}"
+      links_inside "$tmp/p" "$STAGE_SRC"
       [[ -f $tmp/p/profile.toml ]] || die "${STAGE_SRC#git+} has no profile.toml"
       STAGE_DIR=$tmp/p ;;
   esac
   python3 "$LS_REPO/lib/profile.py" check --profile "$STAGE_DIR" --modules "$MODULES_DIR" \
     || die "$STAGE_SRC: the profile is invalid (the active profile was not changed)"
+}
+# links_inside DIR SOURCE : a checkout's links all stay inside it (a theme or path could otherwise lead anywhere)
+links_inside() {
+  local l
+  while IFS= read -r -d '' l; do
+    inside "$1" "$l" || die "$2: a link that leads outside it: ${l#"$1"/} (not used)"
+  done < <(find "$1" -path "$1/.git" -prune -o -type l -print0)
 }
 # set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: only staged)
 set_profile() { stage_profile "$1"; activate_staged; }
@@ -129,6 +137,7 @@ activate_staged() {
     git)
       if [[ -d $t/.git && ! -L $t && $(git -C "$t" remote get-url origin 2>/dev/null) == "${STAGE_SRC#git+}" ]]; then
         git -C "$t" pull -q --ff-only || die "git pull failed in $t"
+        links_inside "$t" "$STAGE_SRC"
       else _beside; _aside; mv "$t.decal-new" "$t"; fi ;;
     *)   # archive, github, url: an unpacked copy
       echo "$STAGE_SRC" > "$STAGE_DIR/.decal-source"

@@ -59,8 +59,13 @@ def toml_in_archive(path):
                 names = sorted((n for n in z.namelist() if n.split("/")[-1] == "profile.toml"), key=depth)
                 return z.read(names[0]).decode() if names and depth(names[0]) <= 1 else None
         with tarfile.open(path, "r:gz") as t:
-            ms = sorted((m for m in t if m.isfile() and m.name.split("/")[-1] == "profile.toml"), key=lambda m: depth(m.name))
-            return t.extractfile(ms[0]).read().decode() if ms and depth(ms[0].name) <= 1 else None
+            found = None   # a top-level profile.toml ends the search; one a folder down is kept while looking on
+            for m in t:
+                if m.isfile() and m.name.split("/")[-1] == "profile.toml" and depth(m.name) <= 1:
+                    if depth(m.name) == 0:
+                        return t.extractfile(m).read().decode()
+                    found = found or t.extractfile(m).read().decode()
+            return found
     except (OSError, EOFError, tarfile.TarError, zipfile.BadZipFile, UnicodeDecodeError):
         return None
 

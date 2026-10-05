@@ -106,4 +106,14 @@ rm -rf "$DECAL_MEDIA/Bad" "$HOME/decal-bad"
 A="$T_TMP/nogit"; mkdir -p "$A/.git"; mkdir -p "$T_TMP/py"; ln -sf "$(command -v python3)" "$T_TMP/py/python3"
 out=$(DECAL_PROFILE_HOME="$A" PATH="$T_TMP/py" python3 "$P" active 2>&1); assert_not_contains "$out" "Traceback" "active without git: no traceback"
 assert_eq "$out" "$A" "...the folder itself"
+# listing a big archive stops at its top profile.toml (what follows isn't read: here, a damaged tail)
+python3 - "$HOME/decal-tail.tar.gz" <<'PY'
+import gzip, io, os, sys, tarfile
+buf = io.BytesIO(); t = tarfile.open(fileobj=buf, mode="w")
+for name, data in (("./profile.toml", b"[apps]\n"), ("./themes/big", os.urandom(200000))):
+    i = tarfile.TarInfo(name); i.size = len(data); t.addfile(i, io.BytesIO(data))
+t.close(); z = gzip.compress(buf.getvalue()); open(sys.argv[1], "wb").write(z[:len(z) // 2])   # cut off midway
+PY
+assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import profiles; print(profiles.toml_in_archive('$HOME/decal-tail.tar.gz'))")" "[apps]" "the top profile.toml, without reading the rest"
+rm -f "$HOME/decal-tail.tar.gz"
 t_done

@@ -127,6 +127,12 @@ def unpack(archive, dest, links="none"):
                         os.makedirs(t, exist_ok=True)
                         continue
                     kind = (i.external_attr >> 16) & 0o170000
+                    if links == "inside" and kind == stat.S_IFLNK and i.file_size <= 4096:   # its target is its data
+                        linkname = zf.read(i).decode(errors="replace")
+                        os.makedirs(os.path.dirname(safe(i.filename, t)), exist_ok=True)
+                        link_ok(i.filename, t, linkname)
+                        os.symlink(linkname, t)
+                        continue
                     if kind and kind != stat.S_IFREG:
                         raise Bad(f"{i.filename}: links and special files aren't allowed in a profile")
                     with zf.open(i) as src:
