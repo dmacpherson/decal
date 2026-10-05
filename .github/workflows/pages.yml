@@ -16,12 +16,12 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -29,6 +29,6 @@ jobs:
         run: |
           git show origin/dev:install.sh > dev-install.sh 2>/dev/null || cp install.sh dev-install.sh   # no dev branch yet: main's
           bash tools/pages-site.sh install.sh dev-install.sh _site "$GITHUB_REPOSITORY"
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

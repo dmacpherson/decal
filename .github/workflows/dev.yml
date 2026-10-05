@@ -17,9 +17,9 @@ jobs:
       ref: ${{ github.sha }}
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: package
           path: dist
@@ -34,7 +34,7 @@ jobs:
             --notes "The newest build of the dev branch ($GITHUB_SHA). Install: curl -fsSL https://dmacpherson.github.io/decal/dev/install | bash"
   pages:
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       actions: write
     steps:

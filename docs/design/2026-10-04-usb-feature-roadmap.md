@@ -191,6 +191,16 @@ No separate stick menu: the normal one, with that header and order. No "temporar
 - A new profile's README is written in two places (`cmd_stamp.sh` and `profiles.py readme`); the default stamp place
   is in bash (`cmd_stamp.sh`) and Python (`profiles.usual_stamp`).
 
+### Deferred minors: cleared 2026-10-05
+
+The lists above and below were worked through in `plans/2026-10-05-deferred-minors.md`: each item fixed, found
+already done, or decided against (the reasons are there). Still open:
+- Unverified: whether `/repos` `permissions.push` reflects a fine-grained token's access or the user's role (needs a
+  real GitHub).
+- A git checkout profile's links are checked after `git pull`, so a bad link is refused once it's already there.
+- In a real terminal, Esc followed within 50 ms by another key loses that key during the sign-in wait.
+- Release notes for v0.4.0: `release-notes-v0.4.0.md` (draft).
+
 ## Part 4: Save back from a stick
 
 From the stick's menu, **Save this machine** (after Preview first): the module picker and preview, then "Save to":
