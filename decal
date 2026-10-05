@@ -568,11 +568,10 @@ case $cmd in
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
   profiles)
     signin=0; pargs=()
-    for a in "$@"; do case $a in --sign-in) signin=1 ;; --json|--only=*) pargs+=("${a/--only=/--only }") ;; *) die "profiles: unknown option $a" ;; esac; done
+    for a in "$@"; do case $a in --sign-in) signin=1 ;; --json) pargs+=(--json) ;; --only=*) pargs+=(--only "${a#--only=}") ;; *) die "profiles: unknown option $a" ;; esac; done
     tok=$(gh_token)
     if [[ -z $tok ]] && (( signin )); then gh_auth - read || die "not signed in"; tok=$GITHUB_TOKEN; fi
-    # shellcheck disable=SC2086  # "--only local" is two words on purpose
-    GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/profiles.py" list ${pargs[*]} ;;
+    GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/profiles.py" list "${pargs[@]}" ;;
   stamp) do_stamp "$@" ;;
   use)
     [[ $# -eq 1 ]] || usage
