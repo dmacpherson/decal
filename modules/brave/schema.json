@@ -1,6 +1,6 @@
 {"keys": {
   "preferences": {"type": "path", "default": ""},
   "local-state": {"type": "path", "default": ""},
-  "profile": {"type": "string", "default": "Default"},
-  "extensions": {"type": "strings", "default": []}
+  "profile": {"type": "theme", "default": "Default"},
+  "extensions": {"type": "names", "default": []}
 }}

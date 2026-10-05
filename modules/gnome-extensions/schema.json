@@ -1,9 +1,9 @@
 {"keys": {
-  "enable": {"type": "strings"},
-  "disable": {"type": "strings", "default": []},
+  "enable": {"type": "names"},
+  "disable": {"type": "names", "default": []},
   "file": {"type": "paths", "default": []},
-  "files.*": {"type": "path"},
+  "files.*": {"type": "path", "key": "relpath"},
   "logo": {"type": "path", "default": ""},
   "logo-color": {"type": "color", "default": "#deddda"},
-  "source": {"type": "string", "default": "https://extensions.gnome.org"}
+  "source": {"type": "url", "default": "https://extensions.gnome.org"}
 }, "required": ["enable"]}

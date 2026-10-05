@@ -12,6 +12,39 @@ class ProfileError(Exception):
     pass
 
 
+# what a value may look like when it becomes an argument or a path (CLAUDE.md → Security: treat input as untrusted)
+NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+:@~=-]*(/[A-Za-z0-9._+:@~=-]+)*(//[A-Za-z0-9._+:@~=-]+)?")
+FORMULA_RE = re.compile(r"[a-z0-9][a-z0-9._+@-]*(/[a-z0-9._+@-]+){0,2}")
+REF_RE = re.compile(r"[A-Za-z0-9._/-]+")
+RULES = {
+    "name": "a name (letters, digits and . _ + : @ ~ = -; no spaces, no leading -, no ..)",
+    "formula": "a Homebrew formula (name, or user/tap/name)",
+    "theme": "a name without / (and not starting with -)",
+    "relpath": "a folder inside the source (relative, no ..)",
+    "ref": "a git branch, tag or commit",
+    "glob": "a file name pattern (no /, not starting with -)",
+}
+
+
+def rule_ok(t, v):
+    if not isinstance(v, str) or v == "" or any(ord(c) < 32 for c in v):
+        return False
+    if t == "name":
+        return bool(NAME_RE.fullmatch(v)) and ".." not in v
+    if t == "formula":
+        return bool(FORMULA_RE.fullmatch(v)) and ".." not in v
+    if t == "theme":
+        return "/" not in v and v not in (".", "..") and not v.startswith("-")
+    if t == "relpath":
+        parts = v.split("/")
+        return not v.startswith(("/", "-")) and ".." not in parts and "\\" not in v
+    if t == "ref":
+        return bool(REF_RE.fullmatch(v)) and not v.startswith("-") and ".." not in v
+    if t == "glob":
+        return "/" not in v and not v.startswith("-")
+    return False
+
+
 SOURCE_RE = re.compile(r"^(git\+(https|ssh|file)://\S+|github-release:[\w.-]+/[\w.-]+|https://\S+)$")
 
 
@@ -123,6 +156,20 @@ def check(sec, key, spec, v, pdir):
     def bad(msg):
         raise ProfileError(f"profile.toml: [{sec}] {key}: {msg}, got {v!r}")
 
+    if t in RULES:   # name, formula, theme, relpath, ref, glob ("" is allowed: it means "not set")
+        if v != "" and not rule_ok(t, v): bad(f"expected {RULES[t]}")
+        return v
+    if t in ("names", "formulas", "globs"):
+        if not (isinstance(v, list) and all(isinstance(x, str) for x in v)): bad("expected a list of strings")
+        for x in v:
+            if not rule_ok(t[:-1], x):
+                raise ProfileError(f"profile.toml: [{sec}] {key}: {x!r}: expected {RULES[t[:-1]]}")
+        return v
+    if t == "globs-or-glob":
+        return check(sec, key, dict(spec, type="globs"), [v] if isinstance(v, str) else v, pdir)
+    if t == "url":
+        if not (isinstance(v, str) and v.startswith("https://") and " " not in v): bad("expected an https:// link")
+        return v
     if t in ("string",):
         if not isinstance(v, str): bad("expected a string")
         return v
@@ -150,14 +197,21 @@ def check(sec, key, spec, v, pdir):
         return v
     if t == "string-or-strings":
         return [v] if isinstance(v, str) else check(sec, key, dict(spec, type="strings"), v, pdir)
-    if t == "install":
+    if t == "install":   # "all", or the theme names to install
         if v == "all": return ["all"]
-        return check(sec, key, dict(spec, type="strings"), v, pdir)
+        check(sec, key, dict(spec, type="strings"), v, pdir)
+        for x in v:
+            if not rule_ok("theme", x):
+                raise ProfileError(f"profile.toml: [{sec}] {key}: {x!r}: expected {RULES['theme']}")
+        return v
     if t == "path":
         if not isinstance(v, str): bad("expected a path")
         if v == "": return ""
         p = v if os.path.isabs(v) else os.path.join(pdir, v)
         if not os.path.exists(p): bad(f"file not found ({p})")
+        real, root = os.path.realpath(p), os.path.realpath(pdir)
+        if real != root and not real.startswith(root + os.sep):
+            bad("must be a file inside the profile folder")
         return os.path.abspath(p)
     if t == "paths":   # one file or a list of them (a tag's list adds files on)
         vs = [v] if isinstance(v, str) else v
@@ -198,6 +252,10 @@ def section_values(sec, schema, data, pdir, present):
             tbl = (get(data, name) if present else None) or {}
             if not isinstance(tbl, dict):
                 raise ProfileError(f"profile.toml: [{sec}] {name} must be a table")
+            if spec.get("key"):   # the table's keys themselves (e.g. file names under a config folder)
+                for n in tbl:
+                    if not rule_ok(spec["key"], n):
+                        raise ProfileError(f"profile.toml: [{sec}] {name}: {n!r}: expected {RULES[spec['key']]}")
             vals[name] = {n: check(sec, f"{name}.{n}", spec, v, pdir) for n, v in tbl.items()}
             continue
         v = get(data, k) if present else None

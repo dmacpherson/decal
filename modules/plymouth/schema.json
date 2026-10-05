@@ -1,6 +1,6 @@
 {"keys": {
   "source": {"type": "source", "default": "git+https://github.com/adi1090x/plymouth-themes"},
-  "path": {"type": "string", "default": "pack_1"},
-  "ref": {"type": "string", "default": ""},
-  "theme": {"type": "string", "default": "angular"}
+  "path": {"type": "relpath", "default": "pack_1"},
+  "ref": {"type": "ref", "default": ""},
+  "theme": {"type": "theme", "default": "angular"}
 }}

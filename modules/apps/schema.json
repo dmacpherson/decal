@@ -1,11 +1,11 @@
 {"keys": {
-  "flatpaks": {"type": "strings", "default": []},
-  "packages": {"type": "strings", "default": []},
+  "flatpaks": {"type": "names", "default": []},
+  "packages": {"type": "names", "default": []},
   "purge-data": {"type": "bool", "default": false},
-  "remove-flatpaks": {"type": "strings", "default": []},
-  "remove-packages": {"type": "strings", "default": []},
-  "show": {"type": "strings", "default": []},
-  "remote": {"type": "string", "default": "flathub"},
-  "remote-url": {"type": "string", "default": "https://dl.flathub.org/repo/flathub.flatpakrepo"},
-  "defaults.*": {"type": "string"}
+  "remove-flatpaks": {"type": "names", "default": []},
+  "remove-packages": {"type": "names", "default": []},
+  "show": {"type": "names", "default": []},
+  "remote": {"type": "name", "default": "flathub"},
+  "remote-url": {"type": "url", "default": "https://dl.flathub.org/repo/flathub.flatpakrepo"},
+  "defaults.*": {"type": "name"}
 }}

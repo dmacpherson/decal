@@ -1,10 +1,10 @@
 {"keys": {
   "source": {"type": "source"},
-  "path": {"type": "string", "default": ""},
-  "ref": {"type": "string", "default": ""},
-  "asset": {"type": "string-or-strings", "default": []},
-  "version": {"type": "string", "default": "latest"},
-  "theme": {"type": "string"},
+  "path": {"type": "relpath", "default": ""},
+  "ref": {"type": "ref", "default": ""},
+  "asset": {"type": "globs-or-glob", "default": []},
+  "version": {"type": "ref", "default": "latest"},
+  "theme": {"type": "theme"},
   "install": {"type": "install", "default": "all"},
   "libadwaita": {"type": "bool", "default": false},
   "flatpak": {"type": "bool", "default": true}

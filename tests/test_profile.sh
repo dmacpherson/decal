@@ -87,4 +87,37 @@ bad "expected one of" "enum" < <(printf '[demo]\nfile = "f.txt"\nmode = "c"\n')
 bad "unrecognized source" "bad source" < <(printf '[demo]\nfile = "f.txt"\nsource = "github-release:bad"\n')
 bad "unknown section [nosuch]" "unknown section" < <(printf '[nosuch]\nx = 1\n')
 bad "profile.toml" "toml syntax error" < <(printf '[demo\n')
+# value rules (CLAUDE.md → Security: treat input as untrusted): names can't be options or paths, links are https,
+# paths stay inside the profile
+G="$T_TMP/gm"; mkdir -p "$G/guard"; : > "$G/guard/module.sh"
+cat > "$G/guard/schema.json" <<'EOF'
+{"keys": {"pkgs": {"type": "names", "default": []}, "one": {"type": "name", "default": "x"},
+ "brew": {"type": "formulas", "default": []}, "theme": {"type": "theme", "default": "t"},
+ "sub": {"type": "relpath", "default": ""}, "ref": {"type": "ref", "default": ""},
+ "asset": {"type": "globs", "default": []}, "url": {"type": "url", "default": "https://x.org"},
+ "file": {"type": "path", "default": ""}, "files.*": {"type": "path", "key": "relpath"}}}
+EOF
+GP="$T_TMP/gp"; mkdir -p "$GP/in"; echo x > "$GP/in/f"; echo secret > "$T_TMP/outside"
+ok()  { printf '[guard]\n%s\n' "$1" > "$GP/profile.toml"; python3 "$REPO/lib/profile.py" check --profile "$GP" --modules "$G" >/dev/null 2>&1; echo $?; }
+bad() { printf '[guard]\n%s\n' "$1" > "$GP/profile.toml"; python3 "$REPO/lib/profile.py" check --profile "$GP" --modules "$G" 2>&1; }
+for v in 'pkgs = ["-oDPkg::Pre-Invoke::=sh -c id"]' 'pkgs = ["--nogpgcheck"]' 'pkgs = ["../x"]' 'pkgs = ["a b"]' \
+         'one = "-x"' 'brew = ["jq\"; system(\"id\"); \""]' 'brew = ["-x"]' 'theme = "../../etc/profile.d"' 'theme = "a/b"' \
+         'theme = ".."' 'theme = "-x"' 'sub = "../x"' 'sub = "/etc"' 'sub = "a/../../x"' 'ref = "--upload-pack=id"' \
+         'ref = "a..b"' 'asset = ["../x"]' 'asset = ["-x"]' 'url = "http://x.org/r"' 'file = "../outside"' \
+         'file = "/etc/passwd"' '[guard.files]
+"../.bashrc" = "in/f"'; do
+  out=$(bad "$v"); [[ $out == *"profile.toml: [guard]"* ]] || _t_fail "rejected with a plain message: $v → $out"; T_COUNT=$((T_COUNT+1))
+done
+for v in 'pkgs = ["org.gnome.Platform//47", "llama3:8b", "g++", "python3.12", "com.discordapp.Discord", "a@b.c"]' \
+         'brew = ["jq", "user/tap/formula", "python@3.12"]' 'theme = "Demo Spaced Icons"' 'theme = "Bibata-Modern Classic"' \
+         'sub = "pack_1"' 'sub = "a/b"' 'ref = "v1.2"' 'ref = "feature/x"' 'asset = ["bibata-*.tar.gz"]' \
+         'url = "https://dl.flathub.org/repo/flathub.flatpakrepo"' 'file = "in/f"' '[guard.files]
+"gtk-4.0/gtk.css" = "in/f"'; do
+  assert_eq "$(ok "$v")" "0" "accepted: $v"
+done
+ln -s "$T_TMP/outside" "$GP/in/link"; assert_contains "$(bad 'file = "in/link"')" "must be a file inside the profile folder" "a link out of the profile: rejected"
+# every real profile still validates
+for d in "$REPO/examples/profile" "$REPO/tests/fixtures/profile"; do
+  python3 "$REPO/lib/profile.py" check --profile "$d" --modules "$REPO/modules" >/dev/null 2>&1; assert_eq "$?" "0" "still valid: $d"
+done
 t_done
