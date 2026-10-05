@@ -168,6 +168,17 @@ No separate stick menu: the normal one, with that header and order. No "temporar
 - gnome-extensions: a gtk-3.0 `gtk.css` link holding only decal's block is left as an empty file, not removed.
 - Release note: records written before this version list flatpaks you already had; remove uninstalls those.
 
+### Audit batch 3 (messages and tests): deferred minors
+
+- `new --to stick:NAME`: the "plugged in:" list ends with a stray space and runs labels with spaces together (join
+  with ", "); a full path with a trailing `/` doesn't match; `stick:` alone says "no USB stick named  (".
+- `tests/test_auth.sh`: the wait for "Choose" before Ctrl+C falls through silently after 10 s; the pty test still
+  sleeps 0.5 s after "Waiting for GitHub" before reading the terminal mode.
+- `test_ui.sh` flows at the apply, enter-a-profile and stick-save steps don't check drive_ui's exit code (125 = a
+  screen never showed); their content checks catch it, less clearly.
+- The start.sh wget path of `reachable` has no test (curl is always on the test machine).
+- Release note: the menu keys moved (3 is USB, 4 Remove, 5 Logs, 6 Update when there is one).
+
 ## Part 4: Save back from a stick
 
 From the stick's menu, **Save this machine** (after Preview first): the module picker and preview, then "Save to":
