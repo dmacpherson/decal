@@ -168,6 +168,17 @@ No separate stick menu: the normal one, with that header and order. No "temporar
 - gnome-extensions: a gtk-3.0 `gtk.css` link holding only decal's block is left as an empty file, not removed.
 - Release note: records written before this version list flatpaks you already had; remove uninstalls those.
 
+### Audit batch 3 (messages and tests): deferred minors
+
+- `new --to stick:NAME`: the "plugged in:" list ends with a stray space and runs labels with spaces together (join
+  with ", "); a full path with a trailing `/` doesn't match; `stick:` alone says "no USB stick named  (".
+- `tests/test_auth.sh`: the wait for "Choose" before Ctrl+C falls through silently after 10 s; the pty test still
+  sleeps 0.5 s after "Waiting for GitHub" before reading the terminal mode.
+- `test_ui.sh` flows at the apply, enter-a-profile and stick-save steps don't check drive_ui's exit code (125 = a
+  screen never showed); their content checks catch it, less clearly.
+- The start.sh wget path of `reachable` has no test (curl is always on the test machine).
+- Release note: the menu keys moved (3 is USB, 4 Remove, 5 Logs, 6 Update when there is one).
+
 ## Part 4: Save back from a stick
 
 From the stick's menu, **Save this machine** (after Preview first): the module picker and preview, then "Save to":
@@ -175,6 +186,18 @@ where the stick's profile came from (its GitHub repo, or the stick's copy), **bo
 else…** (the profile browser). GitHub saves sign in with Decal Profile Write once per menu session (8 hours at most;
 in memory only); the stick's read key, GITHUB_TOKEN, GH_TOKEN and the PC's gh login are never used for it
 (`clean_env`). The stick's copy is updated in place.
+
+## Ideas (not planned yet)
+
+- **A preferred source order for software.** `prefer = ["flatpak", "brew", "distro"]` in the profile. Wherever a
+  module installs software, decal tries each source in that order and uses the first one that has it. It records
+  which source it used (as it records ownership today), and `remove` takes the software away from that same source.
+  Today each module fixes its own source: apps uses Flatpak, terminal and ollama use Homebrew, the rest use the
+  distro through `pkg_install`. To design:
+  - how names map between sources (a Flathub id, a formula, a package name);
+  - a per-module or per-item override;
+  - the default order, which should match today's behaviour so existing profiles don't change;
+  - how `status` reports where something came from.
 
 ## The maintainer's own stick (works today, keep it working)
 

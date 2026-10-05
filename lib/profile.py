@@ -73,6 +73,8 @@ def load_profile(pdir):
             return tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
         raise ProfileError(f"profile.toml: {e}")
+    except UnicodeDecodeError:
+        raise ProfileError("profile.toml isn't UTF-8 text")
 
 
 def own_tables(schema):

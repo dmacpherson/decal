@@ -71,4 +71,38 @@ stub gh 'case "$*" in "auth token") echo s3cret ;; *) exit 1 ;; esac'
 DECAL_STICK="$T_TMP" GH_TOKEN=s3cret "$REPO/decal" whoami >/dev/null 2>&1; assert_eq "$?" "1" "from a stick: the PC's gh login and GH_TOKEN are never used"
 stub gh 'exit 1'
 kill "$GHPID" 2>/dev/null
+# GitHub answering with a web page (a Wi-Fi login) or hanging up: a plain message, no traceback (audit batch 3)
+gh_odd() { python3 - "$1" <<'EOF'
+import os, sys, threading, http.server
+sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import github
+if sys.argv[1] == "bare":   # a timeout with no words of its own
+    def no(*a, **k): raise TimeoutError()
+    github.urllib.request.urlopen = no
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if sys.argv[1] == "drop":
+            self.close_connection = True; return   # no answer at all
+        self.send_response(200); self.send_header("Content-Type", "text/html"); self.end_headers()
+        self.wfile.write(b"<html>Sign in to this Wi-Fi</html>")
+    def log_message(self, *a): pass
+s = http.server.HTTPServer(("127.0.0.1", 0), H); threading.Thread(target=s.serve_forever, daemon=True).start()
+github.API = f"http://127.0.0.1:{s.server_port}"; os.environ["GITHUB_TOKEN"] = "s3cret"
+try:
+    github.call("GET", "/repos/tester/x"); print("no error")
+except github.Fail as e:
+    print("Fail:", e)
+EOF
+}
+export REPO
+assert_contains "$(gh_odd html 2>&1)" "Fail: couldn't reach GitHub" "a web page instead of GitHub: plain failure"
+assert_contains "$(gh_odd drop 2>&1)" "Fail: couldn't reach GitHub" "GitHub hangs up: plain failure"
+assert_contains "$(gh_odd bare 2>&1)" "couldn't reach GitHub (TimeoutError)" "a failure with no message: still says what"
+# a stick or stamp whose profile.toml isn't text: skipped, the rest still listed, no traceback (review)
+mkdir -p "$DECAL_MEDIA/Bad/.Decal/profile" "$HOME/decal-bad"; printf 'a = "\xff"\n' > "$DECAL_MEDIA/Bad/.Decal/profile/profile.toml"
+printf 'a = "\xff"\n' > "$HOME/decal-bad/profile.toml"; : > "$HOME/decal-bad/.decal-stamp"
+out=$(python3 "$P" list --json --only local 2>&1); assert_eq "$?" "0" "a profile that isn't text: listing still works"
+assert_not_contains "$out" "Traceback" "...without a traceback"; assert_contains "$out" "decal-work" "...the others still listed"
+assert_not_contains "$out" "\"Bad\"" "a stick profile that isn't text: left out"
+assert_contains "$out" "Ventoy" "...the other stick still listed"
+rm -rf "$DECAL_MEDIA/Bad" "$HOME/decal-bad"
 t_done

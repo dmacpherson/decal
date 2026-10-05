@@ -54,4 +54,14 @@ assert_contains "$out" "--yes" "...says how to go on"; assert_nofile "$T/.Decal"
 U --from "$P" --to "folder:$T_TMP/usbfolder" --yes >/dev/null; assert_file "$T_TMP/usbfolder/Decal" "folder target"
 # public check
 DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$REPO/lib/source.py" public github:me/p >/dev/null 2>&1; assert_eq "$?" "1" "public: GitHub unreachable → not known public"
+# an option without its value: says what it needs, no shell jargon (audit batch 3)
+out=$("$REPO/decal" usb --how 2>&1); assert_eq "$?" "1" "usb --how alone: fails"
+assert_contains "$out" "--how needs saved-key, sign-in, copy or latest" "...says what it needs"; assert_not_contains "$out" "parameter null" "...no shell jargon"
+out=$("$REPO/decal" --profile 2>&1); assert_contains "$out" "--profile needs a profile folder" "global option: says what it needs"; assert_not_contains "$out" "line " "...no line numbers"
+# GitHub out of reach: says so, not "HTTP 000"
+stub curl 'exit 7'; out=$("$REPO/decal" --yes use github:me/prof 2>&1); assert_contains "$out" "couldn't reach GitHub to get github:me/prof: check the internet connection" "offline: plain words"
+assert_not_contains "$out" "HTTP 000" "...no HTTP code"
+# --yes writes without asking, so it never guesses the drive (audit batch 3)
+out=$("$REPO/decal" usb --from "$P" --yes 2>&1); assert_eq "$?" "1" "--yes without --to: refused"
+assert_contains "$out" "--yes needs --to" "...says what to add"
 t_done

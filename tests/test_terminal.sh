@@ -3,7 +3,7 @@ source "$(dirname "$0")/lib.sh"
 t_setup; fixture_profile
 export DECAL_PLATFORM=fedora HOME="$T_TMP/home" XDG_CONFIG_HOME="$T_TMP/home/.config"; mkdir -p "$HOME/.bashrc.d" "$XDG_CONFIG_HOME"
 printf 'if [ -d ~/.bashrc.d ]; then for rc in ~/.bashrc.d/*; do . "$rc"; done; fi\n' > "$HOME/.bashrc"
-stub brew 'echo "brew-env NO_SUDO=${HOMEBREW_NO_SUDO:-}" >> "$STUBS/calls"; case $1 in list) exit 0;; esac; exit 0'; stub fc-cache; stub ptyxis; stub systemctl; stub curl 'exit 7'   # tests never touch the network
+stub brew 'echo "brew-env NO_SUDO=${HOMEBREW_NO_SUDO:-}" >> "$STUBS/calls"; case $1 in list) exit 0;; esac; exit 0'; stub fc-cache; stub ptyxis; stub systemctl; stub curl 'exit 7'   # tests never touch the network; the font is faked before each add (fetch.py downloads with Python, not curl)
 stub gsettings 'case $1 in get) case $3 in default-profile-uuid) echo "'"'"'abc'"'"'";; palette) echo "'"'"'gnome'"'"'";; *) echo "'"'"'x'"'"'";; esac;; list-keys) exit 0;; esac'
 mod() { mod_run terminal "$@"; }
 # carapace must use its ble.sh integration when ble.sh is loaded (plain "bash" breaks with "read: `': not a valid identifier")
@@ -47,7 +47,7 @@ assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Pt
 # a backup made by an older decal (no opacity in it) gets the current opacity added, so remove restores it too
 mkdir -p "$DECAL_USER_STATE"; echo "profile:palette='gnome'" > "$DECAL_USER_STATE/terminal-ptyxis.prev"
 sed -i 's/^app = "ptyxis"$/&\nopacity = 0.75/' "$PROFILE_DIR/profile.toml"
-mod module_add 2>/dev/null
+mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"; mod module_add 2>/dev/null
 assert_contains "$(cat "$DECAL_USER_STATE/terminal-ptyxis.prev")" "profile:opacity='x'" "older backup gains the opacity"
 assert_contains "$(calls)" "gsettings set org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/abc/ opacity 0.75" "opacity from the profile"
 mod module_remove 2>/dev/null; sed -i '/^opacity = 0.75$/d' "$PROFILE_DIR/profile.toml"
@@ -83,7 +83,7 @@ assert_contains "$(cat "$CFGD/Brewfile")" 'brew "fastfetch"' "extra brew from pr
 assert_contains "$(cat "$CFGD/bashrc.sh")" "alias ls='eza" "ls feature -> alias"
 echo "$HOME/.local/share/blesh" > "$DECAL_USER_STATE/terminal.blesh"   # pretend we downloaded ble.sh
 sed -i 's/^app = "ptyxis"/&\nfeatures.ls = false\nfeatures.autosuggest = false\nfeatures.default-terminal = false/' "$PROFILE_DIR/profile.toml"
-mod module_add 2>/dev/null; assert_eq "$?" "0" "add with features off"
+mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"; mod module_add 2>/dev/null; assert_eq "$?" "0" "add with features off"
 assert_not_contains "$(cat "$CFGD/Brewfile")" 'brew "eza"' "ls off -> no eza"
 assert_not_contains "$(cat "$CFGD/bashrc.sh")" "eza" "ls off -> no alias"
 assert_not_contains "$(cat "$CFGD/bashrc.sh")" "blesh/ble.sh" "autosuggest off -> ble.sh not loaded"
@@ -93,12 +93,12 @@ assert_contains "$(cat "$CFGD/bashrc.sh")" "starship init bash" "other features 
 mod module_remove 2>/dev/null
 # motd = false: Universal Blue's welcome message off (ujust toggle-user-motd's file); only on images that have it
 sed -i 's/^app = "ptyxis"$/&\nmotd = false/' "$PROFILE_DIR/profile.toml"
-mod module_add >/dev/null 2>&1; assert_nofile "$HOME/.config/no-show-user-motd" "no Universal Blue motd: nothing done"
+mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"; mod module_add >/dev/null 2>&1; assert_nofile "$HOME/.config/no-show-user-motd" "no Universal Blue motd: nothing done"
 mkdir -p "$DECAL_ROOT/etc/profile.d"; : > "$DECAL_ROOT/etc/profile.d/user-motd.sh"
 assert_contains "$(mod module_status 2>/dev/null)" "welcome message still shown" "status: motd still on"
-mod module_add >/dev/null 2>&1; assert_file "$HOME/.config/no-show-user-motd" "motd = false: welcome message turned off"
+mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"; mod module_add >/dev/null 2>&1; assert_file "$HOME/.config/no-show-user-motd" "motd = false: welcome message turned off"
 mod module_remove >/dev/null 2>&1; assert_nofile "$HOME/.config/no-show-user-motd" "remove turns it back on"
-: > "$HOME/.config/no-show-user-motd"; mod module_add >/dev/null 2>&1; mod module_remove >/dev/null 2>&1
+: > "$HOME/.config/no-show-user-motd"; mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"; mod module_add >/dev/null 2>&1; mod module_remove >/dev/null 2>&1
 assert_file "$HOME/.config/no-show-user-motd" "turned off by you before decal: left off"
 rm -f "$HOME/.config/no-show-user-motd"; sed -i '/^motd = false$/d' "$PROFILE_DIR/profile.toml"
 # switching fonts removes the old one; remove works from what add recorded even after the section is deleted

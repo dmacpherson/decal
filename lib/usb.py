@@ -50,7 +50,10 @@ def drives():
 
 
 def mount(device):
-    r = subprocess.run(["udisksctl", "mount", "-b", device, "--no-user-interaction"], capture_output=True, text=True)
+    try:
+        r = subprocess.run(["udisksctl", "mount", "-b", device, "--no-user-interaction"], capture_output=True, text=True)
+    except FileNotFoundError:
+        sys.exit(f"error: can't mount {device} here (no udisksctl): mount the stick, then use --to with its folder")
     if r.returncode != 0 or " at " not in r.stdout:
         sys.exit(f"error: couldn't mount {device}: {(r.stderr or r.stdout).strip()}")
     return r.stdout.strip().split(" at ", 1)[1].rstrip(".")
@@ -136,7 +139,11 @@ def main():
     elif a.cmd == "old":
         sys.exit(0 if old_layout(a.args[0]) else 1)
     else:
-        print(write(a.args[0], a.args[1]))
+        try:
+            print(write(a.args[0], a.args[1]))
+        except Exception as e:   # OSError and shutil.Error alike: plain words, never a traceback
+            why = getattr(e, "strerror", None) or str(e) or type(e).__name__
+            sys.exit(f"error: couldn't write to {a.args[0]}: {why} (is the stick full, read-only or unplugged?)")
 
 
 if __name__ == "__main__":

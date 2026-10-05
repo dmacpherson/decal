@@ -25,6 +25,8 @@ t_setup() {
   export DECAL_ROOT="$T_TMP/root" DECAL_STATE="$T_TMP/state"
   export DECAL_USER_STATE="$T_TMP/ustate" DECAL_SUDO=""
   export DECAL_ALLOW_HTTP_LOCAL=1   # the fake servers are http on 127.0.0.1; everything else stays https-only
+  # GitHub a test didn't fake is unreachable (port 9 refuses at once): the suite never goes out to the internet
+  export DECAL_GITHUB=http://127.0.0.1:9 DECAL_GITHUB_API=http://127.0.0.1:9
   export STUBS="$T_TMP/stubs"; mkdir -p "$STUBS" "$DECAL_ROOT"
   : > "$STUBS/calls"; export PATH="$STUBS:$PATH"
 }

@@ -5,7 +5,7 @@ REPO is NAME (on your account) or OWNER/NAME. A missing repo is created, private
 holds exactly the folder (files no longer in it are gone from the new commit; history keeps them). The token comes
 from GITHUB_TOKEN (never the command line); DECAL_GITHUB_API points elsewhere (tests). Prints the repo's
 OWNER/NAME on success. github.py exists REPO: exit 0 when it exists, 1 when not; github.py whoami: the key's login."""
-import argparse, base64, json, os, sys, urllib.error, urllib.request
+import argparse, base64, http.client, json, os, sys, urllib.error, urllib.request
 
 API = os.environ.get("DECAL_GITHUB_API", "https://api.github.com").rstrip("/")
 
@@ -24,7 +24,10 @@ def call(method, path, body=None, ok=(200, 201)):
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             data = r.read()
-            return r.status, (json.loads(data) if data else {})
+            try:
+                return r.status, (json.loads(data) if data else {})
+            except ValueError:   # a web page, not GitHub (a Wi-Fi login)
+                raise Fail("couldn't reach GitHub (something else answered: a Wi-Fi login page?)")
     except urllib.error.HTTPError as e:
         if e.code in ok:
             return e.code, {}
@@ -35,7 +38,9 @@ def call(method, path, body=None, ok=(200, 201)):
             pass
         return e.code, {"message": msg}
     except urllib.error.URLError as e:
-        raise Fail(f"could not reach GitHub ({e.reason})")
+        raise Fail(f"couldn't reach GitHub ({e.reason})")
+    except (OSError, http.client.HTTPException) as e:   # the connection dropped midway
+        raise Fail(f"couldn't reach GitHub ({str(e) or type(e).__name__})")
 
 
 def need(res, what):

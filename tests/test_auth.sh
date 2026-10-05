@@ -39,15 +39,15 @@ assert_not_contains "$L" "On this computer                         On your phone
 assert_contains "$L" "(opened in your browser)" "browser note"
 assert_contains "$L" "(copied to your clipboard)" "clipboard note"
 
-# the pre-filled token page
-assert_eq "$(python3 "$A" token-url --need read --days 90)" \
+# the pre-filled token page (GitHub's own addresses: nothing is fetched here)
+assert_eq "$(env -u DECAL_GITHUB python3 "$A" token-url --need read --days 90)" \
   "https://github.com/settings/personal-access-tokens/new?name=Decal&description=decal%3A+read+your+profile&expires_in=90&contents=read" "read token page"
-assert_eq "$(python3 "$A" token-url --need write --days none)" \
+assert_eq "$(env -u DECAL_GITHUB python3 "$A" token-url --need write --days none)" \
   "https://github.com/settings/personal-access-tokens/new?name=Decal&description=decal%3A+save+your+profile&expires_in=none&contents=write&administration=write" "write token page, never expires"
 python3 "$A" token-url --need read --days 400 >/dev/null 2>&1; assert_eq "$?" "2" "expiry over 366 days refused"
 
 # the apps: from the environment ("CLIENT_ID:slug"), else built in (none yet: no sign-in offered)
-assert_eq "$(DECAL_GITHUB_APP_READ=Iv1.abc:decal python3 "$A" install-url --need read)" "https://github.com/apps/decal/installations/new" "install page"
+assert_eq "$(env -u DECAL_GITHUB DECAL_GITHUB_APP_READ=Iv1.abc:decal python3 "$A" install-url --need read)" "https://github.com/apps/decal/installations/new" "install page"
 assert_eq "$(DECAL_GITHUB_APP_WRITE=Iv1.w:decal-write py 'print(auth.app("write"))')" "('Iv1.w', 'decal-write')" "write app from the environment"
 assert_eq "$(DECAL_GITHUB_APP_READ=junk py 'print(auth.app("read"))')" "None" "a malformed setting: no app"
 # a fake GitHub (localhost): checking a key
@@ -142,6 +142,9 @@ assert_contains "$(cat "$T_TMP/screen")" 'choose "All repositories"' "a repo dec
 printf 'pending\n' > "$G/device_script"
 assert_eq "$(ask '1\nt\ns3cret\n' me/prof --need read)" "s3cret" "t while waiting: paste a token instead"
 assert_eq "$(DECAL_GITHUB_APP_READ= ask '1\n\ns3cret\n' me/prof --need read)" "s3cret" "no app configured: 1 is make a token"
+# how long: an answer that isn't 1-4 asks again instead of guessing (audit batch 3)
+assert_eq "$(DECAL_GITHUB_APP_READ= ask '1\n9\n4\ns3cret\n' me/prof --need read)" "s3cret" "a wrong length: asked again"
+assert_contains "$(cat "$T_TMP/screen")" "expires_in=none" "...and the second answer is used"
 assert_not_contains "$(cat "$T_TMP/screen")" "Sign in with GitHub" "...and signing in isn't offered"
 
 # no terminal: fails with how to fix it; Ctrl+C: exits 130, no traceback
@@ -149,10 +152,11 @@ out=$(DECAL_TTY_IN=/nonexistent python3 "$A" get me/prof --need read 2>&1); asse
 assert_contains "$out" "set GITHUB_TOKEN or log in with gh auth login" "...and says how to fix it"
 mkfifo "$T_TMP/fifo"; ( sleep 30 > "$T_TMP/fifo" ) & HOLD=$!
 # (bash starts background jobs with Ctrl+C ignored; put Python's handler back, as a foreground run has it)
-DECAL_TTY_IN="$T_TMP/fifo" DECAL_TTY_OUT="$T_TMP/screen" python3 -c 'import runpy, signal, sys
+: > "$T_TMP/screen"; DECAL_TTY_IN="$T_TMP/fifo" DECAL_TTY_OUT="$T_TMP/screen" python3 -c 'import runpy, signal, sys
 signal.signal(signal.SIGINT, signal.default_int_handler); sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' \
   "$A" get me/prof --need read > /dev/null 2> "$T_TMP/err" & P=$!
-sleep 1; kill -INT "$P"; wait "$P"; assert_eq "$?" "130" "Ctrl+C: exit 130"
+for _ in $(seq 100); do grep -q "Choose" "$T_TMP/screen" 2>/dev/null && break; sleep 0.1; done   # at the question
+kill -INT "$P"; wait "$P"; assert_eq "$?" "130" "Ctrl+C: exit 130"
 assert_not_contains "$(cat "$T_TMP/err")" "Traceback" "Ctrl+C: no traceback"; kill "$HOLD" 2>/dev/null
 # a real terminal (a pty): key-at-a-time mode while waiting, Esc back to the choice, echo restored afterwards
 echo hold > "$G/device_script"

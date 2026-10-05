@@ -44,9 +44,13 @@ assert_contains "$out" "already here" "...says so"
 echo '[wallpaper]' >> "$ST/.Decal/profile/profile.toml"
 out=$(S); assert_contains "$(calls)" "decal --no-update --yes use $XDG_CACHE_HOME/decal/stick-profile.tar.gz" "a changed profile on the stick: used (decal keeps a backup)"
 rm -rf "$A"
-# a saved key that no longer works
-conf profile=github:me/prof key=saved decal=copy; : > "$STUBS/use-fails"
+# a saved key that no longer works (GitHub answers, the key doesn't get in)
+conf profile=github:me/prof key=saved decal=copy; : > "$STUBS/use-fails"; stub curl 'echo ok'
 out=$(S); assert_eq "$?" "1" "a dead key: fails"; assert_contains "$out" "The key on this stick no longer works" "...says what to do"
+# offline: the key isn't blamed (audit batch 3)
+stub curl 'exit 7'
+out=$(S); assert_eq "$?" "1" "offline with a saved key: fails"; assert_contains "$out" "Couldn't reach GitHub" "...says it's the connection"
+assert_not_contains "$out" "no longer works" "...not the key"
 rm "$STUBS/use-fails"
 # started outside a terminal: reopens in one
 conf profile=github:me/prof key=ask decal=copy; stub ptyxis

@@ -123,4 +123,8 @@ ln -s "$T_TMP/outside" "$GP/in/link"; assert_contains "$(bad 'file = "in/link"')
 for d in "$REPO/examples/profile" "$REPO/tests/fixtures/profile"; do
   python3 "$REPO/lib/profile.py" check --profile "$d" --modules "$REPO/modules" >/dev/null 2>&1; assert_eq "$?" "0" "still valid: $d"
 done
+# a profile.toml that isn't text (UTF-8): a plain message, no traceback (audit batch 3)
+NP="$T_TMP/notext"; mkdir -p "$NP"; printf 'a = "\xff"\n' > "$NP/profile.toml"
+out=$(python3 "$REPO/lib/profile.py" check --profile "$NP" --modules "$M" 2>&1); assert_eq "$?" "2" "not UTF-8: refused"
+assert_contains "$out" "profile.toml isn't UTF-8 text" "...says why"; assert_not_contains "$out" "Traceback" "...without a traceback"
 t_done

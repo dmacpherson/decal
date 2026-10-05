@@ -35,6 +35,12 @@ online() {
   else return 1; fi
   [[ -n $s ]] && DECAL_NO_MENU=1 bash -c "$s" decal-install
 }
+reachable() {   # GitHub answers at all (any answer counts: a dead key still gets one)
+  local u=${DECAL_GITHUB_API:-https://api.github.com}
+  if command -v curl >/dev/null; then curl -sS --proto =https --proto-redir =https --connect-timeout 10 --max-time 20 -o /dev/null "$u" 2>/dev/null
+  elif command -v wget >/dev/null; then local rc=0; wget -q --spider --timeout=15 "$u" 2>/dev/null || rc=$?; (( rc == 0 || rc == 8 ))   # 8: GitHub answered (an error still counts)
+  else return 1; fi
+}
 from_copy() {   # 0 installed · 2 no copy · fails (exits) when damaged
   local c=$HERE/decal.tar.gz t rc
   [[ -f $c && -f $c.sha256 ]] || return 2
@@ -72,8 +78,10 @@ case $PROFILE in
   *)
     if [[ $KEY == saved ]]; then
       GITHUB_TOKEN=$(tr -d '[:space:]' < "$HERE/key" 2>/dev/null); export GITHUB_TOKEN
-      "$DECAL" --no-update --yes use "$PROFILE" \
-        || fail "The key on this stick no longer works (revoked or expired): run decal usb on your own machine to give it a new one, or remove .Decal/key to sign in each time."
+      if ! "$DECAL" --no-update --yes use "$PROFILE"; then   # the key is only to blame when GitHub can be reached
+        reachable || fail "Couldn't reach GitHub to get $PROFILE: connect to the internet and try again."
+        fail "The key on this stick no longer works (revoked or expired): run decal usb on your own machine to give it a new one, or remove .Decal/key to sign in each time."
+      fi
     else
       "$DECAL" --no-update --yes use "$PROFILE" || fail "Couldn't get $PROFILE (see above)."
     fi ;;

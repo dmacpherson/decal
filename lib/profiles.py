@@ -63,7 +63,7 @@ def find_local():
                 continue
             try:
                 text = open(os.path.join(p, "profile.toml")).read()
-            except OSError:
+            except (OSError, UnicodeDecodeError):   # unreadable, or not text: not a profile to list
                 continue
         elif p.endswith(source.ARCHIVES):
             text = toml_in_archive(p)
@@ -85,7 +85,7 @@ def find_sticks():
         p = os.path.join(d, ".Decal", "profile")
         try:
             text = open(os.path.join(p, "profile.toml")).read()
-        except OSError:
+        except (OSError, UnicodeDecodeError):   # a stick is anyone's: unreadable or not text is skipped
             continue
         n = count(text)
         if n is not None:

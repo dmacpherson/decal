@@ -34,7 +34,7 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
                              ~/decal-$USER.tar.gz, or PATH (a .tar.gz, or a folder); -dr / --dry-run shows it
                              without saving; -gh / --github also puts it in a private GitHub repo (REPO, or
                              decal-$USER), one commit per stamp (--public: a public repo)
-  new NAME [--from this-machine|PROFILE|empty] [--to github|file[:PATH]|stick] [--public] [--use]
+  new NAME [--from this-machine|PROFILE|empty] [--to github|file[:PATH]|stick[:NAME]] [--public] [--use]
                              a new profile: a stamp of this machine (default), a copy of PROFILE, or a starter
                              with everything commented out; on GitHub (default: a private repo), in a file
                              (~/NAME.tar.gz) or on the USB stick. Never overwrites. --use: make it active
@@ -50,6 +50,9 @@ EOF
   exit 1
 }
 
+# val OPTION VALUE WHAT : an option given without its value says what it needs (not bash's "parameter null")
+val() { [[ -n $2 ]] || die "$1 needs $3"; }
+
 ORIG_ARGS=("$@")
 args=(); OPT_PROFILE=""
 while [[ $# -gt 0 ]]; do
@@ -57,9 +60,9 @@ while [[ $# -gt 0 ]]; do
     --dry-run|-dr) export LS_DRY_RUN=1 ;;
     -v|--verbose) export DECAL_VERBOSE=1 ;;
     -f|--force) export DECAL_FORCE=1 ;;
-    --profile) OPT_PROFILE=${2:?--profile needs a directory}; shift ;;
-    --tags) DECAL_TAGS=${2:?--tags needs a tag list, e.g. --tags dev}; export DECAL_TAGS; shift ;;
-    --only) DECAL_ONLY=${2:?--only needs a tag}; export DECAL_ONLY; shift ;;
+    --profile) val "$1" "${2:-}" "a profile folder"; OPT_PROFILE=$2; shift ;;
+    --tags) val "$1" "${2:-}" "a tag list, e.g. --tags dev"; DECAL_TAGS=$2; export DECAL_TAGS; shift ;;
+    --only) val "$1" "${2:-}" "a tag"; DECAL_ONLY=$2; export DECAL_ONLY; shift ;;
     --no-update) export DECAL_NO_UPDATE=1 ;;
     -y|--yes) export DECAL_YES=1 ;;
     -h|--help) usage ;;
@@ -369,14 +372,14 @@ do_stamp() {
   info "on GitHub: https://github.com/$r"
   info "on another machine: curl -fsSL $INSTALL_URL | bash -s -- github:$r"
 }
-# do_new NAME [--from this-machine|PROFILE|empty] [--to github|file[:PATH]|stick] [--public] [--use] : a new profile.
+# do_new NAME [--from this-machine|PROFILE|empty] [--to github|file[:PATH]|stick[:NAME]] [--public] [--use] : a new profile.
 # Never overwrites: an existing repo, file or stick profile stops it before any work.
 do_new() {
   local name="" from=this-machine to=github public=0 use=0 dest="" repo="" tok="" src stage sticks n a
   while (( $# )); do
     case $1 in
-      --from) from=${2:?--from needs this-machine, a profile, or empty}; shift ;;
-      --to) to=${2:?--to needs github, file, file:PATH or stick}; shift ;;
+      --from) val "$1" "${2:-}" "this-machine, a profile, or empty"; from=$2; shift ;;
+      --to) val "$1" "${2:-}" "github, file, file:PATH, stick or stick:NAME"; to=$2; shift ;;
       --public) public=1 ;;
       --use) use=1 ;;
       -*) die "new: unknown option $1" ;;
@@ -388,18 +391,21 @@ do_new() {
     github) ;;
     file) dest="$HOME/$name.tar.gz" ;;
     file:*) dest=${to#file:}; dest=${dest/#\~/$HOME} ;;
-    stick)
+    stick|stick:*)
       mapfile -t sticks < <(python3 "$LS_REPO/lib/profiles.py" sticks | sed '/^$/d')
       (( ${#sticks[@]} )) || die "no USB stick found: plug in a USB stick and try again"
-      if (( ${#sticks[@]} == 1 )); then dest="${sticks[0]}/.Decal/profile"
+      if [[ $to == stick:* ]]; then   # named: no question
+        for a in "${sticks[@]}"; do if [[ $(basename "$a") == "${to#stick:}" || $a == "${to#stick:}" ]]; then dest="$a/.Decal/profile"; fi; done
+        [[ -n $dest ]] || die "no USB stick named ${to#stick:} (plugged in: $(for a in "${sticks[@]}"; do printf '%s ' "$(basename "$a")"; done))"
+      elif (( ${#sticks[@]} == 1 )); then dest="${sticks[0]}/.Decal/profile"
       else
-        { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "several USB sticks: unplug the others"
+        { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "several USB sticks: say which with --to stick:NAME"
         n=0; for a in "${sticks[@]}"; do n=$((n + 1)); printf '  %s) %s\n' "$n" "$(basename "$a")" >> "${DECAL_TTY_OUT:-/dev/tty}"; done
         printf 'Which stick? ' >> "${DECAL_TTY_OUT:-/dev/tty}"; IFS= read -r a < "${DECAL_TTY_IN:-/dev/tty}"
         if ! [[ $a =~ ^[0-9]+$ ]] || (( a < 1 || a > ${#sticks[@]} )); then die "no stick chosen"; fi
         dest="${sticks[$((a - 1))]}/.Decal/profile"
       fi ;;
-    *) die "new: --to github, file, file:PATH or stick" ;;
+    *) die "new: --to github, file, file:PATH, stick or stick:NAME" ;;
   esac
   if [[ -n $dest && -e $dest ]]; then die "$dest already exists: use decal stamp to update it"; fi
   if [[ $to == github ]]; then
@@ -422,7 +428,7 @@ do_new() {
       GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" push "$stage" "$repo" "${pub[@]}" --message "decal new: $name" >/dev/null \
         || die "could not create github:$repo"
       src="github:$repo" ;;
-    stick) mkdir -p "$dest"; cp -a "$stage/." "$dest/"; : > "$dest/.decal-stamp"; src=$dest ;;
+    stick|stick:*) mkdir -p "$dest"; cp -a "$stage/." "$dest/"; : > "$dest/.decal-stamp"; src=$dest ;;
     *) mkdir -p "$(dirname "$dest")"; tar -czf "$dest" -C "$stage" .; src=$dest ;;
   esac
   info "new profile: $src"
@@ -449,8 +455,11 @@ do_usb() {
   local prof="" how="" dmode=newest arm=0 to="" yes=0 target files key="" kind src ver bin how_text a res
   while (( $# )); do
     case $1 in
-      --from) prof=${2:?}; shift ;; --how) how=${2:?}; shift ;; --decal) dmode=${2:?}; shift ;;
-      --arm) arm=1 ;; --to) to=${2:?}; shift ;; --yes|-y) yes=1 ;;
+      --from) val "$1" "${2:-}" "a profile (a folder, a link or owner/name)"; prof=$2; shift ;;
+      --how) val "$1" "${2:-}" "saved-key, sign-in, copy or latest"; how=$2; shift ;;
+      --decal) val "$1" "${2:-}" "newest, copy or online"; dmode=$2; shift ;;
+      --to) val "$1" "${2:-}" "a mount point, a device, or folder[:PATH]"; to=$2; shift ;;
+      --arm) arm=1 ;; --yes|-y) yes=1 ;;
       *) die "usb: unknown option $1" ;;
     esac; shift
   done
@@ -461,7 +470,8 @@ do_usb() {
     folder) target="$HOME/decal-usb" ;;
     folder:*) target=${to#folder:}; target=${target/#\~/$HOME} ;;
     /dev/*) target=$(python3 "$LS_REPO/lib/usb.py" mount "$to") || exit 1 ;;
-    "") mapfile -t a < <(python3 "$LS_REPO/lib/usb.py" drives | awk -F'\t' '$3 != "" {print $3}')
+    "") (( ! yes )) || die "usb: --yes needs --to (which drive to write: a mount point, a device, or folder)"
+        mapfile -t a < <(python3 "$LS_REPO/lib/usb.py" drives | awk -F'\t' '$3 != "" {print $3}')
         (( ${#a[@]} == 1 )) || die "usb: which drive? --to a mount point, a device, or folder (decal usb in a terminal asks)"
         target=${a[0]} ;;
     *) [[ -d $to ]] || die "usb: $to isn't a folder or a mounted drive"; target=$to ;;
@@ -525,7 +535,7 @@ do_usb() {
     printf 'Write these to %s? [Y/n] ' "$target" >> "${DECAL_TTY_OUT:-/dev/tty}"; IFS= read -r a < "${DECAL_TTY_IN:-/dev/tty}" || a=n
     [[ ${a:-y} == [Yy]* ]] || die "nothing written"
   fi
-  res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || die "couldn't write to $target"
+  res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || exit 1   # usb.py says why
   info "done: double-click Decal on any Linux PC (Ctrl+H shows the .Decal folder)"
   if (( arm )); then info "ARM machines: double-click .Decal/Decal-ARM"; fi
   if [[ $fs == vfat || $fs == msdos ]]; then warn "this stick is FAT32: double-clicking Decal won't work on it; start it with: bash .Decal/start.sh (or use an exFAT stick)"; fi
@@ -573,7 +583,8 @@ gh_tarball() {
     fi
     case $code in
       401|403|404) die "github:$1 not found or not allowed (private? set GITHUB_TOKEN, or log in with gh auth login)" ;;
-      *) die "could not download github:$1 (HTTP $code)" ;;
+      000) die "couldn't reach GitHub to get github:$1: check the internet connection" ;;
+      *) die "could not download github:$1 (GitHub answered $code)" ;;
     esac
   done
 }
