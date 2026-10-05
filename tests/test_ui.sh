@@ -164,4 +164,12 @@ assert_eq "$(py '(lambda s: (ui.latest(s, 1, "old"), s["gh"])[-1])({"run": 2, "g
 # decal usb in a terminal: the USB steps, then back to the shell (not into the full menu) (minors)
 python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "$REPO/decal" usb -- "UNTIL:which profile" ESC; assert_eq "$?" "0" "decal usb: Esc at the first step ends it"
 assert_not_contains "$(cat "$T_TMP/screen")" "stick it on" "...without opening the full menu"
+# what decal's answers mean to the menu (pure: tested without a terminal)
+assert_eq "$(py 'ui.parse_tags("==> header\ndev        onlydev base \nwork       w\n")')" "(['dev', 'work'], {'onlydev': ['dev'], 'base': ['dev'], 'w': ['work']})" "parse_tags: tags and each module's tags"
+assert_eq "$(py 'ui.parse_status("apps               installed\nghost              installed\nnote: hi\nbrave              partial (x)\n", {"apps", "brave"})')" "{'apps': 'installed', 'brave': 'partial (x)'}" "parse_status: known modules only"
+# ticking in the picker: a tag (apply) brings its modules and takes away those only it had; a module on its own
+T='ui.toggle("tag", "dev", set(), {"base"}, "apply", ["base", "onlydev"], {"base"}, {"onlydev": ["dev"]})'
+assert_eq "$(py "list(map(sorted, $T))")" "[['dev'], ['base', 'onlydev']]" "toggle: a tag on brings its module"
+assert_eq "$(py 'sorted(map(sorted, ui.toggle("tag", "dev", {"dev"}, {"base", "onlydev"}, "apply", ["base", "onlydev"], {"base"}, {"onlydev": ["dev"]})))')" "[[], ['base']]" "toggle: off again takes it away"
+assert_eq "$(py 'sorted(map(sorted, ui.toggle("mod", "base", set(), {"base"}, "apply", ["base"], {"base"}, {})))')" "[[], []]" "toggle: a module on its own"
 t_done

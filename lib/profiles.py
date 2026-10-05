@@ -5,7 +5,9 @@
                                                      (~/decal-* stamps), USB sticks (.Decal/profile), recently used
   profiles.py sticks                                 mounted drives (one per line)
   profiles.py empty DIR                              a starter profile: examples/profile, every section commented out
-  profiles.py readme DIR NAME FROM                   DIR/README.md for a profile called NAME, made from FROM
+  profiles.py readme DIR NAME FROM [--source S] [--notes FILE]   DIR/README.md for a profile called NAME, made from
+                                                     FROM (this-machine, empty, stamp or a source); S: how to get it
+  profiles.py usual-stamp USER                       where decal stamp saves by default
   profiles.py active                                 the active profile's source (decal and the menu ask this)
 
 GitHub uses the key in GITHUB_TOKEN (decal passes the one it found); none: a sign-in row instead. Never asks."""
@@ -257,22 +259,31 @@ def empty(dest):
         f.write("# A new decal profile: uncomment the sections you want, then decal apply this.\n" + "\n".join(out) + "\n")
 
 
-def readme(dest, name, made_from):
-    how = {"this-machine": "stamped from a machine with `decal new`", "empty": "started empty with `decal new`"}.get(
+def readme(dest, name, made_from, source="", notes=""):
+    """DEST/README.md for a profile (decal new, decal stamp): what it is, how to put it on a machine, and what's in it
+    (NOTES: a file of lines, from a stamp)."""
+    how = {"this-machine": "stamped from a machine with `decal new`", "empty": "started empty with `decal new`",
+           "stamp": f"saved by `decal stamp`: what was changed from the defaults on {datetime.date.today()}"}.get(
         made_from, f"copied from {made_from} with `decal new`")
     fence = "`" * 3
+    text = (f"# {name}\n\nA [decal](https://github.com/dmacpherson/decal) profile, {how}.\n\n"
+            f"## Put it on a machine\n\n{fence}bash\ncurl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- "
+            f"{source or name}\n{fence}\n")
+    if not source:
+        text += f"\n(Use `owner/{name}` for a GitHub repo, or the path of a file.)\n"
+    if notes:
+        text += "\n## In it\n\n" + "".join(f"- {l}\n" for l in open(notes).read().splitlines() if l.strip())
     with open(os.path.join(dest, "README.md"), "w") as f:
-        f.write(f"# {name}\n\nA [decal](https://github.com/dmacpherson/decal) profile, {how}.\n\n"
-                f"## Put it on a machine\n\n{fence}bash\ncurl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- "
-                f"{name}\n{fence}\n\n(Use `owner/{name}` for a GitHub repo, or the path of a file.)\n")
+        f.write(text)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["list", "sticks", "empty", "readme", "active"])
+    ap.add_argument("cmd", choices=["list", "sticks", "empty", "readme", "active", "usual-stamp"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--only", choices=["local", "github"], default="")
+    ap.add_argument("--source", default=""); ap.add_argument("--notes", default="")
     a = ap.parse_args()
     if a.cmd == "list":
         d = listing(a.only)
@@ -283,8 +294,10 @@ def main():
         print("\n".join(sticks()))
     elif a.cmd == "empty":
         empty(a.args[0])
+    elif a.cmd == "usual-stamp":
+        print(usual_stamp(a.args[0]))
     else:
-        readme(*a.args[:3])
+        readme(*a.args[:3], source=a.source, notes=a.notes)
 
 
 if __name__ == "__main__":

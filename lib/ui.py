@@ -8,7 +8,7 @@ import curses, glob, json, os, re, subprocess, sys, tempfile, threading
 import profiles, usb  # noqa: E402  (lib/, next to this file)
 from profiles import tilde  # noqa: E402
 from menu_logic import (MENU, STICK_ITEMS, apply_cmds, browser_rows, clean_env, drive_label, label,  # noqa: E402,F401
-                        latest, pick_row, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header,
+                        latest, parse_status, parse_tags, pick_row, toggle, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header,
                         usb_cmd)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -61,21 +61,11 @@ class Data:
             self.version = "(git checkout)"
         self.profile = has_profile()
         self.where = tilde(os.path.realpath(PROFILE)) if self.profile else ""
-        self.tags, self.mod_tags = [], {}
-        if self.profile:
-            for line in decal("tags")[1].splitlines():
-                parts = line.split()
-                if len(parts) >= 2 and not line.startswith("==>"):
-                    self.tags.append(parts[0])
-                    for m in parts[1:]:
-                        self.mod_tags.setdefault(m, []).append(parts[0])
+        self.tags, self.mod_tags = parse_tags(decal("tags")[1]) if self.profile else ([], {})
         self.base = set(sections("")) if self.profile else set()
         self.all = set(sections("all")) if self.profile else set()
-        self.status = {}
-        for line in decal("--tags", "all", "status")[1].splitlines() if self.profile else decal("status")[1].splitlines():
-            m = re.match(r"^(\S+)\s{2,}(.*)$", line)
-            if m and os.path.isdir(os.path.join(MODULES, m.group(1))):
-                self.status[m.group(1)] = m.group(2)
+        known = {m for m in os.listdir(MODULES) if os.path.isdir(os.path.join(MODULES, m))}
+        self.status = parse_status(decal("--tags", "all", "status")[1] if self.profile else decal("status")[1], known)
         try:
             self.last_tags = [t for t in open(os.path.join(STATE, "tags")).read().strip().split(",") if t in self.tags]
         except OSError:   # never applied with the menu's memory: the tags whose modules are already here
@@ -295,13 +285,7 @@ class UI:
             if k == "up": i = (i - 1) % len(items)
             elif k == "down": i = (i + 1) % len(items)
             elif k == "space":
-                if kind == "tag":
-                    on_t ^= {name}
-                    if mode == "apply":   # a tag brings its modules in, and takes away ones only it had
-                        on_m |= {m for m in rows if name in d.mod_tags.get(m, []) and self.available(m, on_t)}
-                        on_m = {m for m in on_m if self.available(m, on_t)}
-                else:   # a module only a tag has can be ticked on its own (decal add MODULE uses its tag's settings)
-                    on_m ^= {name}
+                on_t, on_m = toggle(kind, name, on_t, on_m, mode, rows, d.base, d.mod_tags)
             elif k == "a":
                 on_m = {m for m in rows if mode != "apply" or self.available(m, on_t)}
             elif k == "n":

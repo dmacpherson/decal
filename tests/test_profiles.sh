@@ -116,4 +116,12 @@ t.close(); z = gzip.compress(buf.getvalue()); open(sys.argv[1], "wb").write(z[:l
 PY
 assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import profiles; print(profiles.toml_in_archive('$HOME/decal-tail.tar.gz'))")" "[apps]" "the top profile.toml, without reading the rest"
 rm -f "$HOME/decal-tail.tar.gz"
+# one default place for a stamp (decal stamp and the menu both ask here)
+assert_eq "$(python3 "$P" usual-stamp me)" "$HOME/decal-me.tar.gz" "usual-stamp: ~/decal-USER.tar.gz"
+# one README for new profiles and stamps: what it is, how to put it on a machine, and (for a stamp) what's in it
+R="$T_TMP/rd"; mkdir -p "$R"; printf 'apps: 3 flatpaks\nicons: Papirus\n' > "$T_TMP/notes"
+python3 "$P" readme "$R" "My Linux setup" stamp --source github:me/decal-me --notes "$T_TMP/notes"
+assert_contains "$(cat "$R/README.md")" "bash -s -- github:me/decal-me" "readme: the install line with the source"
+assert_contains "$(cat "$R/README.md")" "- icons: Papirus" "readme: what's in a stamp"
+assert_contains "$(cat "$R/README.md")" "saved by \`decal stamp\`" "readme: says how it was made"
 t_done
