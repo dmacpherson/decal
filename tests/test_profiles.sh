@@ -61,5 +61,11 @@ J2=$(GITHUB_TOKEN=s3cret python3 "$REPO/lib/github.py" push "$T_TMP/s" tester/fr
 assert_contains "$(cat "$G/topics.log" 2>/dev/null)" "tester/fresh decal-profile" "push: the decal-profile topic set"
 GITHUB_TOKEN=s3cret python3 "$REPO/lib/github.py" exists tester/fresh; assert_eq "$?" "0" "exists: yes"
 GITHUB_TOKEN=s3cret python3 "$REPO/lib/github.py" exists tester/nope; assert_eq "$?" "1" "exists: no"
+# decal whoami: the login of whatever key decal would use (GITHUB_TOKEN, GH_TOKEN, gh)
+assert_eq "$(GH_TOKEN=s3cret "$REPO/decal" whoami 2>/dev/null)" "tester" "whoami: from GH_TOKEN too"
+stub gh 'case "$*" in "auth token") echo s3cret ;; *) exit 1 ;; esac'
+assert_eq "$("$REPO/decal" whoami 2>/dev/null)" "tester" "whoami: from a gh login"
+stub gh 'exit 1'
+"$REPO/decal" whoami >/dev/null 2>&1; assert_eq "$?" "1" "whoami: no key: fails quietly"
 kill "$GHPID" 2>/dev/null
 t_done

@@ -27,6 +27,7 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
                              link to an archive, a git URL. Someone else's profile: decal asks first (--yes skips)
                              (never removes anything; use remove, or [apps] remove-* lists)
   use    <profile source>    make it the active profile without applying anything
+  whoami                     the GitHub account of the key decal would use
   profiles [--json] [--sign-in]  the profiles decal can see: yours on GitHub, stamps on this machine, USB
                              sticks, recently used (--sign-in: sign in to GitHub first if there's no key)
   stamp  [MODULE...] [PATH] [-gh [REPO]] save this machine's setup (what's changed from default) as a profile:
@@ -250,6 +251,16 @@ run_fancy() {
   if (( rc == 0 )); then printf '\033[32m✓\033[0m %s %s \033[2m%ss\033[0m\n' "$action" "$m" "$((SECONDS - start))"
   else printf '\033[31m✗\033[0m %s %s\n' "$action" "$m"; tail -n 15 "$out" | sed 's/^/    /'; fi
   return "$rc"
+}
+# remember_active : after a successful add/apply, the active profile's source goes in the recently-used list (so
+# it counts as yours from now on). Only the active profile at $PROFILE_HOME, never a dry run.
+remember_active() {
+  [[ ${LS_DRY_RUN:-0} != 1 && $PROFILE_DIR == "$PROFILE_HOME" ]] || return 0
+  local src=""
+  if [[ -L $PROFILE_HOME ]]; then src=$(readlink -f "$PROFILE_HOME")
+  elif [[ -r $PROFILE_HOME/.decal-source ]]; then src=$(cat "$PROFILE_HOME/.decal-source")
+  elif [[ -d $PROFILE_HOME/.git ]]; then src=$(git -C "$PROFILE_HOME" remote get-url origin 2>/dev/null || true); fi
+  if [[ -n $src ]]; then python3 "$LS_REPO/lib/source.py" remember "$src" || true; fi
 }
 # the tags this machine's last add/apply used (the menu pre-ticks them; the command line never reads them)
 remember_tags() { if [[ ${LS_DRY_RUN:-0} != 1 ]]; then mkdir -p "$LS_USER_STATE"; printf '%s\n' "${DECAL_TAGS:-}" > "$LS_USER_STATE/tags"; fi; }
@@ -488,11 +499,12 @@ stage_profile() {
   python3 "$LS_REPO/lib/profile.py" check --profile "$STAGE_DIR" --modules "$MODULES_DIR" \
     || die "$STAGE_SRC: the profile is invalid (the active profile was not changed)"
 }
-# set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: only staged). A replaced real
-# folder is kept as a dated backup, except a newer download of the same GitHub repo or link.
-set_profile() {
+# set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: only staged)
+set_profile() { stage_profile "$1"; activate_staged; }
+# activate_staged : the profile stage_profile got (STAGE_*) becomes the active one. A replaced real folder is kept as
+# a dated backup, except a newer download of the same GitHub repo or link.
+activate_staged() {
   local t=$PROFILE_HOME
-  stage_profile "$1"
   _aside() {  # move the active profile out of the way (a symlink is just dropped)
     local b
     if [[ -L $t ]]; then rm -f "$t"
@@ -592,7 +604,7 @@ case $cmd in
         die "$m is not in your profile (add a [$m] section to $PROFILE_DIR/profile.toml)"
       done
       do_modules add "${mods[@]}"
-      remember_tags
+      remember_tags; remember_active
     elif [[ -n ${DECAL_ONLY:-} ]]; then
       # remove --only TAG: a module that is only in the profile through the tag goes; one that is there anyway
       # keeps its own settings and only loses what the tag adds to its lists (if it can take that away)
@@ -616,9 +628,9 @@ case $cmd in
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
   apply)
     [[ $# -ge 1 ]] || usage
-    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then stage_profile "$1"; trust "$STAGE_SRC"; fi
-    set_profile "$1"; export PROFILE_DIR; shift
-    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi
+    stage_profile "$1"
+    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then trust "$STAGE_SRC"; fi
+    activate_staged; export PROFILE_DIR; shift   # exactly the copy that was previewed: nothing downloaded again
     pyprof check || die "$PROFILE_DIR/profile.toml is invalid (nothing was added)"
     if (( $# )); then   # apply SOURCE MODULE...: that profile, just those modules (as decal add would)
       set +e; DECAL_PROFILE=$PROFILE_DIR "$LS_REPO/decal" add "$@"; rc=$?; set -e
@@ -626,7 +638,7 @@ case $cmd in
     fi
     mapfile -t mods < <(profile_modules | only_filter)
     do_modules add "${mods[@]}"
-    remember_tags
+    remember_tags; remember_active
     tidy_cache
     if [[ -e $LS_RUNTMP/reboot ]]; then info "reboot required to finish"; fi ;;
   profiles)
@@ -635,12 +647,14 @@ case $cmd in
     tok=$(gh_token)
     if [[ -z $tok ]] && (( signin )); then gh_auth - read || die "not signed in"; tok=$GITHUB_TOKEN; fi
     GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/profiles.py" list "${pargs[@]}" ;;
+  whoami)   # the GitHub login of the key decal would use (GITHUB_TOKEN, GH_TOKEN, gh); none: exit 1
+    tok=$(gh_token); [[ -n $tok ]] || exit 1
+    GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami 2>/dev/null ;;
   stamp) do_stamp "$@" ;;
   new) do_new "$@" ;;
   use)
     [[ $# -eq 1 ]] || usage
     set_profile "$1"
-    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi
     info "active profile: $PROFILE_DIR (nothing applied yet: decal add all, or the menu)" ;;
   ui)
     [[ -t 0 && -t 1 ]] || die "the menu needs a terminal"

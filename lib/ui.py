@@ -127,6 +127,25 @@ def remove_cmds(tags, mods):
 GROUPS = [("github", "On GitHub"), ("file", "On this machine"), ("stick", "On USB sticks"), ("recent", "Recently used")]
 
 
+def row_key(row):
+    """What identifies a row across refreshes: its profile's source, or its label (headings, actions)."""
+    return (row[3] or {}).get("source") or row[1]
+
+
+def pick_row(rows, key, i):
+    """The row index to highlight: the row with KEY, else the active profile, else the usual file, else the first."""
+    pickable = [n for n, r in enumerate(rows) if r[0] == "row"]
+    same = [n for n in pickable if key is not None and row_key(rows[n]) == key]
+    if same:
+        return same[0]
+    if key is None or i not in pickable:
+        act = [n for n in pickable if (rows[n][3] or {}).get("active")]
+        usual = [n for n in pickable if rows[n][2] == "the usual place"]
+        return (act or usual or pickable)[0]
+    act = [n for n in pickable if (rows[n][3] or {}).get("active")]
+    return act[0] if act else i
+
+
 def browser_rows(data, purpose, user):
     """The browser's lines: (style, label, aside, value). Stamp leaves out recently used (others' profiles) and offers
     the usual ~/decal-USER.tar.gz when it isn't there yet."""
@@ -210,7 +229,8 @@ class UI:
     def msg_screen(self, text):
         self.scr.erase(); self.put(2, 2, text, curses.A_DIM); self.scr.refresh()
 
-    def key(self):
+    def key(self, raw=False):
+        """The key pressed, by name (up, enter, esc...); raw: letters stay letters (j/k aren't moves in a text box)."""
         try:
             k = self.scr.get_wch()
         except curses.error:   # nothing pressed within the timeout
@@ -236,7 +256,7 @@ class UI:
         return {"\n": "enter", "\r": "enter", "\x1b": "esc", " ": "space", "\x7f": "backspace", "\b": "backspace",
                 curses.KEY_ENTER: "enter", curses.KEY_UP: "up", curses.KEY_DOWN: "down", curses.KEY_BACKSPACE: "backspace",
                 curses.KEY_NPAGE: "pgdn", curses.KEY_PPAGE: "pgup", curses.KEY_HOME: "home", curses.KEY_END: "end",
-                curses.KEY_RESIZE: "resize", "\t": "tab", "k": "up", "j": "down"}.get(k, k)
+                curses.KEY_RESIZE: "resize", "\t": "tab", **({} if raw else {"k": "up", "j": "down"})}.get(k, k)
 
     # a list to choose one from: [(label, aside, value)] -> value or None
     def choose(self, title, items, help_="↑↓ move · enter choose · esc back"):
@@ -266,7 +286,7 @@ class UI:
                 self.put(top + 2, 2, "> " + text)
                 self.footer("enter ok · tab completes a path · esc back")
                 self.scr.move(top + 2, 4 + len(text))
-                k = self.key()
+                k = self.key(raw=True)
                 if k == "enter": return text.strip()
                 if k == "esc": return None
                 if k == "backspace": text = text[:-1]
@@ -431,12 +451,7 @@ class UI:
                     d["loading"] = False
                 rows = browser_rows(d, purpose, user)
                 pickable = [n for n, r in enumerate(rows) if r[0] == "row"]
-                same = [n for n in pickable if rows[n][1] == picked]
-                i = same[0] if same else i
-                if i is None or i not in pickable:
-                    act = [n for n in pickable if (rows[n][3] or {}).get("active")]
-                    usual = [n for n in pickable if rows[n][2] == "the usual place"]
-                    i = (act or usual or pickable)[0]
+                i = pick_row(rows, picked, i)
                 top = self.header(title)
                 h = self.scr.getmaxyx()[0] - top - 2
                 first = max(0, i - h + 1)
@@ -450,7 +465,7 @@ class UI:
                         self.put(y, 4, f" {label:<30} ", (curses.A_REVERSE if first + n == i else 0) | curses.A_BOLD)
                         self.put(y, 37, aside, curses.A_DIM)
                 self.footer("↑↓ move · enter choose · r refresh · esc back")
-                picked = rows[i][1]
+                picked = row_key(rows[i])
                 k = self.key()
                 if k is None:
                     continue
@@ -458,7 +473,7 @@ class UI:
                 moved = {"up": pickable[(pos - 1) % len(pickable)], "down": pickable[(pos + 1) % len(pickable)],
                          "home": pickable[0], "end": pickable[-1]}.get(k)
                 if moved is not None:
-                    i, picked = moved, rows[moved][1]
+                    i, picked = moved, row_key(rows[moved])
                     continue
                 if k == "r":
                     state["data"] = self.profiles_json("local"); start()
@@ -492,9 +507,9 @@ class UI:
             return False
         canon = r.stdout.split("\t")[1]
         login = ""
-        if canon.startswith("github:") and ENV.get("GITHUB_TOKEN"):
-            w = subprocess.run([sys.executable, os.path.join(lib, "github.py"), "whoami"], capture_output=True, text=True, env=ENV)
-            login = w.stdout.strip()
+        if canon.startswith("github:"):   # whatever key decal would use: this session's, GITHUB_TOKEN, GH_TOKEN, gh
+            rc, out = decal("whoami")
+            login = out.strip().splitlines()[-1] if rc == 0 and out.strip() else ""
         y = subprocess.run([sys.executable, os.path.join(lib, "source.py"), "yours", canon, "--login", login], env=ENV)
         if y.returncode == 0:
             return True
@@ -548,9 +563,9 @@ class UI:
             src = os.path.expanduser(src)
         else:
             src = v["source"]
+        if not self.trusted(src):   # the active profile too: it may be someone else's, used but never applied
+            return
         if not v.get("active"):
-            if not self.trusted(src):
-                return
             if self.run([["use", src]], "that's the active profile now", "couldn't use it (see above)") != 0:
                 return
         pick = self.picker("Apply · stick it on · choose", "apply")

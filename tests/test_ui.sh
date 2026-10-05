@@ -22,7 +22,9 @@ MOD
 done
 P="$T_TMP/prof"; mkdir -p "$P"; printf '[base]\non = true\n[onlydev.dev]\non = true\n' > "$P/profile.toml"
 export T_TMP DECAL_MODULES_DIR="$M" DECAL_PLATFORM=fedora DECAL_PROFILE="$P" LS_TEST_LOG="$T_TMP/log"; : > "$LS_TEST_LOG"
-D() { python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "$@"; }
+D() {  # D CMD... -- KEYS: drive the menu, starting once its main screen is up (keys sent while it loads can be lost)
+  local cmd=() ; while [[ $1 != -- ]]; do cmd+=("$1"); shift; done; shift
+  python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "${cmd[@]}" -- "UNTIL:q quit" "$@"; }
 
 D "$REPO/decal" ui -- q; assert_eq "$?" "0" "menu opens, q quits"
 S=$(cat "$T_TMP/screen")
@@ -72,11 +74,22 @@ R=$(rows "$D2" stamp); assert_contains "$R" "row | ~/decal-me.tar.gz | the usual
 D3='{"entries": [], "notes": [], "signed_in": true, "loading": true, "active": ""}'
 assert_contains "$(rows "$D3" apply)" "note | Looking for your profiles…" "loading: says so"
 
+# the cursor follows the profile, not the row number: the active GitHub profile shown alone while loading,
+# then listed under On GitHub when it arrives (with a profile above it)
+cur() { python3 -c "import sys,json; sys.path.insert(0, '$REPO/lib'); import ui
+a, b = (ui.browser_rows(json.loads(x), 'apply', 'me') for x in sys.argv[1:3])
+i = ui.pick_row(a, None, None); k = ui.row_key(a[i]); j = ui.pick_row(b, k, i); print(b[j][1])" "$1" "$2"; }
+L1='{"entries": [], "notes": [], "signed_in": true, "loading": true, "active": "github:me/decal-profile"}'
+L2='{"entries": [{"kind": "github", "source": "github:me/decal-aaa", "name": "me/decal-aaa", "private": true, "updated": "", "modules": 1, "active": false},
+ {"kind": "github", "source": "github:me/decal-profile", "name": "me/decal-profile", "private": true, "updated": "", "modules": 1, "active": true}],
+ "notes": [], "signed_in": true, "active": "github:me/decal-profile"}'
+assert_eq "$(cur "$L1" "$L2")" "me/decal-profile" "cursor stays on the active profile when GitHub fills in"
+
 # whole flows: apply's first Enter still picks the active profile (keystrokes unchanged above); Up from the
 # first row wraps to the last, "Enter a profile…";
 # Enter a profile… with a folder of someone else's? a local folder is yours: no warning, used, then applied
-mkdir -p "$T_TMP/other"; printf '[base]\non = true\n' > "$T_TMP/other/profile.toml"; : > "$LS_TEST_LOG"
-D "$REPO/decal" ui -- 1 UP ENTER WAIT "$T_TMP/other" ENTER WAIT ENTER WAIT ENTER WAIT ENTER WAIT ENTER q
-assert_contains "$(cat "$T_TMP/screen")" "$ decal use $T_TMP/other" "enter a profile: used"
+mkdir -p "$T_TMP/jk-other"; printf '[base]\non = true\n' > "$T_TMP/jk-other/profile.toml"; : > "$LS_TEST_LOG"
+D "$REPO/decal" ui -- 1 "UNTIL:Sign in to see" UP ENTER "UNTIL:tab completes" "$T_TMP/jk-other" ENTER WAIT ENTER WAIT ENTER WAIT ENTER WAIT ENTER q
+assert_contains "$(cat "$T_TMP/screen")" "$ decal use $T_TMP/jk-other" "enter a profile: used (j and k typed as letters, not moves)"
 assert_contains "$(cat "$T_TMP/screen")" "Stuck on:" "...then applied (base may already be up to date from earlier flows)"
 t_done

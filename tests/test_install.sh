@@ -154,11 +154,18 @@ assert_contains "$out" "decal --yes apply github:stranger/prof" "...and how to a
 assert_eq "$(cat "$LS_TEST_LOG")" "" "...nothing added"
 assert_contains "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "...and the active profile is unchanged"
 # with a terminal: p previews (nothing changes), then y applies
-printf 'p\ny\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"
+printf 'p\ny\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"; : > "$STUBS/calls"
 out=$(env -u GITHUB_TOKEN -u GH_TOKEN DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$REPO/decal" apply stranger/prof 2>&1)
 assert_eq "$?" "0" "someone else's profile, previewed then confirmed: applied"
 assert_eq "$(grep -o 'p preview' "$T_TMP/screen" | wc -l)" "2" "...asked, previewed, asked again"
 assert_contains "$(cat "$LS_TEST_LOG")" "eee add stranger" "...then added (the fixture logs during the preview too)"
+assert_eq "$(grep -c 'stranger/prof/tarball' "$STUBS/calls")" "1" "...downloaded once: what was previewed is what's applied"
+# use alone doesn't make it yours: only applying does
+mkdir -p "$T_TMP/gh3/other-x-1"; printf '[eee-conf]\nword = "x"\n' > "$T_TMP/gh3/other-x-1/profile.toml"
+tar -czf "$T_TMP/gh3.tar.gz" -C "$T_TMP/gh3" other-x-1; serve https://api.github.com/repos/other/x/tarball "$T_TMP/gh3.tar.gz"
+env -u GITHUB_TOKEN -u GH_TOKEN "$REPO/decal" use other/x >/dev/null 2>&1
+assert_not_contains "$(cut -f1 "$DECAL_USER_STATE/recent")" "github:other/x" "use: not remembered as yours"
+out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply other/x 2>&1 < /dev/null); assert_eq "$?" "1" "...so apply still asks"
 # now it's recently used: no question next time
 : > "$LS_TEST_LOG"
 setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply stranger/prof >/dev/null 2>&1 < /dev/null
