@@ -172,4 +172,13 @@ setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply stran
 assert_eq "$?" "0" "recently used: no question"
 # install.sh passes --yes with the profile it was given
 grep -q 'cmd=(apply --yes)' "$REPO/install.sh"; assert_eq "$?" "0" "the installer applies with --yes"
+# a local copy (a decal USB stick): installed without downloading, checksum checked
+release v1.5.0; L="$T_TMP/rel/v1.5.0"; : > "$STUBS/calls"
+out=$(DECAL_ARCHIVE="$L/decal.tar.gz" DECAL_ARCHIVE_VERSION=v1.5.0 DECAL_NO_MENU=1 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "0" "local copy: installed"
+assert_eq "$(cat "$H/VERSION")" "v1.5.0" "...that version"; assert_eq "$(cat "$H/MARK")" "v1.5.0" "...its files"
+assert_not_contains "$(calls)" "curl" "...nothing downloaded"
+echo "0000  decal.tar.gz" > "$T_TMP/badsum"; cp "$L/decal.tar.gz" "$T_TMP/copy.tar.gz"; cp "$T_TMP/badsum" "$T_TMP/copy.tar.gz.sha256"
+out=$(DECAL_ARCHIVE="$T_TMP/copy.tar.gz" DECAL_ARCHIVE_VERSION=v1.6.0 DECAL_NO_MENU=1 bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "local copy, bad checksum: refused"
+assert_contains "$out" "checksum mismatch" "...says why"; assert_eq "$(cat "$H/VERSION")" "v1.5.0" "...nothing changed"
+out=$(DECAL_ARCHIVE="$T_TMP/none.tar.gz" bash "$REPO/install.sh" 2>&1); assert_eq "$?" "1" "no copy there: refused"
 t_done

@@ -10,6 +10,7 @@
 # DECAL_VERSION: latest (default: the newest release, checksum verified) | vX.Y.Z | a branch, e.g. main (newest commit).
 # Remembered, so updates stay on it. Already installed and current: nothing is downloaded (DECAL_REINSTALL=1 does
 # anyway). Options for decal itself: install.sh --update | --check (newer version? print it).
+# DECAL_ARCHIVE=PATH: install that decal.tar.gz (with PATH.sha256) instead of downloading (a decal USB stick's copy).
 set -euo pipefail
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*" >&2; }
@@ -17,6 +18,7 @@ die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 # _get URL [OUT] : download (stdout without OUT); curl or wget
 _get() {
+  if [[ $1 == /* ]]; then if [[ -n ${2:-} ]]; then cp "$1" "$2"; else cat "$1"; fi; return; fi   # a local copy
   if have curl; then curl -fsSL --connect-timeout 10 --retry 2 ${2:+-o "$2"} "$1"
   elif have wget; then wget -q --timeout=20 -O "${2:--}" "$1"
   else die "curl or wget is needed"; fi
@@ -73,8 +75,13 @@ main() {
   local version=${DECAL_VERSION:-$(cat "$home/.channel" 2>/dev/null || echo latest)}
   local cur; cur=$(cat "$home/VERSION" 2>/dev/null || true)
   local tag url sumurl
-  read -r tag url sumurl < <(_resolve "$version" || true) || true
-  [[ -n ${tag:-} ]] || die "could not reach GitHub to find decal $version"
+  if [[ -n ${DECAL_ARCHIVE:-} ]]; then   # a local copy (a decal USB stick): no download, its checksum next to it
+    [[ -f $DECAL_ARCHIVE && -f $DECAL_ARCHIVE.sha256 ]] || die "no decal copy at $DECAL_ARCHIVE (with its .sha256)"
+    tag=${DECAL_ARCHIVE_VERSION:-local}; url=$DECAL_ARCHIVE; sumurl=$DECAL_ARCHIVE.sha256
+  else
+    read -r tag url sumurl < <(_resolve "$version" || true) || true
+    [[ -n ${tag:-} ]] || die "could not reach GitHub to find decal $version"
+  fi
   if [[ $mode == check ]]; then [[ $tag != "$cur" ]] && { echo "$tag"; return 0; }; return 1; fi
   if [[ $tag == "$cur" && -x $home/decal && ${DECAL_REINSTALL:-0} != 1 ]]; then
     # already there: nothing to download (DECAL_REINSTALL=1 fetches it again anyway)
