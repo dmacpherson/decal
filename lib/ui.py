@@ -28,6 +28,21 @@ MENU = [  # key, word (the command), the sticker aside, what it does
 
 
 # --- talking to decal ------------------------------------------------------------------------------------------
+CHECK_TIMEOUT = 40
+
+
+def update_note():
+    """What install.sh --check says about a newer decal; "" when there's none or it can't tell in time."""
+    if not os.path.exists(os.path.join(REPO, ".installed")):
+        return ""
+    try:
+        r = subprocess.run(["bash", os.path.join(REPO, "install.sh"), "--check"], capture_output=True, text=True,
+                           env=dict(ENV, DECAL_HOME=REPO), timeout=CHECK_TIMEOUT)
+    except subprocess.TimeoutExpired:   # a slow or captive network: no news, the menu goes on
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
 def decal(*args):
     r = subprocess.run([DECAL, *args], capture_output=True, text=True, env=ENV, stdin=subprocess.DEVNULL)
     return r.returncode, ANSI.sub("", r.stdout + r.stderr)
@@ -72,11 +87,7 @@ class Data:
         except OSError:   # never applied with the menu's memory: the tags whose modules are already here
             self.last_tags = [t for t in self.tags if any(t in self.mod_tags.get(m, []) and m not in self.base
                               and self.status.get(m, "").startswith(("installed", "partial")) for m in self.all)]
-        self.update = ""
-        if os.path.exists(os.path.join(REPO, ".installed")):
-            r = subprocess.run(["bash", os.path.join(REPO, "install.sh"), "--check"], capture_output=True, text=True,
-                               env=dict(ENV, DECAL_HOME=REPO), timeout=40)
-            self.update = r.stdout.strip() if r.returncode == 0 else ""
+        self.update = update_note()
         return self
 
     def counts(self):

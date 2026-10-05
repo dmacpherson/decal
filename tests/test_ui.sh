@@ -136,4 +136,9 @@ assert_file "$G/tester_decal-p.json" "...the stamp pushed"
 assert_not_contains "$(cat "$G/log")" "r3ad-only" "...the stick's read key never used"
 assert_contains "$(cat "$T_TMP/screen")" "Saved to tester/decal-p" "...says where"
 kill "$GHPID" 2>/dev/null
+# the update check taking too long (a slow or captive network): no update shown, the menu goes on (audit batch 3)
+UR="$T_TMP/urepo"; mkdir -p "$UR"; : > "$UR/.installed"; printf 'sleep 5\necho "v9 is out"\n' > "$UR/install.sh"
+assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import ui; ui.REPO = '$UR'; ui.CHECK_TIMEOUT = 1; print(repr(ui.update_note()))" 2>&1)" "''" "update check too slow: nothing shown, no crash"
+printf 'echo "v9 is out"\n' > "$UR/install.sh"
+assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import ui; ui.REPO = '$UR'; print(ui.update_note())" 2>&1)" "v9 is out" "update check answers: shown"
 t_done

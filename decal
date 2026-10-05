@@ -525,7 +525,7 @@ do_usb() {
     printf 'Write these to %s? [Y/n] ' "$target" >> "${DECAL_TTY_OUT:-/dev/tty}"; IFS= read -r a < "${DECAL_TTY_IN:-/dev/tty}" || a=n
     [[ ${a:-y} == [Yy]* ]] || die "nothing written"
   fi
-  res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || die "couldn't write to $target"
+  res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || exit 1   # usb.py says why
   info "done: double-click Decal on any Linux PC (Ctrl+H shows the .Decal folder)"
   if (( arm )); then info "ARM machines: double-click .Decal/Decal-ARM"; fi
   if [[ $fs == vfat || $fs == msdos ]]; then warn "this stick is FAT32: double-clicking Decal won't work on it; start it with: bash .Decal/start.sh (or use an exFAT stick)"; fi

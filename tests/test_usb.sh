@@ -56,4 +56,13 @@ assert_eq "$(cat "$O2/Decal")" "launcher" "...the launcher in place"; assert_eq 
 assert_eq "$(cat "$O2/Decal-old-2/more.txt")" "again" "...the new leftovers in Decal-old-2"; assert_nofile "$O2/decal-me" "...the old launcher gone"
 # a folder target
 python3 "$U" write "$T_TMP/folder" "$SRC" >/dev/null; assert_file "$T_TMP/folder/.Decal/stick.conf" "folder: written"
+# a stick that can't be written (read-only, full, pulled out): a plain message, no traceback (audit batch 3)
+RO="$T_TMP/ro"; mkdir -p "$RO"; chmod a-w "$RO"
+out=$(python3 "$U" write "$RO" "$SRC" 2>&1); assert_eq "$?" "1" "unwritable stick: fails"
+assert_contains "$out" "couldn't write to $RO" "...says where"; assert_contains "$out" "full, read-only or unplugged" "...and what to check"
+assert_not_contains "$out" "Traceback" "...without a traceback"; chmod u+w "$RO"
+# no udisksctl on this PC: say how to go on instead of a traceback
+mkdir -p "$T_TMP/py"; ln -sf "$(command -v python3)" "$T_TMP/py/python3"
+out=$(PATH="$T_TMP/py" python3 "$U" mount /dev/sdc1 2>&1); assert_eq "$?" "1" "no udisksctl: fails"
+assert_contains "$out" "mount the stick, then use --to with its folder" "...says how to go on"; assert_not_contains "$out" "Traceback" "...without a traceback"
 t_done
