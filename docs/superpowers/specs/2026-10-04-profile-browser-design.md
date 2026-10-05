@@ -168,8 +168,8 @@ Against the fake GitHub from part 1, extended with `/user/repos` (paged), `/sear
 - Trust: a stranger's repo without `--yes` and without a terminal → stops with the message; with `--yes` → applies;
   own repo / recent / local → no question.
 - Menu: the browser layout as plain text (grouping, active mark, sign-in row, narrow terminal); apply and stamp
-  reach `decal profiles` / `decal new` with the expected arguments (the menu's `decal()` calls are observable in
-  tests, as in `tests/test_ui.sh`).
+  build the expected `decal profiles` / `decal new` commands (pure helpers like `apply_cmds`), and whole flows
+  typed into the menu in a pseudo-terminal with `tests/fixtures/drive_ui.py`, as `tests/test_ui.sh` does today.
 
 ## Out of scope
 
