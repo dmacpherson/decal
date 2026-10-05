@@ -28,9 +28,7 @@ assert_eq "$(cat "$T/.Decal/Decal-ARM")" "arm" "--arm: Decal-ARM in .Decal"; ass
 # a GitHub profile with a saved key (given explicitly here; normally a Decal Profile sign-in)
 mkdir -p "$T_TMP/gh/me-p-1"; cp "$P/profile.toml" "$T_TMP/gh/me-p-1/"; tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-p-1
 G="$T_TMP/ghapi"; mkdir -p "$G/tarballs"; echo s3cret > "$G/token"; cp "$T_TMP/gh.tar.gz" "$G/tarballs/me_p.tar.gz"   # the fake GitHub
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")"
+fake_github "$G"; GHPID=$FAKE_PID
 out=$(DECAL_STICK_KEY=r3ad GITHUB_TOKEN=s3cret U --from me/p --how saved-key --to "$T" --yes); assert_eq "$?" "0" "GitHub + saved key"
 assert_contains "$(cat "$T/.Decal/stick.conf")" "profile=github:me/p" "stick.conf: the repo"; assert_contains "$(cat "$T/.Decal/stick.conf")" "key=saved" "...key saved"
 assert_eq "$(cat "$T/.Decal/key")" "r3ad" "the given read key, not GITHUB_TOKEN"

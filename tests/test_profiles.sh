@@ -38,16 +38,12 @@ assert_contains "$out" "On this machine" "text: grouped"; assert_contains "$out"
 G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"
 printf 'tester/decal-profile\ntester/oddname topic\ntester/handmade public\ntester/decal-notes\nother/decal-x\n' > "$G/seed"
 for r in decal-profile oddname handmade; do mkdir -p "$G/contents/tester/$r"; printf '%s' "$TOML" > "$G/contents/tester/$r/profile.toml"; done
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")"
+fake_github "$G"; GHPID=$FAKE_PID
 J=$(GITHUB_TOKEN=s3cret python3 "$P" list --json --only github)
 assert_eq "$(q x "sorted(e['name'] for e in d['entries'])")" "['tester/decal-profile', 'tester/handmade', 'tester/oddname']" "github: profiles found three ways; decal-notes (no profile.toml) and others' repos left out"
 assert_eq "$(q x "[e['private'] for e in d['entries'] if e['name']=='tester/handmade']")" "[False]" "github: public/private"
 echo 120 > "$G/many"; kill "$GHPID"; wait "$GHPID" 2>/dev/null; rm -f "$G/port"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")"
+fake_github "$G"; GHPID=$FAKE_PID
 J=$(GITHUB_TOKEN=s3cret python3 "$P" list --json --only github)
 assert_eq "$(q x "sorted(e['name'] for e in d['entries'])")" "['tester/decal-profile', 'tester/oddname']" "over 100 repos: no full scan; topic and names still found"
 J=$(GITHUB_TOKEN=s3cret DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$P" list --json)

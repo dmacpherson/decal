@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2034,SC2153,SC2154  # sourced by decal: LS_REPO, MODULES_DIR, PROFILE_DIR and friends come from it
+# shellcheck shell=bash disable=SC1091,SC2034,SC2153,SC2154  # sourced by decal: LS_REPO, MODULES_DIR, PROFILE_DIR and friends come from it
 # decal stamp: this machine's setup, changed from the defaults only, as a profile
 INSTALL_URL="https://dmacpherson.github.io/decal/install"
 # module_has NAME FUNC : the module defines FUNC

@@ -115,9 +115,7 @@ mkdir -p "$T_TMP/gh/me-prof-abc"; printf '[eee-conf]\nword = "from-github"\n' > 
 tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-prof-abc
 # the fake GitHub serves the repos' tarballs (tb OWNER/REPO FILE [public]); me/prof is private (key s3cret)
 GM="$T_TMP/ghmain"; mkdir -p "$GM/tarballs"; echo s3cret > "$GM/token"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$GM" & GMPID=$!
-for _ in $(seq 50); do [[ -s $GM/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB_API="http://127.0.0.1:$(cat "$GM/port")"
+fake_github "$GM"; GMPID=$FAKE_PID
 tb() { cp "$2" "$GM/tarballs/${1/\//_}.tar.gz"; if [[ ${3:-} == public ]]; then : > "$GM/tarballs/${1/\//_}.public"; fi; }
 tb me/prof "$T_TMP/gh.tar.gz"
 : > "$LS_TEST_LOG"; : > "$STUBS/calls"
@@ -137,9 +135,7 @@ assert_eq "$?" "1" "private repo without a token (no terminal to ask in): fails"
 assert_contains "$out" "github:me/prof not found or not allowed (private? set GITHUB_TOKEN" "and says how to fix it"
 # no key: decal asks, signs in (the fake GitHub's Decal app), and uses that key for this run only
 G="$T_TMP/ghapi"; mkdir -p "$G"; echo s3cret > "$G/token"; echo me/prof > "$G/seed"; echo ok > "$G/device_script"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-FAKE="http://127.0.0.1:$(cat "$G/port")"
+fake_github "$G" --keep-env; GHPID=$FAKE_PID; FAKE=$FAKE_URL   # its own fake, beside the main one
 mkdir -p "$G/tarballs"; cp "$T_TMP/gh.tar.gz" "$G/tarballs/me_prof.tar.gz"
 printf '1\n' > "$T_TMP/keys"; : > "$LS_TEST_LOG"
 out=$(env -u GITHUB_TOKEN -u GH_TOKEN DECAL_GITHUB="$FAKE" DECAL_GITHUB_API="$FAKE" DECAL_GITHUB_APP_READ=Iv-read:decal \

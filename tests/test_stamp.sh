@@ -72,9 +72,7 @@ cp "$T_TMP/live.bak" "$M/live/module.sh"
 assert_contains "$(cat "$T_TMP/x/profile.toml")" "[live]" "stamp MODULE: that module"; assert_not_contains "$(cat "$T_TMP/x/profile.toml")" "[mine]" "...and no other"
 # -gh: a fake GitHub (localhost); the repo is created private, each stamp a commit; the token never on a command line
 G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")"
+fake_github "$G"; GHPID=$FAKE_PID
 out=$(GITHUB_TOKEN=s3cret "$S" stamp -gh 2>&1); assert_eq "$?" "0" "-gh rc"
 assert_contains "$out" "created private repo tester/decal-tester" "repo created, private"
 assert_contains "$out" "github:tester/decal-tester" "prints the one-liner for the next machine"

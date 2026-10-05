@@ -127,9 +127,7 @@ assert_eq "$(y https://example.com/p.zip)" "1" "not yours: a link"
 # sent on when GitHub hands the download to another host (codeload)
 G="$T_TMP/gh"; mkdir -p "$G/tarballs" "$U/gt"; echo s3cret > "$G/token"; echo hi > "$U/gt/profile.toml"
 tar -czf "$G/tarballs/me_prof.tar.gz" -C "$U" gt; cp "$G/tarballs/me_prof.tar.gz" "$G/tarballs/open_p.tar.gz"; : > "$G/tarballs/open_p.public"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
-export DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")"
+fake_github "$G"; GHPID=$FAKE_PID
 GITHUB_TOKEN=s3cret python3 "$SRC" github me/prof "$U/g1.tgz"; assert_eq "$?" "0" "github: a private repo with the key"
 assert_eq "$(tar -xzOf "$U/g1.tgz" gt/profile.toml)" "hi" "...the repo's files"
 assert_contains "$(cat "$G/log")" "GET /repos/me/prof/tarball auth=Bearer s3cret" "...the key went to GitHub as a header"
@@ -140,5 +138,5 @@ python3 "$SRC" github me/prof "$U/g3.tgz"; assert_eq "$?" "4" "github: private, 
 GITHUB_TOKEN=wrong python3 "$SRC" github nobody/x "$U/g4.tgz"; assert_eq "$?" "4" "github: missing: 4"
 python3 "$SRC" github open/p "$U/g5.tgz"; assert_eq "$?" "0" "github: public, no key"
 DECAL_GITHUB_API=http://127.0.0.1:9 python3 "$SRC" github me/prof "$U/g6.tgz" 2>/dev/null; assert_eq "$?" "3" "github: out of reach: 3"
-kill "$GHPID" 2>/dev/null; export DECAL_GITHUB_API=http://127.0.0.1:9
+kill "$GHPID" 2>/dev/null; export DECAL_GITHUB=http://127.0.0.1:9 DECAL_GITHUB_API=http://127.0.0.1:9
 t_done

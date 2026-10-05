@@ -14,7 +14,7 @@ assert_nofile()   { T_COUNT=$((T_COUNT+1)); [[ ! -e "$1" ]] || _t_fail "${2:-ass
 # Fresh sandbox: fake root, state dirs, stub bin dir first on PATH, no sudo.
 t_setup() {
   T_TMP="$(mktemp -d "${TMPDIR:-/tmp}/lstest.XXXXXX")"
-  trap 'rm -rf "$T_TMP"' EXIT   # also when a test stops early
+  T_PIDS=""; trap 'kill $T_PIDS 2>/dev/null; rm -rf "$T_TMP"' EXIT   # also when a test stops early
   export TMPDIR="$T_TMP"        # every temp file the code under test makes goes with it
   # never the real home: modules write and delete under $HOME and the XDG folders (tests may point them elsewhere);
   # tools installed in the real home (e.g. ~/.local/bin) are hidden too
@@ -29,6 +29,17 @@ t_setup() {
   export DECAL_GITHUB=http://127.0.0.1:9 DECAL_GITHUB_API=http://127.0.0.1:9
   export STUBS="$T_TMP/stubs"; mkdir -p "$STUBS" "$DECAL_ROOT"
   : > "$STUBS/calls"; export PATH="$STUBS:$PATH"
+}
+# fake_github DIR [--keep-env] : the fake GitHub (tests/fixtures/fake_github_api.py) on DIR's state (DIR/token first),
+# started and waited for; FAKE_URL is its address, exported as DECAL_GITHUB and DECAL_GITHUB_API unless --keep-env;
+# FAKE_PID is its process (stopped when the test ends)
+fake_github() {
+  local dir=$1 _; rm -f "$dir/port"
+  python3 "$REPO/tests/fixtures/fake_github_api.py" "$dir" & FAKE_PID=$!; T_PIDS+=" $FAKE_PID"
+  for _ in $(seq 50); do [[ -s $dir/port ]] && break; sleep 0.1; done
+  [[ -s $dir/port ]] || { echo "the fake GitHub didn't start" >&2; return 1; }
+  FAKE_URL="http://127.0.0.1:$(cat "$dir/port")"
+  if [[ ${2:-} != --keep-env ]]; then export DECAL_GITHUB=$FAKE_URL DECAL_GITHUB_API=$FAKE_URL; fi
 }
 # stub NAME [BODY]: fake command that logs "NAME args" to $STUBS/calls, then runs BODY.
 stub() {

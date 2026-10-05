@@ -153,8 +153,7 @@ def ext_schema_paths(uuids):
     import dconf_tool
     src = dconf_tool.schema_source(True)
     paths = []
-    for base in (os.path.expanduser("~/.local/share/gnome-shell/extensions"), "/usr/share/gnome-shell/extensions",
-                 "/usr/local/share/gnome-shell/extensions"):
+    for base in dconf_tool.ext_bases():
         for u in uuids:
             meta = os.path.join(base, u, "metadata.json")
             if not os.path.isfile(meta):

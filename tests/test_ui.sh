@@ -128,10 +128,9 @@ assert_contains "$(cat "$T_TMP/screen")" "Saved to the copy on this stick" "save
 assert_contains "$(cat "$SV/profile/profile.toml")" "on = true" "save: the stick's copy updated in place"
 # a GitHub stick: Save signs in fresh with Decal Profile Write (the stick's read key in GITHUB_TOKEN is ignored)
 G="$T_TMP/gh"; mkdir -p "$G"; echo s3cret > "$G/token"; echo tester/decal-p > "$G/seed"; printf 'ok\nok\n' > "$G/device_script"
-python3 "$REPO/tests/fixtures/fake_github_api.py" "$G" & GHPID=$!
-for _ in $(seq 50); do [[ -s $G/port ]] && break; sleep 0.1; done
+fake_github "$G" --keep-env; GHPID=$FAKE_PID
 SG="$T_TMP/sg/.Decal"; mkdir -p "$SG"; printf 'profile=github:tester/decal-p\nkey=saved\ndecal=copy\n' > "$SG/stick.conf"
-DECAL_STICK="$SG" GITHUB_TOKEN=r3ad-only DECAL_GITHUB="http://127.0.0.1:$(cat "$G/port")" DECAL_GITHUB_API="http://127.0.0.1:$(cat "$G/port")" \
+DECAL_STICK="$SG" GITHUB_TOKEN=r3ad-only DECAL_GITHUB="$FAKE_URL" DECAL_GITHUB_API="$FAKE_URL" \
   DECAL_GITHUB_APP_WRITE=Iv-write:decal-write D "$REPO/decal" ui -- 4 "UNTIL:enter next" ENTER "UNTIL:enter save it" ENTER "UNTIL:somewhere else" ENTER "UNTIL:Choose [1]" 1 ENTER "UNTIL:go back to the menu" ENTER "UNTIL:q quit" q
 assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "save to GitHub: signed in with Decal Profile Write"
 assert_file "$G/tester_decal-p.json" "...the stamp pushed"
