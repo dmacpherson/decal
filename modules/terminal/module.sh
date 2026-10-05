@@ -206,6 +206,8 @@ module_add() {
   local missing old bf before
   missing=$(terminal_missing_roles); [[ -z $missing ]] || die "theme '$THEME' lacks roles used by layout '$LAYOUT': $missing"
   _load_adapter "$TERMINAL"
+  # checked before anything is set up: an app this distro can't install skips the module, it doesn't half-do it
+  if [[ $(term_source) == none* ]]; then warn "$TERMINAL isn't available on $PLATFORM: terminal skipped (choose another app in [terminal])"; return 0; fi
   run mkdir -p "$LS_USER_STATE" "$CFG"
   if [[ $LS_DRY_RUN != 1 ]]; then echo "$P_remove_brew" > "$LS_USER_STATE/terminal.remove-brew"; fi   # remove honours it without the profile
   # 1. Homebrew tools for the enabled features (+ extra formulae)
@@ -258,13 +260,14 @@ module_remove() {
   run rm -f "$HOOK"
   if grep -qF "$MARK_BEGIN" "$HOME/.bashrc" 2>/dev/null && [[ $LS_DRY_RUN != 1 ]]; then
     python3 - "$HOME/.bashrc" "$MARK_BEGIN" "$MARK_END" <<'EOF'
-import sys
+import os, shutil, sys
 p, b, e = sys.argv[1:4]; out = []; skip = False
+p = os.path.realpath(p)   # a link into a dotfiles folder: edit the real file, keep the link
 for l in open(p).read().split("\n"):
     if l == b: skip = True; continue
     if l == e and skip: skip = False; continue
     if not skip: out.append(l)
-open(p, "w").write("\n".join(out))
+open(p + ".decal-new", "w").write("\n".join(out)); shutil.copymode(p, p + ".decal-new"); os.replace(p + ".decal-new", p)
 EOF
   fi
   run rm -rf "$CFG"; _font_remove; _blesh_remove
@@ -284,6 +287,10 @@ EOF
     run brew uninstall $(cat "$LS_USER_STATE/terminal.brew"); run rm -f "$LS_USER_STATE/terminal.brew"
   fi
   run rm -f "$LS_USER_STATE/terminal.remove-brew"
+  if [[ -e $LS_USER_STATE/terminal.homebrew ]]; then   # it may hold tools of your own by now: kept, with how to remove it
+    info "Homebrew (installed by decal) is kept: it may hold your own tools. To remove it: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)\""
+    run rm -f "$LS_USER_STATE/terminal.homebrew"
+  fi
 }
 
 # remove --only TAG: P_brew holds only the formulae the tag added; uninstalled when decal installed them and

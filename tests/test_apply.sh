@@ -106,4 +106,11 @@ mkdir -p "$T_TMP/z"; printf '[p2]\nword = "zip"\n' > "$T_TMP/z/profile.toml"
 "$S" apply "$T_TMP/p.zip" >/dev/null 2>&1; assert_eq "$?" "0" "a .zip profile applies"
 assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "$T_TMP/p.zip" "...its source recorded"
 out=$("$S" apply http://example.com/p.zip 2>&1); assert_eq "$?" "1" "http link: refused"; assert_contains "$out" "use an https:// link" "...says why"
+# write new, then swap: a profile that can't be put in place leaves the active one whole
+"$S" apply "$T_TMP/p.tar.gz" >/dev/null 2>&1; before=$(cat "$DECAL_PROFILE_HOME/profile.toml")
+stub cp 'case "$*" in *.decal-new*) exit 1;; esac; exec /usr/bin/cp "$@"'
+"$S" apply "$T_TMP/p.zip" >/dev/null 2>&1; assert_eq "$?" "1" "the new profile can't be put in place: fails"
+assert_eq "$(cat "$DECAL_PROFILE_HOME/profile.toml")" "$before" "...the active profile is untouched"
+rm -f "$STUBS/cp"
+"$S" apply "$T_TMP/p.zip" >/dev/null 2>&1; assert_eq "$(ls -A "$(dirname "$DECAL_PROFILE_HOME")" | grep -c 'decal-new\|decal-old')" "0" "a normal apply leaves nothing beside it"
 t_done

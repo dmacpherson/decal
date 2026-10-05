@@ -54,6 +54,12 @@ rm "$DECAL_USER_STATE/applied/mine"
 assert_contains "$(cat "$T_TMP/x/profile.toml")" 'file = "mine/live.txt"' "not applied by decal: the live capture"
 "$S" stamp "$T_TMP/folder" >/dev/null 2>&1; assert_file "$T_TMP/folder/profile.toml" "a folder path: written as a folder"
 "$S" stamp "$T_TMP/folder" >/dev/null 2>&1; assert_eq "$?" "0" "...and replaced by the next stamp"
+# write new, then swap: a stamp that fails to copy leaves the earlier stamp folder whole
+echo earlier > "$T_TMP/folder/marker.txt"
+stub cp 'case "$*" in *.decal-new*) exit 1;; esac; exec /usr/bin/cp "$@"'
+"$S" stamp "$T_TMP/folder" >/dev/null 2>&1; assert_eq "$?" "1" "a failed copy: the stamp fails"
+assert_eq "$(cat "$T_TMP/folder/marker.txt" 2>/dev/null)" "earlier" "...and the earlier stamp is still there, whole"
+rm -f "$STUBS/cp"; rm -f "$T_TMP/folder/marker.txt"
 mkdir -p "$T_TMP/notmine"; echo keep > "$T_TMP/notmine/f"
 out=$("$S" stamp "$T_TMP/notmine" 2>&1); assert_eq "$?" "1" "a folder that isn't a stamp: refused"; assert_eq "$(cat "$T_TMP/notmine/f")" "keep" "...untouched"
 # a module printing something that isn't a valid profile: nothing saved

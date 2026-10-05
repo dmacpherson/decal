@@ -153,6 +153,21 @@ No separate stick menu: the normal one, with that header and order. No "temporar
 - A profile made active before this change (old `use`, never asked) is applied from the menu without the question.
 - Git sources check out symlinks as they are; `path`/`theme` could go through one (not traced to a leak).
 
+### Audit batch 2 (your data and clean removal): deferred minors
+
+- `swrite`'s `NAME.decal-new` temp, left by a crash, sits in `.d` folders (`gdm.d`, `apt.conf.d`) that read every
+  file; use a dot-prefixed temp or clean it in `etc_restore`.
+- `swrite` keeps mode only when the user can see the old file (root-only folders fall back to 644); owner/group
+  aren't kept (every target is root-owned today).
+- A `/etc` file that was a symlink is now replaced by a file (`etc_restore` puts the link back).
+- terminal: `/home/linuxbrew` ownership isn't restored (Homebrew is kept); the `terminal.homebrew` marker is written
+  after the installer, so an interrupted Homebrew install isn't noted.
+- docker still calls `apt-cache` directly (`modules/docker/module.sh:8`).
+- `activate_staged`: killed between the two renames leaves no active profile (same-source re-download only).
+  `do_stamp` clears `DEST.decal-new`/`.decal-old` without the `.decal-stamp` check.
+- gnome-extensions: a gtk-3.0 `gtk.css` link holding only decal's block is left as an empty file, not removed.
+- Release note: records written before this version list flatpaks you already had; remove uninstalls those.
+
 ## Part 4: Save back from a stick
 
 From the stick's menu, **Save this machine** (after Preview first): the module picker and preview, then "Save to":

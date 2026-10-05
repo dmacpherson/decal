@@ -4,6 +4,7 @@ MODULE_NEEDS_ROOT=1
 BRAVE_STATE="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser/Local State"
 DEF_PREV="$LS_USER_STATE/apps-defaults.prev"
 MANAGED="$LS_STATE/apps/managed"
+REMOTE_REC="$LS_STATE/apps/remote"   # the Flatpak remote decal added (none when it was already there)
 REMOVED_FP="$LS_STATE/apps/removed-flatpaks"
 SHOW_MARK="# decal: shown by [apps] show (decal removes this copy when the app leaves the list)"
 _contradictions() {
@@ -100,15 +101,16 @@ _defaults_remove() {
   while IFS='=' read -r m d; do if [[ -n $d ]]; then run xdg-mime default "$d" "$m"; else unset+=("$m"); fi; done < "$DEF_PREV"
   if (( ${#unset[@]} )) && [[ $LS_DRY_RUN != 1 ]]; then
     python3 - "${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list" "${unset[@]}" <<'EOF'
-import sys
+import os, shutil, sys
 p, drop = sys.argv[1], set(sys.argv[2:]); out = []; sec = ""
+p = os.path.realpath(p)   # a link into a dotfiles folder: edit the real file, keep the link
 try: lines = open(p).read().split("\n")
 except FileNotFoundError: sys.exit(0)
 for l in lines:
     if l.startswith("["): sec = l
     if sec == "[Default Applications]" and l.split("=", 1)[0] in drop: continue
     out.append(l)
-open(p, "w").write("\n".join(out))
+open(p + ".decal-new", "w").write("\n".join(out)); shutil.copymode(p, p + ".decal-new"); os.replace(p + ".decal-new", p)
 EOF
   fi
   run rm -f "$DEF_PREV"
@@ -124,10 +126,20 @@ _defaults_ok() {
 module_add() {
   _contradictions
   pkg_install apps flatpak
+  # the remote is decal's only when flatpak listed its remotes (turned-off ones too) and it wasn't there
+  local remotes
+  if remotes=$(flatpak remotes --system --show-disabled --columns=name 2>/dev/null) && ! grep -qxF -- "$P_remote" <<<"$remotes"; then
+    echo "$P_remote" | swrite "$REMOTE_REC"   # recorded first: an interrupted add still gets undone
+  fi
   srun flatpak remote-add --system --if-not-exists -- "$P_remote" "$P_remote_url"
   local missing=() id
-  for id in "${P_flatpaks[@]}"; do _fp_present "$id" || missing+=("$id"); state_append "$MANAGED" "$id"; done
-  if (( ${#missing[@]} )); then step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y -- "$P_remote" "${missing[@]}"; fi
+  for id in "${P_flatpaks[@]}"; do _fp_present "$id" || missing+=("$id"); done
+  if (( ${#missing[@]} )); then
+    # only what decal installs is decal's (an app you already had is never uninstalled by remove); recorded first,
+    # so an install stopped halfway is still undone (remove skips the ones that never got in)
+    for id in "${missing[@]}"; do state_append "$MANAGED" "$id"; done
+    step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y -- "$P_remote" "${missing[@]}"
+  fi
   if (( ${#P_packages[@]} )); then pkg_install apps "${P_packages[@]}"; fi
   _unwanted_add
   _defaults_add
@@ -145,9 +157,15 @@ module_remove() {
   if [[ -r $MANAGED ]]; then
     while IFS= read -r id; do if [[ -n $id ]] && _fp_present "$id"; then present+=("$id"); fi; done < "$MANAGED"
   fi
-  if (( ${#present[@]} )); then srun flatpak uninstall --system --noninteractive -y "${extra[@]}" -- "${present[@]}"; fi
-  if have flatpak && [[ -r $MANAGED ]]; then srun flatpak uninstall --system --unused --noninteractive -y; fi
+  if (( ${#present[@]} )); then   # runtimes only ours needed go too
+    srun flatpak uninstall --system --noninteractive -y "${extra[@]}" -- "${present[@]}"
+    srun flatpak uninstall --system --unused --noninteractive -y
+  fi
   if [[ -e $MANAGED ]]; then srun rm -f "$MANAGED"; fi
+  if [[ -r $REMOTE_REC ]]; then   # without force: flatpak keeps it while anything still comes from it
+    srun flatpak remote-delete --system -- "$(cat "$REMOTE_REC")" 2>/dev/null || info "$(cat "$REMOTE_REC") is still in use: kept"
+    srun rm -f "$REMOTE_REC"
+  fi
   _unwanted_restore
   pkg_remove apps
 }

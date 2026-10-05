@@ -42,8 +42,9 @@ _strip_app_accent() {
   for f in "${XDG_CONFIG_HOME:-$HOME/.config}"/gtk-{4,3}.0/gtk.css; do
     [[ -f $f ]] || continue
     python3 - "$f" <<'EOF'
-import os, sys
-p = sys.argv[1]; text = open(p).read(); kept = []; inside = False
+import os, shutil, sys
+p = sys.argv[1]; link = os.path.islink(p); p = os.path.realpath(p)   # a dotfiles link: edit the real file, keep the link
+text = open(p).read(); kept = []; inside = False
 for line in text.split('\n'):
     if not inside and line.startswith('/* decal accent: begin'): inside = True
     elif inside and line.startswith('/* decal accent: end'): inside = False
@@ -51,7 +52,7 @@ for line in text.split('\n'):
 rest = '\n'.join(kept).rstrip()
 new = rest + '\n' if rest else ''
 if new != text:
-    if new: open(p, 'w').write(new)
+    if new or link: open(p + '.decal-new', 'w').write(new); shutil.copymode(p, p + '.decal-new'); os.replace(p + '.decal-new', p)
     else: os.remove(p)
 EOF
   done
@@ -137,7 +138,7 @@ _install_from_ego() {  # UUID -> 0 installed, 1 unavailable
 }
 
 module_add() {
-  have gnome-extensions || die "gnome-extensions not found (GNOME Shell required)"
+  if ! have gnome-extensions; then warn "not a GNOME Shell desktop: GNOME extensions skipped"; return 0; fi
   if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] would install missing: $(for u in $(_uuids); do _present "$u" || printf '%s ' "$u"; done)"; return 0; fi
   local x; for x in "${P_disable[@]}"; do
     if _uuids | grep -qxF "$x"; then die "$x is in both enable and disable in [gnome-extensions]"; fi

@@ -159,9 +159,10 @@ body7() {
     run() { ( eval "$(python3 "$REPO/lib/profile.py" shell "$MODNAME" --profile "$PROFILE_DIR" --modules "$REPO/modules")"; source ./module.sh; "module_$1" 2>/dev/null ); }
     C="${XDG_CONFIG_HOME:-$HOME/.config}"; mkdir -p "$C/gtk-4.0" "$C/gtk-3.0"
     block=$'/* decal accent: begin (Decal Tweaks) */\n:root { --accent-bg-color: #ff40a0; }\n/* decal accent: end */'
-    printf '/* mine */\nwindow { color: red; }\n\n%s\n' "$block" > "$C/gtk-4.0/gtk.css"
+    printf '/* mine */\nwindow { color: red; }\n\n%s\n' "$block" > "$C/dot-gtk.css"; ln -sf ../dot-gtk.css "$C/gtk-4.0/gtk.css"   # a dotfiles link
     printf '%s\n' "$block" > "$C/gtk-3.0/gtk.css"
-    run add; run remove
+    run add; i4=$(stat -L -c %i "$C/gtk-4.0/gtk.css"); run remove
+    echo "SAMEINODE=$([[ $(stat -L -c %i "$C/gtk-4.0/gtk.css") == "$i4" ]] && echo yes || echo no)"; echo "LINK=$(readlink "$C/gtk-4.0/gtk.css")"
     echo "MINE=$(grep -c 'mine\|color: red' "$C/gtk-4.0/gtk.css")"; echo "BLOCK4=$(grep -c 'decal accent\|accent-bg' "$C/gtk-4.0/gtk.css")"
     echo "GTK3=$([[ -e $C/gtk-3.0/gtk.css ]] && echo kept || echo gone)" )
 }
@@ -170,7 +171,12 @@ out=$(DECAL_BUNDLED_DIR=bundled dbus-run-session -- bash -c body7 2>/dev/null)
 v7() { grep "^$1=" <<<"$out" | head -1 | cut -d= -f2-; }
 assert_eq "$(v7 MINE)" "2" "removing Decal Tweaks keeps the user's own GTK css"
 assert_eq "$(v7 BLOCK4)" "0" "and takes its Apps too block out"
+assert_eq "$(v7 SAMEINODE)" "no" "gtk.css replaced whole (never half-written)"
+assert_eq "$(v7 LINK)" "../dot-gtk.css" "a linked gtk.css stays a link (the real file is edited)"
 assert_eq "$(v7 GTK3)" "gone" "a stylesheet with only the block goes"
 # extensions.gnome.org (or the profile's source) is reached over https only, never redirected to http
 assert_not_contains "$(grep '^curl' "$STUBS/calls" | grep -v -- '--proto =https --proto-redir =https')" "extension-info" "every extension download is https only"
+# no GNOME Shell (KDE, Xfce…): skipped with a word, the run goes on (audit batch 2)
+out=$( ( mod_run_pre() { have() { [[ $1 != gnome-extensions ]] && command -v "$1" >/dev/null 2>&1; }; }; mod_run gnome-extensions module_add ) 2>&1); assert_eq "$?" "0" "no GNOME Shell: not a failure"
+assert_contains "$out" "skipped" "...says it's skipped"
 t_done

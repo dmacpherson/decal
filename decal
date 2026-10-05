@@ -351,7 +351,12 @@ do_stamp() {
     tar -czf "$dest" -C "$STAMP_DIR" .
   else   # a folder: a new one, or one an earlier stamp made
     if [[ -e $dest && ! -e $dest/.decal-stamp && -n $(ls -A "$dest" 2>/dev/null) ]]; then die "$dest isn't empty and isn't an earlier stamp: not writing into it"; fi
-    rm -rf "$dest"; mkdir -p "$dest"; cp -a "$STAMP_DIR/." "$dest/"; : > "$dest/.decal-stamp"
+    # write new, then swap: the earlier stamp stays whole until the new one is complete
+    rm -rf "$dest.decal-new" "$dest.decal-old"; mkdir -p "$dest.decal-new"
+    cp -a "$STAMP_DIR/." "$dest.decal-new/" || { rm -rf "$dest.decal-new"; die "could not save the stamp to $dest (the earlier one is untouched)"; }
+    : > "$dest.decal-new/.decal-stamp"
+    if [[ -e $dest ]]; then mv "$dest" "$dest.decal-old"; fi
+    mv "$dest.decal-new" "$dest"; rm -rf "$dest.decal-old"
   fi
   info "saved: $dest   (apply it anywhere: decal apply $dest)"
   (( gh )) || return 0
@@ -626,6 +631,10 @@ activate_staged() {
     elif [[ -e $t ]]; then b="$t.old-$(date +%Y%m%d-%H%M%S)"; [[ ! -e $b ]] || b+="-$$"; mv "$t" "$b"; info "previous profile kept at $b"; fi
     mkdir -p "$(dirname "$t")"
   }
+  _beside() {  # the new profile beside the active one first (same filesystem: the swap is then renames, never a copy)
+    mkdir -p "$(dirname "$t")"; rm -rf "$t.decal-new" "$t.decal-old"
+    cp -a "$STAGE_DIR" "$t.decal-new" || { rm -rf "$t.decal-new"; die "couldn't put the profile in place (the active one is untouched)"; }
+  }
   if [[ ${LS_DRY_RUN:-0} == 1 ]]; then PROFILE_DIR=$STAGE_DIR; return 0; fi
   case $STAGE_KIND in
     dir)
@@ -634,11 +643,14 @@ activate_staged() {
     git)
       if [[ -d $t/.git && ! -L $t && $(git -C "$t" remote get-url origin 2>/dev/null) == "${STAGE_SRC#git+}" ]]; then
         git -C "$t" pull -q --ff-only || die "git pull failed in $t"
-      else _aside; mv "$STAGE_DIR" "$t"; fi ;;
+      else _beside; _aside; mv "$t.decal-new" "$t"; fi ;;
     *)   # archive, github, url: an unpacked copy
       echo "$STAGE_SRC" > "$STAGE_DIR/.decal-source"
-      if [[ $STAGE_KIND != archive && -d $t && ! -L $t && $(cat "$t/.decal-source" 2>/dev/null) == "$STAGE_SRC" ]]; then rm -rf "$t"; else _aside; fi
-      mv "$STAGE_DIR" "$t" ;;
+      _beside
+      if [[ $STAGE_KIND != archive && -d $t && ! -L $t && $(cat "$t/.decal-source" 2>/dev/null) == "$STAGE_SRC" ]]; then
+        mv "$t" "$t.decal-old"   # a newer download of the same source: no backup, gone once the new one is in
+      else _aside; fi
+      mv "$t.decal-new" "$t"; rm -rf "$t.decal-old" ;;
   esac
   PROFILE_DIR=$t
   info "active profile: $t -> $(readlink -f "$t")"

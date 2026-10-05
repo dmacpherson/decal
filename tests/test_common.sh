@@ -53,4 +53,11 @@ inside /usr/share/plymouth/themes /usr/share/plymouth/themes/angular; assert_eq 
 inside /usr/share/plymouth/themes /usr/share/plymouth/themes/../../../etc; assert_eq "$?" "1" "inside: ../ refused"
 inside /usr/share/plymouth/themes /usr/share/plymouth/themes; assert_eq "$?" "1" "inside: the folder itself isn't inside it"
 mkdir -p "$T_TMP/in"; ln -s /etc "$T_TMP/in/out"; inside "$T_TMP/in" "$T_TMP/in/out/passwd"; assert_eq "$?" "1" "inside: a link out refused"
+# write new, then swap: files are replaced whole, never rewritten in place (a crash can't leave half a file)
+printf 'old\n' > "$T_TMP/sw"; i=$(stat -c %i "$T_TMP/sw"); printf 'new\n' | swrite "$T_TMP/sw"
+assert_eq "$(cat "$T_TMP/sw")" "new" "swrite: content"; assert_not_contains "$(stat -c %i "$T_TMP/sw")" "$i" "swrite: replaced whole"
+assert_nofile "$T_TMP/sw.decal-new" "swrite: no leftover"
+mkdir -p "$DECAL_ROOT/etc"; printf 'orig\n' > "$DECAL_ROOT/etc/swap.conf"; printf 'ours\n' | etc_write tst /etc/swap.conf
+i=$(stat -c %i "$DECAL_ROOT/etc/swap.conf"); etc_restore tst /etc/swap.conf
+assert_eq "$(cat "$DECAL_ROOT/etc/swap.conf")" "orig" "etc_restore: content"; assert_not_contains "$(stat -c %i "$DECAL_ROOT/etc/swap.conf")" "$i" "etc_restore: replaced whole"
 t_done

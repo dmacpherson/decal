@@ -203,8 +203,9 @@ def remember(source):
     now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     keep = [(s, t) for s, t in recent() if s != source][:9]
     os.makedirs(STATE, exist_ok=True)
-    with open(RECENT, "w") as f:
+    with open(RECENT + ".decal-new", "w") as f:
         f.writelines(f"{s}\t{t}\n" for s, t in [(source, now)] + keep)
+    os.replace(RECENT + ".decal-new", RECENT)
 
 
 def yours(source, login=""):

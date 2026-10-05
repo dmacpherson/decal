@@ -63,4 +63,12 @@ assert_contains "$(calls)" "gpasswd -d" "left the kvm group"
 # cowork = false: no kvm group
 rm -rf "$DECAL_STATE"; stub dpkg-query 'case "$*" in *Package*) echo base-files;; *) exit 1;; esac'; prof 'desktop = true;cowork = false'; : > "$STUBS/calls"; run_mod add >/dev/null 2>&1
 assert_not_contains "$(calls)" "usermod" "cowork = false: not added to kvm"
+# the preview (--dry-run) of the desktop app on Debian goes through without changing anything (audit batch 2)
+rm -rf "$DECAL_STATE" "$DECAL_ROOT/etc/apt"; prof 'cli = false;desktop = true'; : > "$STUBS/calls"
+out=$( ( export LS_DRY_RUN=1; run_mod add ) 2>&1); assert_eq "$?" "0" "dry run: no crash"
+assert_not_contains "$out" "Is a directory" "dry run: no errors in the preview"
+assert_nofile "$DECAL_ROOT/etc/apt/sources.list.d/claude-desktop.list" "dry run: nothing written"
+# no apt-get called directly: the backend refreshes its lists before the next install
+rm -rf "$DECAL_STATE" "$DECAL_ROOT/etc/apt"; : > "$STUBS/calls"; run_mod add >/dev/null 2>&1
+assert_eq "$(grep -c '^apt-get update' "$STUBS/calls")" "1" "the package lists refreshed once, by the backend"
 t_done

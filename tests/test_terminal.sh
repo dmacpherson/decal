@@ -54,7 +54,15 @@ mod module_remove 2>/dev/null; sed -i '/^opacity = 0.75$/d' "$PROFILE_DIR/profil
 # marked-block mode when .bashrc doesn't source .bashrc.d
 printf '# plain bashrc\n' > "$HOME/.bashrc"; mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"; mod module_add 2>/dev/null
 assert_contains "$(cat "$HOME/.bashrc")" "# >>> decal terminal >>>" "block appended"
+i_rc=$(stat -c %i "$HOME/.bashrc")
 mod module_remove 2>/dev/null; assert_eq "$(cat "$HOME/.bashrc")" "# plain bashrc" "block removed exactly"
+assert_not_contains "$(stat -c %i "$HOME/.bashrc")" "$i_rc" "~/.bashrc replaced whole (never half-written)"
+# a ~/.bashrc that links into a dotfiles folder: the hook comes out of the real file and the link stays (review)
+mkdir -p "$HOME/dot"; printf '# plain bashrc\n' > "$HOME/dot/bashrc"; rm -f "$HOME/.bashrc"; ln -s dot/bashrc "$HOME/.bashrc"
+mod module_add 2>/dev/null; mod module_remove 2>/dev/null
+assert_eq "$(readlink "$HOME/.bashrc")" "dot/bashrc" "a linked ~/.bashrc stays a link"
+assert_eq "$(cat "$HOME/dot/bashrc")" "# plain bashrc" "the hook comes out of the real file"
+rm -f "$HOME/.bashrc"; printf '# plain bashrc\n' > "$HOME/.bashrc"
 # fresh Ptyxis (never launched): no default profile yet -> add still succeeds, palette skipped with a warning
 stub gsettings 'case $1 in get) case $3 in default-profile-uuid) echo "'"'"''"'"'";; profile-uuids) echo "@as []";; *) echo "'"'"'x'"'"'";; esac;; list-keys) exit 0;; esac'
 mkdir -p "$HOME/.local/share/fonts/decal/FiraCodeNerdFont"
@@ -133,4 +141,13 @@ out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$P
 assert_contains "$out" "unknown TERMINAL" "...as an unknown terminal"
 out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$PWD; source ./module.sh; _preset themes "../../x") 2>&1); assert_eq "$?" "1" "preset ../: refused"
 out=$( (cd "$REPO/modules/terminal"; source "$REPO/lib/common.sh"; MODULE_DIR=$PWD; source ./module.sh; P_brew=('jq"; system("id"); "'); P_features_prompt=false; for f in fuzzy completions history jump ls cat; do eval "P_features_$f=false"; done; _gen_brewfile) 2>&1); assert_eq "$?" "1" "a formula that isn't a name: refused"
+# a terminal app this distro can't install (ghostty on Debian): skipped before anything changes (audit batch 2)
+sed -i 's/^app = "ptyxis"$/app = "ghostty"/' "$PROFILE_DIR/profile.toml"; grep -q '^app = "ghostty"' "$PROFILE_DIR/profile.toml" || printf '\n[terminal]\napp = "ghostty"\n' >> "$PROFILE_DIR/profile.toml"
+rm -rf "$XDG_CONFIG_HOME/decal/terminal"; : > "$STUBS/calls"
+out=$(DECAL_PLATFORM=debian mod module_add 2>&1); assert_eq "$?" "0" "unavailable terminal: not a failure"
+assert_contains "$out" "ghostty isn't available on debian" "...says why"; assert_nofile "$XDG_CONFIG_HOME/decal/terminal/Brewfile" "...and nothing was set up first"
+# Homebrew decal installed is kept on remove (it may hold your own tools), and remove says so and how to take it off
+mkdir -p "$DECAL_USER_STATE"; : > "$DECAL_USER_STATE/terminal.homebrew"
+out=$(mod module_remove 2>&1); assert_contains "$out" "Homebrew (installed by decal) is kept" "remove: says Homebrew stays"
+assert_contains "$out" "uninstall.sh" "...and how to remove it"; assert_nofile "$DECAL_USER_STATE/terminal.homebrew" "...the record cleared"
 t_done
