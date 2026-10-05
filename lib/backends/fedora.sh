@@ -1,6 +1,7 @@
 # shellcheck shell=bash disable=SC2034,SC2154,SC1090,SC1091  # sourced: vars shared across lib/ and modules
 PKG_MAP[plymouth-script-plugin]=plymouth-plugin-script
 _pkg_present() { rpm -q --quiet -- "$1"; }
+_pkg_known() { dnf -q info -- "$1" >/dev/null 2>&1; }   # the distro has it (installed or not)
 _pkg_add() { srun dnf install -y -- "$@"; }
 _pkg_rm() { srun dnf remove -y --setopt=clean_requirements_on_remove=False -- "$@"; }
 _pkg_del() { srun dnf remove -y -- "$@"; }

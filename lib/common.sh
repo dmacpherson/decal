@@ -32,13 +32,19 @@ srun() {
 # swrite PATH : write stdin to a (root-owned) PATH, creating parent dirs. Written beside it, then renamed over it
 # (keeping its permissions): a crash or Ctrl+C never leaves half a file (CLAUDE.md: write new, then swap)
 swrite() {
-  local p=$1
+  local p=$1 t; t=$(_tmp_beside "$1")
   if [[ $LS_DRY_RUN == 1 ]]; then printf '[dry-run] write %s\n' "$p" >&2; cat >/dev/null; return 0; fi
   ${LS_SUDO:+"$LS_SUDO"} mkdir -p "$(dirname "$p")"
-  ${LS_SUDO:+"$LS_SUDO"} tee "$p.decal-new" >/dev/null
-  if [[ -e $p ]]; then ${LS_SUDO:+"$LS_SUDO"} chmod --reference="$p" "$p.decal-new" 2>/dev/null || true; fi
-  ${LS_SUDO:+"$LS_SUDO"} mv -f "$p.decal-new" "$p"
+  ${LS_SUDO:+"$LS_SUDO"} tee "$t" >/dev/null
+  if ${LS_SUDO:+"$LS_SUDO"} test -e "$p"; then   # through sudo: a root-only folder's file keeps its mode and owner too
+    ${LS_SUDO:+"$LS_SUDO"} chmod --reference="$p" "$t" 2>/dev/null || true
+    ${LS_SUDO:+"$LS_SUDO"} chown --reference="$p" "$t" 2>/dev/null || true
+  fi
+  ${LS_SUDO:+"$LS_SUDO"} mv -f "$t" "$p"
 }
+# _tmp_beside PATH : the temp a new PATH is written to before the swap; hidden, so folders that read every file in them
+# (/etc/dconf/db/gdm.d, apt.conf.d) never see a half-written one
+_tmp_beside() { printf '%s/.%s.decal-new' "$(dirname "$1")" "$(basename "$1")"; }
 need_reboot() { [[ -n ${LS_RUNTMP:-} && -d $LS_RUNTMP ]] && : > "$LS_RUNTMP/reboot"; return 0; }
 sys_path() { printf '%s%s' "$LS_ROOT" "$1"; }
 
@@ -62,7 +68,7 @@ etc_write() {
 # etc_restore OWNER PATH : put the original back (or delete if it was absent)
 etc_restore() {
   local owner=$1 path=$2 bk real; bk=$(_bk_path "$owner" "$path"); real=$(sys_path "$path")
-  if [[ -e $bk ]]; then srun cp -a "$bk" "$real.decal-new"; srun mv -f "$real.decal-new" "$real"; srun rm -f "$bk"
+  if [[ -e $bk ]]; then srun cp -a "$bk" "$(_tmp_beside "$real")"; srun mv -f "$(_tmp_beside "$real")" "$real"; srun rm -f "$bk"
   elif [[ -e $bk.absent ]]; then srun rm -f "$real" "$bk.absent"; fi
   return 0
 }

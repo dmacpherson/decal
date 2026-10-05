@@ -153,8 +153,8 @@ _brew_ensure() {
     pkg_install terminal git
     srun mkdir -p "$prefix"; srun chown "$(id -un):$(id -gn)" "$(dirname "$prefix")" "$prefix"
     inst=$(ls_fetch https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh) || die "could not download the Homebrew installer"
+    mkdir -p "$LS_USER_STATE"; : > "$LS_USER_STATE/terminal.homebrew"   # noted first: a failed install may leave some
     NONINTERACTIVE=1 bash "$inst" || die "the Homebrew installer failed"
-    mkdir -p "$LS_USER_STATE"; : > "$LS_USER_STATE/terminal.homebrew"
   fi
   eval "$("$prefix/bin/brew" shellenv)"
 }

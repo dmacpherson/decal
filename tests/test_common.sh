@@ -56,7 +56,7 @@ mkdir -p "$T_TMP/in"; ln -s /etc "$T_TMP/in/out"; inside "$T_TMP/in" "$T_TMP/in/
 # write new, then swap: files are replaced whole, never rewritten in place (a crash can't leave half a file)
 printf 'old\n' > "$T_TMP/sw"; i=$(stat -c %i "$T_TMP/sw"); printf 'new\n' | swrite "$T_TMP/sw"
 assert_eq "$(cat "$T_TMP/sw")" "new" "swrite: content"; assert_not_contains "$(stat -c %i "$T_TMP/sw")" "$i" "swrite: replaced whole"
-assert_nofile "$T_TMP/sw.decal-new" "swrite: no leftover"
+assert_nofile "$T_TMP/.sw.decal-new" "swrite: no leftover"
 mkdir -p "$DECAL_ROOT/etc"; printf 'orig\n' > "$DECAL_ROOT/etc/swap.conf"; printf 'ours\n' | etc_write tst /etc/swap.conf
 i=$(stat -c %i "$DECAL_ROOT/etc/swap.conf"); etc_restore tst /etc/swap.conf
 assert_eq "$(cat "$DECAL_ROOT/etc/swap.conf")" "orig" "etc_restore: content"; assert_not_contains "$(stat -c %i "$DECAL_ROOT/etc/swap.conf")" "$i" "etc_restore: replaced whole"
@@ -90,4 +90,13 @@ DECAL_TTY_IN=/nonexistent have_tty; assert_eq "$?" "1" "have_tty: none"
 printf 'two\n' > "$T_TMP/tty-in"; DECAL_TTY_IN="$T_TMP/tty-in" have_tty; assert_eq "$?" "0" "have_tty: there"
 DECAL_TTY_IN="$T_TMP/tty-in" DECAL_TTY_OUT="$T_TMP/tty-out" tty_ask "Which? "; assert_eq "$REPLY" "two" "tty_ask: the answer in REPLY"
 assert_eq "$(cat "$T_TMP/tty-out")" "Which? " "...after the question"
+# swrite's temp is hidden (a .d folder that reads every file never sees a half-written one); with sudo, the old file's
+# mode and owner are read through sudo too (root-only folders)
+SD="$T_TMP/sd"; mkdir -p "$SD"; echo old > "$SD/f"
+( mv() { return 1; }; echo new | swrite "$SD/f" ) 2>/dev/null   # the swap never happens (killed)
+assert_file "$SD/.f.decal-new" "swrite: the temp is .NAME.decal-new"; assert_nofile "$SD/f.decal-new" "...never NAME.decal-new"; rm -f "$SD/.f.decal-new"
+printf '#!/usr/bin/env bash\necho "fakesudo $*" >> "%s/calls"\n"$@"\n' "$STUBS" > "$T_TMP/fakesudo"; chmod +x "$T_TMP/fakesudo"
+: > "$STUBS/calls"; echo new | LS_SUDO="$T_TMP/fakesudo" swrite "$SD/f"
+assert_contains "$(calls)" "fakesudo test -e $SD/f" "swrite with sudo: the old file looked at through sudo"
+assert_contains "$(calls)" "fakesudo chown --reference=$SD/f" "...its owner kept"; assert_eq "$(cat "$SD/f")" "new" "...written"
 t_done

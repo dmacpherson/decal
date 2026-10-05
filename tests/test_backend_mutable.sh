@@ -128,4 +128,9 @@ for b in debian fedora arch fedora-atomic; do
     assert_contains "$body" ' -- ' "$b $f: -- before the names"
   done
 done
+# pkg_known: does the distro have this package (modules ask the backend, never apt-cache/dnf themselves)
+export DECAL_PLATFORM=debian; platform_load; stub apt-cache 'case "$*" in *docker-compose-v2) exit 0;; esac; exit 1'
+pkg_known docker-compose-v2; assert_eq "$?" "0" "debian: pkg_known yes"; pkg_known nope; assert_eq "$?" "1" "debian: pkg_known no"
+assert_contains "$(calls)" "apt-cache show -- docker-compose-v2" "...asks apt-cache, with --"
+grep -q 'apt-cache\|dnf \|pacman ' "$REPO/modules/docker/module.sh"; assert_eq "$?" "1" "docker never calls a package manager itself"
 t_done

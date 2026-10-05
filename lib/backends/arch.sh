@@ -1,6 +1,7 @@
 # shellcheck shell=bash disable=SC2034,SC2154,SC1090,SC1091  # sourced: vars shared across lib/ and modules
 PKG_MAP[plymouth-script-plugin]=""   # all plymouth plugins ship in the plymouth package
 _pkg_present() { pacman -Q -- "$1" >/dev/null 2>&1; }
+_pkg_known() { pacman -Si -- "$1" >/dev/null 2>&1; }   # the distro has it (installed or not)
 _pkg_add() { srun pacman -S --needed --noconfirm -- "$@"; }
 _pkg_rm() { srun pacman -R --noconfirm -- "$@"; }
 _pkg_del() { srun pacman -Rs --noconfirm -- "$@"; }
