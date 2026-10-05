@@ -75,8 +75,9 @@ assert_nofile "$U/btop.desktop" "remove deletes decal's copies"; assert_file "$U
 # tags: remove --only dev takes away just what [apps.dev] added; Discord and the rest stay
 sed -i 's/^show = \["btop", "mine"\]$/&\nflatpaks = ["com.discordapp.Discord"]/' "$PROFILE_DIR/profile.toml"
 printf '\n[apps.dev]\nflatpaks = ["dev.zed.Zed", "com.discordapp.Discord"]\nshow = ["htop"]\n' >> "$PROFILE_DIR/profile.toml"
-stub flatpak 'case "$*" in "info --system -- dev.zed.Zed"|"info --system -- com.discordapp.Discord"|"info --system -- com.brave.Browser") exit 0;; "info --system -- "*) exit 1;; esac; exit 0'
+stub flatpak 'case "$*" in "info --system -- com.brave.Browser") exit 0;; "info --system -- "*) exit 1;; esac; exit 0'   # decal installs Zed and Discord
 DECAL_TAGS=dev run_mod add >/dev/null 2>&1
+stub flatpak 'case "$*" in "info --system -- dev.zed.Zed"|"info --system -- com.discordapp.Discord"|"info --system -- com.brave.Browser") exit 0;; "info --system -- "*) exit 1;; esac; exit 0'   # now there
 assert_contains "$(cat "$DECAL_STATE/apps/managed")" "dev.zed.Zed" "with --tags dev: dev's flatpak installed and recorded"
 assert_file "$U/htop.desktop" "and dev's launcher shown"
 : > "$STUBS/calls"; DECAL_DROP=dev run_mod drop >/dev/null 2>&1
@@ -85,4 +86,17 @@ assert_not_contains "$(calls)" "com.discordapp.Discord" "a flatpak that is in [a
 assert_not_contains "$(cat "$DECAL_STATE/apps/managed")" "dev.zed.Zed" "and no longer recorded"
 assert_contains "$(cat "$DECAL_STATE/apps/managed")" "com.discordapp.Discord" "the rest still recorded"
 assert_nofile "$U/htop.desktop" "dev's launcher copy removed"; assert_file "$U/btop.desktop" "the untagged one kept"
+# a flatpak you already had is never decal's: listing it doesn't make remove uninstall it (audit batch 2)
+rm -rf "$DECAL_STATE"; : > "$STUBS/calls"
+stub flatpak 'case "$*" in "info --system -- com.discordapp.Discord"|"info --system -- com.brave.Browser") exit 0;; "info --system -- "*) exit 1;; "remotes --system --columns=name") echo flathub;; esac; exit 0'
+printf '[apps]\nflatpaks = ["com.discordapp.Discord"]\n' > "$PROFILE_DIR/profile.toml"
+run_mod add >/dev/null 2>&1; run_mod remove >/dev/null 2>&1
+assert_not_contains "$(calls)" "uninstall --system --noninteractive -y -- com.discordapp.Discord" "an app you already had stays"
+assert_not_contains "$(calls)" "uninstall --system --unused" "nothing of ours removed: no runtime clean-up either"
+assert_not_contains "$(calls)" "remote-add" "Flathub already there: not added"
+# a Flathub remote decal added is taken away again (without force: it stays while anything uses it)
+rm -rf "$DECAL_STATE"; : > "$STUBS/calls"
+stub flatpak 'case "$*" in "info --system -- "*) exit 1;; "remotes --system --columns=name") ;; esac; exit 0'
+run_mod add >/dev/null 2>&1; run_mod remove >/dev/null 2>&1
+assert_contains "$(calls)" "flatpak remote-delete --system -- flathub" "the remote decal added: removed"
 t_done

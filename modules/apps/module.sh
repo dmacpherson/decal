@@ -4,6 +4,7 @@ MODULE_NEEDS_ROOT=1
 BRAVE_STATE="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser/Local State"
 DEF_PREV="$LS_USER_STATE/apps-defaults.prev"
 MANAGED="$LS_STATE/apps/managed"
+REMOTE_REC="$LS_STATE/apps/remote"   # the Flatpak remote decal added (none when it was already there)
 REMOVED_FP="$LS_STATE/apps/removed-flatpaks"
 SHOW_MARK="# decal: shown by [apps] show (decal removes this copy when the app leaves the list)"
 _contradictions() {
@@ -124,10 +125,17 @@ _defaults_ok() {
 module_add() {
   _contradictions
   pkg_install apps flatpak
-  srun flatpak remote-add --system --if-not-exists -- "$P_remote" "$P_remote_url"
+  if ! flatpak remotes --system --columns=name 2>/dev/null | grep -qxF -- "$P_remote"; then
+    srun flatpak remote-add --system --if-not-exists -- "$P_remote" "$P_remote_url"
+    if [[ $LS_DRY_RUN != 1 ]]; then echo "$P_remote" | swrite "$REMOTE_REC"; fi
+  fi
   local missing=() id
-  for id in "${P_flatpaks[@]}"; do _fp_present "$id" || missing+=("$id"); state_append "$MANAGED" "$id"; done
-  if (( ${#missing[@]} )); then step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y -- "$P_remote" "${missing[@]}"; fi
+  for id in "${P_flatpaks[@]}"; do _fp_present "$id" || missing+=("$id"); done
+  if (( ${#missing[@]} )); then
+    step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y -- "$P_remote" "${missing[@]}"
+    # only what decal installed is decal's: an app you already had is never uninstalled by remove
+    for id in "${missing[@]}"; do state_append "$MANAGED" "$id"; done
+  fi
   if (( ${#P_packages[@]} )); then pkg_install apps "${P_packages[@]}"; fi
   _unwanted_add
   _defaults_add
@@ -145,9 +153,15 @@ module_remove() {
   if [[ -r $MANAGED ]]; then
     while IFS= read -r id; do if [[ -n $id ]] && _fp_present "$id"; then present+=("$id"); fi; done < "$MANAGED"
   fi
-  if (( ${#present[@]} )); then srun flatpak uninstall --system --noninteractive -y "${extra[@]}" -- "${present[@]}"; fi
-  if have flatpak && [[ -r $MANAGED ]]; then srun flatpak uninstall --system --unused --noninteractive -y; fi
+  if (( ${#present[@]} )); then   # runtimes only ours needed go too
+    srun flatpak uninstall --system --noninteractive -y "${extra[@]}" -- "${present[@]}"
+    srun flatpak uninstall --system --unused --noninteractive -y
+  fi
   if [[ -e $MANAGED ]]; then srun rm -f "$MANAGED"; fi
+  if [[ -r $REMOTE_REC ]]; then   # without force: flatpak keeps it while anything still comes from it
+    srun flatpak remote-delete --system -- "$(cat "$REMOTE_REC")" 2>/dev/null || info "$(cat "$REMOTE_REC") is still in use: kept"
+    srun rm -f "$REMOTE_REC"
+  fi
   _unwanted_restore
   pkg_remove apps
 }
