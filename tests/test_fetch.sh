@@ -42,6 +42,10 @@ assert_file "$out/Theme-A/index.theme" "release assets extracted"
 err=$(F "github-release:o/r" --asset "nomatch-*" 2>&1); assert_contains "$err" "no asset matches 'nomatch-*'" "asset glob miss"
 assert_contains "$err" "pack-dark-v1.tar.gz" "lists available assets"
 img=$(F "$DECAL_GITHUB/files/w.jpg"); assert_eq "$(cat "$img")" "fake jpeg" "single file download kept as file"
+echo two > "$T_TMP/srv/files/w2.jpg"; out=$(DECAL_ALLOW_HTTP_LOCAL= F "$DECAL_GITHUB/files/w2.jpg" 2>&1); assert_contains "$out" "use an https:// link" "plain http refused (tests allow 127.0.0.1 only on purpose)"
+mkdir -p "$T_TMP/srv/esc"; ln -s /etc/passwd "$T_TMP/srv/esc/pw"; tar -czf "$T_TMP/srv/files/esc.tar.gz" -C "$T_TMP/srv/esc" pw
+out=$(F "$DECAL_GITHUB/files/esc.tar.gz" 2>&1); assert_eq "$?" "1" "an archive with a link out: refused"
+assert_contains "$out" "points outside the archive" "...says why"
 kill "$SRV"; wait "$SRV" 2>/dev/null
 out=$(F "github-release:o/r" --asset "pack-dark-*.tar.gz" --asset "pack-light-*.tar.gz" --version v1)
 assert_file "$out/Theme-A/index.theme" "pinned release served from cache while offline"

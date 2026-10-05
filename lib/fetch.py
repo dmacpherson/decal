@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """fetch.py SOURCE [...] : materialize a decal source into the cache and print its local path."""
-import argparse, fnmatch, hashlib, os, re, shutil, subprocess, sys, tarfile, tempfile, time, urllib.parse, urllib.request, zipfile
+import argparse, fnmatch, hashlib, os, re, shutil, subprocess, sys, tempfile, time, urllib.parse, urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import source  # noqa: E402  (https only, no downgrade, safe unpacking: one place for all of decal)
 
 
 class FetchError(Exception):
@@ -23,28 +26,33 @@ def key(*parts):
 
 
 def http_get(url):
+    """URL's final address and body: https only (redirects to http refused), at most source.LIMIT bytes."""
+    if not source.allowed(url):
+        raise FetchError(f"download refused: {url}: use an https:// link")
     req = urllib.request.Request(url, headers={"User-Agent": "decal"})
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            return r.geturl(), r.read()
+        with urllib.request.build_opener(source._NoDowngrade).open(req, timeout=120) as r:
+            data = r.read(source.LIMIT + 1)
+            if len(data) > source.LIMIT:
+                raise FetchError(f"download refused: {url} is larger than {source.LIMIT // (1024 * 1024)} MB")
+            return r.geturl(), data
+    except FetchError:
+        raise
+    except source.Bad as e:
+        raise FetchError(f"download refused: {e}")
     except Exception as e:
         raise FetchError(f"download failed: {url}: {e}")
 
 
 def extract(path, name, dest):
-    n = name.lower()
-    if n.endswith(".zip"):
-        with zipfile.ZipFile(path) as z:
-            z.extractall(dest)
-        return True
-    if n.endswith(ARCHIVES):
-        with tarfile.open(path) as t:
-            try:
-                t.extractall(dest, filter="data")
-            except TypeError:
-                t.extractall(dest)
-        return True
-    return False
+    """Unpack an archive (by its name) with source.unpack: links only when they stay inside (themes use them)."""
+    if not name.lower().endswith(ARCHIVES):
+        return False
+    try:
+        source.unpack(path, dest, links="inside")
+    except source.Bad as e:
+        raise FetchError(f"{name}: {e}")
+    return True
 
 
 def cached(out, err):

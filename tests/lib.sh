@@ -24,6 +24,7 @@ t_setup() {
   mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
   export DECAL_ROOT="$T_TMP/root" DECAL_STATE="$T_TMP/state"
   export DECAL_USER_STATE="$T_TMP/ustate" DECAL_SUDO=""
+  export DECAL_ALLOW_HTTP_LOCAL=1   # the fake servers are http on 127.0.0.1; everything else stays https-only
   export STUBS="$T_TMP/stubs"; mkdir -p "$STUBS" "$DECAL_ROOT"
   : > "$STUBS/calls"; export PATH="$STUBS:$PATH"
 }

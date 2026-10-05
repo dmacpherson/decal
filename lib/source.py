@@ -2,7 +2,8 @@
 """source.py: what a profile source is, and getting it safely.
 
   source.py resolve INPUT         KIND<TAB>SOURCE<TAB>NOTE (kind: dir, archive, github, url, git)
-  source.py unpack ARCHIVE DIR    a .tar.gz/.tgz/.zip, safely: nothing outside DIR, no links, 200 MB at most
+  source.py unpack [--links inside] ARCHIVE DIR   an archive, safely: nothing outside DIR, no links (or only
+                                  links that stay inside), 200 MB at most
   source.py fetch URL DIR         download; an archive is unpacked into DIR (prints "archive"); else exit 3
   source.py remember SOURCE       put SOURCE first in the recently-used list (10 kept; never a key)
   source.py yours SOURCE [--login L]  exit 0 when SOURCE is yours: local, recently used, or L's on GitHub
@@ -71,7 +72,9 @@ def _copy(src, out, used):
         out.write(b)
 
 
-def unpack(archive, dest):
+def unpack(archive, dest, links="none"):
+    """A .tar.gz/.tgz/.tar.xz/.tar.bz2/.tar or .zip, safely: nothing outside DEST, no devices, a size cap. Links are
+    refused unless links="inside" (themes need them), and then only links that stay inside DEST."""
     os.makedirs(dest, exist_ok=True)
     root = os.path.realpath(dest)
 
@@ -83,26 +86,19 @@ def unpack(archive, dest):
             raise Bad(f"{name}: points outside the archive")
         return os.path.join(root, *parts) if parts else None
 
+    def link_ok(member, linkname):
+        if linkname.startswith("/"):
+            raise Bad(f"{member}: a link that points outside the archive")
+        where = os.path.normpath(os.path.join(os.path.dirname(target(member) or root), linkname))
+        if where != root and not where.startswith(root + os.sep):
+            raise Bad(f"{member}: a link that points outside the archive")
+        return where
+
     with open(archive, "rb") as f:
         magic = f.read(4)
     used = 0
     try:
-        if magic[:2] == b"\x1f\x8b":
-            with tarfile.open(archive, "r:gz") as tf:
-                for m in tf:
-                    t = target(m.name)
-                    if t is None:
-                        continue
-                    if m.isdir():
-                        os.makedirs(t, exist_ok=True)
-                        continue
-                    if not m.isfile():
-                        raise Bad(f"{m.name}: links and special files aren't allowed in a profile")
-                    os.makedirs(os.path.dirname(t), exist_ok=True)
-                    with tf.extractfile(m) as src, open(t, "wb") as out:
-                        used = _copy(src, out, used)
-                    os.chmod(t, 0o755 if m.mode & 0o111 else 0o644)
-        elif magic == b"PK\x03\x04":
+        if magic == b"PK\x03\x04":
             with zipfile.ZipFile(archive) as zf:
                 for i in zf.infolist():
                     t = target(i.filename)
@@ -117,9 +113,38 @@ def unpack(archive, dest):
                     os.makedirs(os.path.dirname(t), exist_ok=True)
                     with zf.open(i) as src, open(t, "wb") as out:
                         used = _copy(src, out, used)
-        else:
-            raise Bad("not a .tar.gz or .zip archive")
-    except (tarfile.TarError, zipfile.BadZipFile, EOFError) as e:
+            return
+        try:
+            tf = tarfile.open(archive, "r:*")   # gzip, xz, bzip2 or plain
+        except tarfile.TarError:
+            raise Bad("not an archive (.tar.gz, .tar.xz, .tar.bz2, .tar or .zip)")
+        with tf:
+            for m in tf:
+                t = target(m.name)
+                if t is None:
+                    continue
+                if m.isdir():
+                    os.makedirs(t, exist_ok=True)
+                elif m.isfile():
+                    os.makedirs(os.path.dirname(t), exist_ok=True)
+                    with tf.extractfile(m) as src, open(t, "wb") as out:
+                        used = _copy(src, out, used)
+                    os.chmod(t, 0o755 if m.mode & 0o111 else 0o644)
+                elif links == "inside" and m.issym():
+                    link_ok(m.name, m.linkname)
+                    os.makedirs(os.path.dirname(t), exist_ok=True)
+                    if os.path.lexists(t):
+                        os.remove(t)
+                    os.symlink(m.linkname, t)
+                elif links == "inside" and m.islnk():   # a hard link: a copy of a file already unpacked
+                    src = target(m.linkname)
+                    if not src or not os.path.isfile(src) or os.path.islink(src):
+                        raise Bad(f"{m.name}: a link that points outside the archive")
+                    os.makedirs(os.path.dirname(t), exist_ok=True)
+                    shutil.copyfile(src, t)
+                else:
+                    raise Bad(f"{m.name}: links and special files aren't allowed in a profile")
+    except (tarfile.TarError, zipfile.BadZipFile, EOFError, OSError) as e:
         raise Bad(f"a damaged archive ({e})")
 
 
@@ -148,7 +173,7 @@ def fetch(url, dest):
         download(url, f)
         with open(f, "rb") as fh:
             magic = fh.read(4)
-        if magic[:2] != b"\x1f\x8b" and magic != b"PK\x03\x04":
+        if magic[:2] != b"\x1f\x8b" and magic != b"PK\x03\x04":   # profiles: .tar.gz/.tgz or .zip
             return False
         unpack(f, dest)
         return True
@@ -196,13 +221,14 @@ def main():
     ap.add_argument("cmd", choices=["resolve", "unpack", "fetch", "remember", "yours", "public"])
     ap.add_argument("args", nargs="+")
     ap.add_argument("--login", default="")
+    ap.add_argument("--links", choices=["none", "inside"], default="none")
     a = ap.parse_args()
     try:
         if a.cmd == "resolve":
             kind, src, note = resolve(a.args[0])
             print(f"{kind}\t{src}\t{note}")
         elif a.cmd == "unpack":
-            unpack(a.args[0], a.args[1])
+            unpack(a.args[0], a.args[1], a.links)
         elif a.cmd == "fetch":
             if not fetch(a.args[0], a.args[1]):
                 sys.exit(3)

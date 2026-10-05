@@ -69,7 +69,19 @@ out=$(python3 "$SRC" unpack "$U/slip.zip" "$U/t6" 2>&1); assert_contains "$out" 
 head -c 3000 /dev/zero > "$U/big"; tar -czf "$U/big.tgz" -C "$U" big
 out=$(DECAL_UNPACK_LIMIT=1000 python3 "$SRC" unpack "$U/big.tgz" "$U/t7" 2>&1); assert_contains "$out" "more than" "over the size limit: refused"
 echo "not an archive" > "$U/plain.tgz"; out=$(python3 "$SRC" unpack "$U/plain.tgz" "$U/t8" 2>&1)
-assert_contains "$out" "not a .tar.gz or .zip archive" "not an archive: says so"
+assert_contains "$out" "not an archive" "not an archive: says so"
+# themes: .tar.xz/.tar.bz2/.tar too, and (only when asked) links that stay inside
+mkdir -p "$U/th/T/cursors"; echo c > "$U/th/T/cursors/left_ptr"; ln -s left_ptr "$U/th/T/cursors/default"; ln -s ../index.theme "$U/th/T/cursors/up"
+echo i > "$U/th/T/index.theme"
+for c in J j ""; do tar -c${c}f "$U/th$c.tar" -C "$U/th" T; done
+for c in J j ""; do python3 "$SRC" unpack --links inside "$U/th$c.tar" "$U/o-th$c" 2>/dev/null; assert_eq "$(cat "$U/o-th$c/T/cursors/default")" "c" "theme archive ($c) with inside links unpacked"; done
+out=$(python3 "$SRC" unpack "$U/thJ.tar" "$U/o-nolinks" 2>&1); assert_contains "$out" "links and special files aren't allowed" "links refused unless asked for"
+python3 -c "$mk_tar"'
+i=tarfile.TarInfo("evil"); i.type=tarfile.SYMTYPE; i.linkname="../../../../etc/passwd"; t.addfile(i); t.close()' "$U/esc.tgz"
+out=$(python3 "$SRC" unpack --links inside "$U/esc.tgz" "$U/t9" 2>&1); assert_contains "$out" "points outside the archive" "a link out: refused even when links are allowed"
+python3 -c "$mk_tar"'
+i=tarfile.TarInfo("abs"); i.type=tarfile.SYMTYPE; i.linkname="/etc/passwd"; t.addfile(i); t.close()' "$U/abs2.tgz"
+out=$(python3 "$SRC" unpack --links inside "$U/abs2.tgz" "$U/t10" 2>&1); assert_contains "$out" "points outside the archive" "an absolute link: refused"
 
 # fetch over a local web server (tests only: http to 127.0.0.1)
 mkdir -p "$U/www"; cp "$U/st.zip" "$U/www/p.zip"; echo "<html>hi</html>" > "$U/www/page"
@@ -79,7 +91,7 @@ W="http://127.0.0.1:$PORT"
 assert_eq "$(DECAL_ALLOW_HTTP_LOCAL=1 python3 "$SRC" fetch "$W/p.zip" "$U/f1")" "archive" "fetch: an archive link is unpacked"
 assert_file "$U/f1/profile.toml" "...into the folder"
 DECAL_ALLOW_HTTP_LOCAL=1 python3 "$SRC" fetch "$W/page" "$U/f2" >/dev/null 2>&1; assert_eq "$?" "3" "fetch: not an archive: exit 3 (try git)"
-out=$(python3 "$SRC" fetch "$W/p.zip" "$U/f3" 2>&1); assert_contains "$out" "use an https:// link" "fetch: plain http refused"
+out=$(DECAL_ALLOW_HTTP_LOCAL= python3 "$SRC" fetch "$W/p.zip" "$U/f3" 2>&1); assert_contains "$out" "use an https:// link" "fetch: plain http refused"
 kill "$WPID" 2>/dev/null
 
 # recently used, and whose it is
