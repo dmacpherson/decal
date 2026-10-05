@@ -35,4 +35,24 @@ assert_eq "$(G missing 'print(gh.request("GET", "/x", "k")[:2])')" "(404, {'mess
 assert_contains "$(G html 'gh.request("GET", "/user", "k")')" "Offline: something else answered" "a web page instead of GitHub: Offline"
 assert_contains "$(G drop 'gh.request("GET", "/user", "k")')" "Offline:" "GitHub hangs up: Offline"
 assert_contains "$(G json 'gh.API = "http://127.0.0.1:9"; gh.request("GET", "/user", "k")')" "Offline:" "nothing there: Offline"
+# a redirect to another host or port doesn't take the key along (the same rule as source.download)
+out=$(REPO="$REPO" python3 - <<'PY'
+import json, os, sys, threading, http.server
+sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import gh
+class B(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(json.dumps({"auth": self.headers.get("Authorization", "")}).encode())
+    def log_message(self, *a): pass
+b = http.server.HTTPServer(("127.0.0.1", 0), B)
+class A(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(301); self.send_header("Location", f"http://127.0.0.1:{b.server_port}{self.path}"); self.end_headers()
+    def log_message(self, *a): pass
+a = http.server.HTTPServer(("127.0.0.1", 0), A)
+for s in (a, b): threading.Thread(target=s.serve_forever, daemon=True).start()
+gh.API = f"http://127.0.0.1:{a.server_port}"
+print(repr(gh.get("/user", "SECRET")[1]["auth"]))
+PY
+)
+assert_eq "$out" "''" "a redirect elsewhere: the key stays behind"
 t_done

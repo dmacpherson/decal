@@ -72,8 +72,9 @@ gh_odd() { python3 - "$1" <<'EOF'
 import os, sys, threading, http.server
 sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import github, gh
 if sys.argv[1] == "bare":   # a timeout with no words of its own
-    def no(*a, **k): raise TimeoutError()
-    gh.urllib.request.urlopen = no
+    class No:
+        def open(self, *a, **k): raise TimeoutError()
+    gh.urllib.request.build_opener = lambda *a: No()
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if sys.argv[1] == "drop":
@@ -105,4 +106,25 @@ rm -rf "$DECAL_MEDIA/Bad" "$HOME/decal-bad"
 A="$T_TMP/nogit"; mkdir -p "$A/.git"; mkdir -p "$T_TMP/py"; ln -sf "$(command -v python3)" "$T_TMP/py/python3"
 out=$(DECAL_PROFILE_HOME="$A" PATH="$T_TMP/py" python3 "$P" active 2>&1); assert_not_contains "$out" "Traceback" "active without git: no traceback"
 assert_eq "$out" "$A" "...the folder itself"
+# listing a big archive stops at its top profile.toml (what follows isn't read: here, a damaged tail)
+python3 - "$HOME/decal-tail.tar.gz" <<'PY'
+import gzip, io, os, sys, tarfile
+buf = io.BytesIO(); t = tarfile.open(fileobj=buf, mode="w")
+for name, data in (("./profile.toml", b"[apps]\n"), ("./themes/big", os.urandom(200000))):
+    i = tarfile.TarInfo(name); i.size = len(data); t.addfile(i, io.BytesIO(data))
+t.close(); z = gzip.compress(buf.getvalue()); open(sys.argv[1], "wb").write(z[:len(z) // 2])   # cut off midway
+PY
+assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import profiles; print(profiles.toml_in_archive('$HOME/decal-tail.tar.gz'))")" "[apps]" "the top profile.toml, without reading the rest"
+rm -f "$HOME/decal-tail.tar.gz"
+# one default place for a stamp (decal stamp and the menu both ask here)
+assert_eq "$(python3 "$P" usual-stamp me)" "$HOME/decal-me.tar.gz" "usual-stamp: ~/decal-USER.tar.gz"
+# one README for new profiles and stamps: what it is, how to put it on a machine, and (for a stamp) what's in it
+R="$T_TMP/rd"; mkdir -p "$R"; printf 'apps: 3 flatpaks\nicons: Papirus\n' > "$T_TMP/notes"
+python3 "$P" readme "$R" "My Linux setup" stamp --source github:me/decal-me --notes "$T_TMP/notes"
+assert_contains "$(cat "$R/README.md")" "bash -s -- github:me/decal-me" "readme: the install line with the source"
+assert_contains "$(cat "$R/README.md")" "- icons: Papirus" "readme: what's in a stamp"
+assert_contains "$(cat "$R/README.md")" "saved by \`decal stamp\`" "readme: says how it was made"
+# a git checkout's own .decal-source never says where it came from: its origin does (review)
+H2="$T_TMP/hostile"; mkdir -p "$H2"; git -C "$H2" init -q; git -C "$H2" remote add origin https://evil.example/x.git; echo /home/anything > "$H2/.decal-source"
+assert_eq "$(DECAL_PROFILE_HOME="$H2" env -u DECAL_PROFILE python3 "$P" active)" "https://evil.example/x.git" "active: a checkout's origin, never a .decal-source it carries"
 t_done

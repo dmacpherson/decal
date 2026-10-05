@@ -8,7 +8,7 @@ INSTALL_URL=${DECAL_INSTALL_URL:-https://dmacpherson.github.io/decal/install}
 # double-clicked: no terminal yet, so open one (sudo prompts and the menu need it)
 if [[ ! -t 0 && -z ${DECAL_STICK_IN_TERM:-} ]]; then
   export DECAL_STICK_IN_TERM=1
-  for t in ptyxis kgx gnome-terminal konsole xfce4-terminal mate-terminal tilix alacritty kitty x-terminal-emulator xterm; do
+  for t in ${DECAL_TERMINALS:-ptyxis kgx gnome-terminal konsole xfce4-terminal mate-terminal tilix alacritty kitty x-terminal-emulator xterm}; do
     command -v "$t" >/dev/null || continue
     case $t in
       ptyxis|gnome-terminal|kgx|tilix) exec "$t" -- bash "$HERE/start.sh" "$@" ;;
@@ -16,6 +16,8 @@ if [[ ! -t 0 && -z ${DECAL_STICK_IN_TERM:-} ]]; then
       *) exec "$t" -e bash "$HERE/start.sh" "$@" ;;
     esac
   done
+  xdg-open "$HERE/README.txt" 2>/dev/null   # no terminal program found: the README says how to start it by hand
+  exit 1
 fi
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -54,8 +56,13 @@ case $MODE in
   copy) from_copy; rc=$?; (( rc == 0 )) || { (( rc == 2 )) && fail "This stick has no copy of decal: run decal usb to add one."; fail "Couldn't install decal from this stick (see above)."; } ;;
   online) online || fail "$NO_NET" ;;
   *) if ! online; then
-       say "Couldn't check for a newer decal: using the copy on this stick (${VER:-unknown version})"
-       from_copy; rc=$?; (( rc == 0 )) || { (( rc == 2 )) && fail "$NO_NET"; fail "Couldn't install decal from this stick (see above)."; }
+       have=$(cat "${XDG_DATA_HOME:-$HOME/.local/share}/decal/app/VERSION" 2>/dev/null)
+       if [[ -n $have ]]; then   # never replaced by the stick's copy, which may well be older
+         say "Couldn't check for a newer decal: using the decal already on this PC ($have)"
+       else
+         say "Couldn't check for a newer decal: using the copy on this stick (${VER:-unknown version})"
+         from_copy; rc=$?; (( rc == 0 )) || { (( rc == 2 )) && fail "$NO_NET"; fail "Couldn't install decal from this stick (see above)."; }
+       fi
      fi ;;
 esac
 DECAL=${DECAL_CMD:-$HOME/.local/bin/decal}

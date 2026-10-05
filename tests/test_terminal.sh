@@ -150,4 +150,9 @@ assert_contains "$out" "ghostty isn't available on debian" "...says why"; assert
 mkdir -p "$DECAL_USER_STATE"; : > "$DECAL_USER_STATE/terminal.homebrew"
 out=$(mod module_remove 2>&1); assert_contains "$out" "Homebrew (installed by decal) is kept" "remove: says Homebrew stays"
 assert_contains "$out" "uninstall.sh" "...and how to remove it"; assert_nofile "$DECAL_USER_STATE/terminal.homebrew" "...the record cleared"
+# the Homebrew installer failing halfway: decal has already noted that it installed (some of) Homebrew
+export DECAL_BREW_PREFIX="$T_TMP/lb2/.linuxbrew"; rm -f "$DECAL_USER_STATE/terminal.homebrew" "$STUBS/brew"
+mod_run_pre() { ls_fetch() { printf 'exit 1\n' > "$T_TMP/inst.sh"; echo "$T_TMP/inst.sh"; }; }
+mod module_add >/dev/null 2>&1; assert_file "$DECAL_USER_STATE/terminal.homebrew" "an interrupted Homebrew install is still noted"
+unset -f mod_run_pre; unset DECAL_BREW_PREFIX
 t_done

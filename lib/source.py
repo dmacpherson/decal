@@ -113,6 +113,16 @@ def unpack(archive, dest, links="none"):
         with os.fdopen(fd, "wb") as out:
             used = _copy(src, out, used)
 
+    def links_stay_inside():
+        """Each link was checked when it was made, but a later one can change where an earlier one leads: all again."""
+        if links != "inside":
+            return
+        for d, dirs, files in os.walk(root):
+            for n in dirs + files:
+                p = os.path.join(d, n)
+                if os.path.islink(p) and not within(os.path.realpath(p)):
+                    raise Bad(f"{os.path.relpath(p, root)}: a link that points outside the archive")
+
     with open(archive, "rb") as f:
         magic = f.read(4)
     used = 0
@@ -123,14 +133,25 @@ def unpack(archive, dest, links="none"):
                     t = target(i.filename)
                     if t is None:
                         continue
-                    if i.is_dir():
+                    if i.is_dir():   # as for tar: never through a link
+                        safe(i.filename, t)
                         os.makedirs(t, exist_ok=True)
+                        safe(i.filename, os.path.join(t, "."))
                         continue
                     kind = (i.external_attr >> 16) & 0o170000
+                    if links == "inside" and kind == stat.S_IFLNK and i.file_size <= 4096:   # its target is its data
+                        linkname = zf.read(i).decode(errors="replace")
+                        if not linkname or "\0" in linkname:
+                            raise Bad(f"{i.filename}: a broken link")
+                        os.makedirs(os.path.dirname(safe(i.filename, t)), exist_ok=True)
+                        link_ok(i.filename, t, linkname)
+                        os.symlink(linkname, t)
+                        continue
                     if kind and kind != stat.S_IFREG:
                         raise Bad(f"{i.filename}: links and special files aren't allowed in a profile")
                     with zf.open(i) as src:
                         write(i.filename, t, src)
+            links_stay_inside()
             return
         try:
             tf = tarfile.open(archive, "r:*")   # gzip, xz, bzip2 or plain
@@ -161,7 +182,8 @@ def unpack(archive, dest, links="none"):
                         write(m.name, t, fh)
                 else:
                     raise Bad(f"{m.name}: links and special files aren't allowed in a profile")
-    except (tarfile.TarError, zipfile.BadZipFile, EOFError, OSError) as e:
+        links_stay_inside()
+    except (tarfile.TarError, zipfile.BadZipFile, EOFError, OSError, ValueError) as e:
         raise Bad(f"a damaged archive ({e})")
 
 
@@ -172,18 +194,8 @@ class _NoDowngrade(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _origin(url):
-    u = urllib.parse.urlparse(url)
-    return u.scheme, u.hostname, u.port or {"https": 443, "http": 80}.get(u.scheme)
-
-
-class _KeyStaysHome(_NoDowngrade):
-    """A redirect to another host (GitHub hands downloads to codeload) doesn't take the key along."""
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new is not None and _origin(newurl) != _origin(req.full_url):   # as curl: another scheme, host or port
-            new.remove_header("Authorization")
-        return new
+class _KeyStaysHome(_NoDowngrade, gh.KeyStaysHome):
+    """https only, and the key stays with the scheme, host and port it was given to (gh.py's rule)."""
 
 
 def download(url, path, token=None):

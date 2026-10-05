@@ -28,6 +28,13 @@ RULES = {
 FONT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._+-]* [0-9]{1,3}(\.[0-9]{1,2})?")
 
 
+def expected(t, v):
+    """What T expects, said for V (a package group, provide or wildcard gets told so)."""
+    if t == "name" and isinstance(v, str) and (v.startswith("@") or "(" in v or "*" in v or "?" in v):
+        return RULES[t] + "; package groups (@…), provides (…(…)) and wildcards aren't supported: list each package by name"
+    return RULES[t]
+
+
 def rule_ok(t, v):
     if not isinstance(v, str) or v == "" or any(ord(c) < 32 for c in v):
         return False
@@ -163,13 +170,13 @@ def check(sec, key, spec, v, pdir):
         raise ProfileError(f"profile.toml: [{sec}] {key}: {msg}, got {v!r}")
 
     if t in RULES:   # name, formula, theme, relpath, ref, glob, font ("" is allowed: it means "not set")
-        if v != "" and not rule_ok(t, v): bad(f"expected {RULES[t]}")
+        if v != "" and not rule_ok(t, v): bad(f"expected {expected(t, v)}")
         return v
     if t in ("names", "formulas", "globs"):
         if not (isinstance(v, list) and all(isinstance(x, str) for x in v)): bad("expected a list of strings")
         for x in v:
             if not rule_ok(t[:-1], x):
-                raise ProfileError(f"profile.toml: [{sec}] {key}: {x!r}: expected {RULES[t[:-1]]}")
+                raise ProfileError(f"profile.toml: [{sec}] {key}: {x!r}: expected {expected(t[:-1], x)}")
         return v
     if t == "globs-or-glob":
         return check(sec, key, dict(spec, type="globs"), [v] if isinstance(v, str) else v, pdir)

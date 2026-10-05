@@ -21,7 +21,7 @@ do_stamp() {
     esac; shift
   done
   me=${USER:-$(id -un)}
-  [[ -n $dest ]] || dest="$HOME/decal-$me.tar.gz"
+  [[ -n $dest ]] || dest=$(python3 "$LS_REPO/lib/profiles.py" usual-stamp "$me")
   [[ -n $repo ]] || repo="decal-$me"
   export STAMP_DIR="$LS_RUNTMP/stamp/profile" STAMP_NOTES="$LS_RUNTMP/stamp/notes"
   local body="$LS_RUNTMP/stamp/body.toml"; mkdir -p "$STAMP_DIR"; : > "$STAMP_NOTES"; : > "$body"
@@ -56,11 +56,7 @@ do_stamp() {
     gh_write_key "$repo"; tok=$GH_KEY; repo=$GH_REPO; signed=$GH_SIGNED
   fi
   local src; if (( gh )); then src="github:$repo"; else src=$(basename "$dest"); fi
-  # shellcheck disable=SC2016  # Markdown backticks, not command substitution
-  { printf '# My Linux setup\n\nA [decal](https://github.com/dmacpherson/decal) profile: `decal stamp` saved what was changed from the defaults on %s.\n\n' "$(date +%F)"
-    # shellcheck disable=SC2016
-    printf '## Put it on a machine\n\n```bash\ncurl -fsSL %s | bash -s -- %s\n```\n\n' "$INSTALL_URL" "$src"
-    printf '## In it\n\n'; sed 's/^/- /' "$STAMP_NOTES"; } > "$STAMP_DIR/README.md"
+  python3 "$LS_REPO/lib/profiles.py" readme "$STAMP_DIR" "My Linux setup" stamp --source "$src" --notes "$STAMP_NOTES"
   save_profile "$STAMP_DIR" "$dest"
   info "saved: $dest   (apply it anywhere: decal apply $dest)"
   (( gh )) || return 0

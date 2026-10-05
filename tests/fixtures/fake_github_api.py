@@ -4,7 +4,8 @@ python3 fake_github_api.py STATE_DIR. Serves on 127.0.0.1 (port written to STATE
 (STATE_DIR/token). Repos live in memory; each ref update writes STATE_DIR/<owner>_<repo>.json with the commit's files
 (path -> text) and count. Optional STATE_DIR files: seed (repos that exist: owner/name per line), hidden (owner/name N:
 404 for the next N lookups, N=forever never), readonly (no push permission), device_script (one of pending, slow,
-expired, denied, ok per poll; hold: pending for good), device_fail (the code request fails),
+expired, denied, ok per poll; hold: pending for good), device_fail (the code request fails; "disabled": the app has
+no device flow),
 installations (the Write app's installs for /user/installations: all, selected, or selected N = all after N
 lookups; missing: 403, as for a token that isn't an app's), drop N (close the next N /repos lookups without an
 answer), html (answer /user and the device code request with an HTML page), tarballs/OWNER_REPO.tar.gz (served at
@@ -195,6 +196,8 @@ class H(BaseHTTPRequestHandler):
             f.write(f"{kind} client_id={cid}\n")
         if kind == "code":
             if os.path.exists(os.path.join(STATE, "device_fail")):
+                if "disabled" in (state("device_fail") or [""])[0]:   # a fork's app without the device flow
+                    return self.reply(400, {"error": "device_flow_disabled", "error_description": "Device Flow must be explicitly enabled for this App"})
                 return self.reply(500, {"message": "Server Error"})
             host = f"http://127.0.0.1:{self.server.server_address[1]}"
             return self.reply(200, {"device_code": "dev123", "user_code": "WDJB-MJHT", "interval": 0,

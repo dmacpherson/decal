@@ -25,7 +25,9 @@ P="$T_TMP/prof"; mkdir -p "$P"; printf '[base]\non = true\n[onlydev.dev]\non = t
 export T_TMP DECAL_MODULES_DIR="$M" DECAL_PLATFORM=fedora DECAL_PROFILE="$P" LS_TEST_LOG="$T_TMP/log"; : > "$LS_TEST_LOG"
 D() {  # D CMD... -- KEYS: drive the menu, starting once its main screen is up (keys sent while it loads can be lost)
   local cmd=() ; while [[ $1 != -- ]]; do cmd+=("$1"); shift; done; shift
-  python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "${cmd[@]}" -- "UNTIL:q quit" "$@"; }
+  python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "${cmd[@]}" -- "UNTIL:q quit" "$@"; local rc=$?
+  if (( rc == 125 )); then _t_fail "a screen never showed: $(tail -1 "$T_TMP/screen")"; fi   # a lost key fails loudly
+  return "$rc"; }
 
 D "$REPO/decal" ui -- q; assert_eq "$?" "0" "menu opens, q quits"
 S=$(cat "$T_TMP/screen")
@@ -153,9 +155,23 @@ assert_eq "$(cd "$T_TMP" && py 'ui.stamp_dest({"action": "enter"}, "~/x.tar.gz")
 # one answer to "which profile is active" (decal and the menu ask profiles.py)
 A="$T_TMP/act"; mkdir -p "$A"; git -C "$A" init -q; git -C "$A" remote add origin https://example.com/me/p.git
 assert_eq "$(DECAL_PROFILE_HOME="$A" env -u DECAL_PROFILE python3 "$REPO/lib/profiles.py" active)" "https://example.com/me/p.git" "active: a git checkout's origin"
-echo "github:me/p" > "$A/.decal-source"
+rm -rf "$A/.git"; echo "github:me/p" > "$A/.decal-source"   # an unpacked download (a checkout's own file never counts)
 assert_eq "$(DECAL_PROFILE_HOME="$A" env -u DECAL_PROFILE python3 "$REPO/lib/profiles.py" active)" "github:me/p" "active: the recorded source"
 # the stick menu reads stick.conf the way decal usb wrote it
 SC="$T_TMP/sc/.Decal"; mkdir -p "$SC"; printf '# made\nprofile=github:me/p  # mine\nkey=saved\n' > "$SC/stick.conf"
 assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import usb; print(usb.read_conf('$SC'))")" "{'profile': 'github:me/p', 'key': 'saved'}" "read_conf: the .Decal folder's stick.conf"
+# GitHub listings land only when no newer one started (an older one never replaces a fresher one)
+assert_eq "$(py '(lambda s: (ui.latest(s, 1, "old"), ui.latest(s, 2, "new"), s["gh"])[-1])({"run": 2, "gh": None})')" "new" "latest: the newest run's listing"
+assert_eq "$(py '(lambda s: (ui.latest(s, 1, "old"), s["gh"])[-1])({"run": 2, "gh": "fresh"})')" "fresh" "latest: an older run's listing is dropped"
+# decal usb in a terminal: the USB steps, then back to the shell (not into the full menu) (minors)
+python3 "$REPO/tests/fixtures/drive_ui.py" "$T_TMP/screen" "$REPO/decal" usb -- "UNTIL:which profile" ESC; assert_eq "$?" "0" "decal usb: Esc at the first step ends it"
+assert_not_contains "$(cat "$T_TMP/screen")" "stick it on" "...without opening the full menu"
+# what decal's answers mean to the menu (pure: tested without a terminal)
+assert_eq "$(py 'ui.parse_tags("==> header\ndev        onlydev base \nwork       w\n")')" "(['dev', 'work'], {'onlydev': ['dev'], 'base': ['dev'], 'w': ['work']})" "parse_tags: tags and each module's tags"
+assert_eq "$(py 'ui.parse_status("apps               installed\nghost              installed\nnote: hi\nbrave              partial (x)\n", {"apps", "brave"})')" "{'apps': 'installed', 'brave': 'partial (x)'}" "parse_status: known modules only"
+# ticking in the picker: a tag (apply) brings its modules and takes away those only it had; a module on its own
+T='ui.toggle("tag", "dev", set(), {"base"}, "apply", ["base", "onlydev"], {"base"}, {"onlydev": ["dev"]})'
+assert_eq "$(py "list(map(sorted, $T))")" "[['dev'], ['base', 'onlydev']]" "toggle: a tag on brings its module"
+assert_eq "$(py 'sorted(map(sorted, ui.toggle("tag", "dev", {"dev"}, {"base", "onlydev"}, "apply", ["base", "onlydev"], {"base"}, {"onlydev": ["dev"]})))')" "[[], ['base']]" "toggle: off again takes it away"
+assert_eq "$(py 'sorted(map(sorted, ui.toggle("mod", "base", set(), {"base"}, "apply", ["base"], {"base"}, {})))')" "[[], []]" "toggle: a module on its own"
 t_done

@@ -127,4 +127,8 @@ done
 NP="$T_TMP/notext"; mkdir -p "$NP"; printf 'a = "\xff"\n' > "$NP/profile.toml"
 out=$(python3 "$REPO/lib/profile.py" check --profile "$NP" --modules "$M" 2>&1); assert_eq "$?" "2" "not UTF-8: refused"
 assert_contains "$out" "profile.toml isn't UTF-8 text" "...says why"; assert_not_contains "$out" "Traceback" "...without a traceback"
+# package groups, provides and wildcards: refused with a message that says so (not just "expected a name")
+for v in 'pkgs = ["@virtualization"]' 'pkgs = ["perl(Foo::Bar)"]' 'pkgs = ["texlive-*"]'; do
+  assert_contains "$(bad "$v")" "groups (@…), provides (…(…)) and wildcards aren't supported: list each package by name" "named in the message: $v"
+done
 t_done
