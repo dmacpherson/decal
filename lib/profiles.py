@@ -6,9 +6,10 @@
   profiles.py sticks                                 mounted drives (one per line)
   profiles.py empty DIR                              a starter profile: examples/profile, every section commented out
   profiles.py readme DIR NAME FROM                   DIR/README.md for a profile called NAME, made from FROM
+  profiles.py active                                 the active profile's source (decal and the menu ask this)
 
 GitHub uses the key in GITHUB_TOKEN (decal passes the one it found); none: a sign-in row instead. Never asks."""
-import argparse, base64, concurrent.futures, datetime, glob, json, os, sys, tarfile, tomllib, zipfile
+import argparse, base64, concurrent.futures, datetime, glob, json, os, subprocess, sys, tarfile, tomllib, zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import auth, gh, source  # noqa: E402
@@ -36,7 +37,16 @@ def iso(ts):
 
 
 def tilde(p):
-    return "~" + p[len(HOME):] if p == HOME or p.startswith(HOME + "/") else p
+    """P with your home folder shown as ~ (also when P names it through a link, e.g. /var/home on Atomic)."""
+    for home in (HOME, os.path.realpath(HOME)):
+        if p == home or p.startswith(home + "/"):
+            return "~" + p[len(home):]
+    return p
+
+
+def usual_stamp(user):
+    """Where decal stamp saves by default: ~/decal-USER.tar.gz."""
+    return os.path.join(HOME, f"decal-{user}.tar.gz")
 
 
 def toml_in_archive(path):
@@ -151,13 +161,19 @@ def find_github(token):
 
 
 def active():
+    """The active profile's source: where a link points, the recorded source, a checkout's origin, else the folder."""
     d = os.environ.get("DECAL_PROFILE") or PROFILE_HOME
     if os.path.islink(d) or os.environ.get("DECAL_PROFILE"):
         return os.path.realpath(d)
     try:
         return open(os.path.join(d, ".decal-source")).read().strip()
     except OSError:
-        return os.path.realpath(d) if os.path.isdir(d) else ""
+        pass
+    if os.path.isdir(os.path.join(d, ".git")):
+        r = subprocess.run(["git", "-C", d, "remote", "get-url", "origin"], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    return os.path.realpath(d) if os.path.isdir(d) else ""
 
 
 def listing(only=""):
@@ -245,7 +261,7 @@ def readme(dest, name, made_from):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["list", "sticks", "empty", "readme"])
+    ap.add_argument("cmd", choices=["list", "sticks", "empty", "readme", "active"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--only", choices=["local", "github"], default="")
@@ -253,6 +269,8 @@ def main():
     if a.cmd == "list":
         d = listing(a.only)
         print(json.dumps(d) if a.json else text(d))
+    elif a.cmd == "active":
+        print(active())
     elif a.cmd == "sticks":
         print("\n".join(sticks()))
     elif a.cmd == "empty":

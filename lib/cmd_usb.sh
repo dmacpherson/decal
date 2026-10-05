@@ -41,7 +41,7 @@ do_usb() {
   esac
   # which profile (the active one by default)
   if [[ -z $prof ]]; then
-    if [[ -L $PROFILE_HOME ]]; then prof=$(readlink -f "$PROFILE_HOME"); else prof=$(cat "$PROFILE_HOME/.decal-source" 2>/dev/null || true); fi
+    prof=$(env -u DECAL_PROFILE DECAL_PROFILE_HOME="$PROFILE_HOME" python3 "$LS_REPO/lib/profiles.py" active 2>/dev/null || true)
     [[ -n $prof ]] || die "usb: which profile? --from SOURCE (there's no active profile)"
   fi
   stage_profile "$prof"; kind=$STAGE_KIND; src=$STAGE_SRC

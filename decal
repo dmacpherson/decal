@@ -26,7 +26,7 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
   --only dev                 just the modules with a [section.dev], with dev's settings (implies --tags dev);
                              with remove: take away what dev adds (whole module if it is only there through dev)
   (no command, in a terminal) the menu: apply, stamp, remove, update (also: decal ui)
-  list                       modules and descriptions
+  list [--stampable]         modules and descriptions (--stampable: only the names stamp reads)
   status [module...]         installed / partial / not-installed / stale / not in profile
   tags                       the tags your profile uses, and which sections have them
   add    <module...|all>     apply (idempotent); all = every module in your profile
@@ -272,10 +272,7 @@ run_fancy() {
 # it counts as yours from now on). Only the active profile at $PROFILE_HOME, never a dry run.
 remember_active() {
   [[ ${LS_DRY_RUN:-0} != 1 && $PROFILE_DIR == "$PROFILE_HOME" ]] || return 0
-  local src=""
-  if [[ -L $PROFILE_HOME ]]; then src=$(readlink -f "$PROFILE_HOME")
-  elif [[ -r $PROFILE_HOME/.decal-source ]]; then src=$(cat "$PROFILE_HOME/.decal-source")
-  elif [[ -d $PROFILE_HOME/.git ]]; then src=$(git -C "$PROFILE_HOME" remote get-url origin 2>/dev/null || true); fi
+  local src; src=$(env -u DECAL_PROFILE DECAL_PROFILE_HOME="$PROFILE_HOME" python3 "$LS_REPO/lib/profiles.py" active 2>/dev/null || true)
   if [[ -n $src ]]; then python3 "$LS_REPO/lib/source.py" remember "$src" || true; fi
 }
 # the tags this machine's last add/apply used (the menu pre-ticks them; the command line never reads them)
@@ -287,8 +284,11 @@ export TMPDIR="$LS_RUNTMP"   # temp files modules make go with the run (removed 
 trap 'rm -rf "$LS_RUNTMP"' EXIT
 
 case $cmd in
-  list)
-    for m in $(all_modules); do printf '%-18s %s\n' "$m" "$(module_field "$m" MODULE_DESC)"; done ;;
+  list)   # --stampable: only the names stamp reads (the menu's stamp picker)
+    for m in $(all_modules); do
+      if [[ ${1:-} != --stampable ]]; then printf '%-18s %s\n' "$m" "$(module_field "$m" MODULE_DESC)"
+      elif [[ $(module_field "$m" STAMP_SKIP) != 1 ]]; then echo "$m"; fi
+    done ;;
   status)
     check_tags
     if [[ $# -gt 0 ]]; then names=$(resolve "$@") || exit 1; else names=$(all_modules); fi
