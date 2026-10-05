@@ -24,6 +24,10 @@ echo mine > docs/scratch.txt; echo v4 > decal; git commit -qam four
 bash "$REPO/tools/promote.sh" >/dev/null 2>&1; assert_eq "$(cat docs/scratch.txt 2>/dev/null)" "mine" "an untracked file in docs/ stays"
 assert_eq "$(git show main:decal)" "v4" "...and the release still went through"
 rm -f docs/scratch.txt
+# the rolling dev release adds a tag called dev: the branch is what's released, never that tag (review)
+git tag -f dev >/dev/null; echo v5 > decal; git commit -qam five
+bash "$REPO/tools/promote.sh" >/dev/null 2>&1; assert_eq "$(git show main:decal)" "v5" "a tag named dev: the branch's newest commit is released"
+git tag -d dev >/dev/null
 # uncommitted work: refuses, changes nothing
 echo dirty >> decal; before=$(git rev-parse main)
 out=$(bash "$REPO/tools/promote.sh" 2>&1); assert_eq "$?" "1" "uncommitted changes: refused"
