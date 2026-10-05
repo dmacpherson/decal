@@ -434,20 +434,17 @@ do_new() {
   info "new profile: $src"
   if (( use )); then set_profile "$src"; python3 "$LS_REPO/lib/source.py" remember "$STAGE_SRC" || true; fi
 }
-# usb_bin : a folder with the launchers (Decal-x86_64, Decal-aarch64): the release's usb/bin, else downloaded once
+# usb_bin : a folder with the launchers (Decal-x86_64, Decal-aarch64): this decal's usb/bin, else this channel's
+# release's (install.sh fetches and checks it), kept in the cache
 usb_bin() {
-  local d=${DECAL_USB_BIN:-$LS_REPO/usb/bin} c="${XDG_CACHE_HOME:-$HOME/.cache}/decal/usb-bin" t
+  local d=${DECAL_USB_BIN:-$LS_REPO/usb/bin} c="${XDG_CACHE_HOME:-$HOME/.cache}/decal/usb-bin" t top
   if [[ -f $d/Decal-x86_64 ]]; then echo "$d"; return 0; fi
   if [[ -f $c/Decal-x86_64 ]]; then echo "$c"; return 0; fi
   info "getting the stick launchers (this copy of decal doesn't have them)"
   t=$(mktemp -d "$LS_RUNTMP/rel.XXXXXX")
-  if ! curl -fsSL --proto =https --proto-redir =https https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz -o "$t/d.tgz" \
-     || ! curl -fsSL --proto =https --proto-redir =https https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz.sha256 -o "$t/sum"; then
-    die "couldn't download the stick launchers"
-  fi
-  [[ $(sha256sum "$t/d.tgz" | cut -d' ' -f1) == "$(cut -d' ' -f1 < "$t/sum")" ]] || die "the launchers download is damaged"
-  tar -xzf "$t/d.tgz" -C "$t" decal/usb/bin 2>/dev/null || die "the latest release has no stick launchers yet"
-  mkdir -p "$c"; cp "$t/decal/usb/bin/"* "$c/"; echo "$c"
+  top=$(DECAL_HOME=$LS_REPO bash "$LS_REPO/install.sh" --fetch-to "$t") || die "couldn't download the stick launchers"
+  [[ -f $top/usb/bin/Decal-x86_64 ]] || die "the latest release has no stick launchers yet"
+  mkdir -p "$c"; cp "$top/usb/bin/"* "$c/"; echo "$c"
 }
 # do_usb [--from SRC] [--how saved-key|sign-in|copy|latest] [--decal newest|copy|online] [--arm]
 #        [--to MOUNTPOINT|DEVICE|folder[:PATH]] [--yes] : put decal on a USB stick (or in a folder)

@@ -23,6 +23,7 @@ API=https://api.github.com/repos/dmacpherson/decal; DL=https://github.com/dmacph
 release() {  # release TAG
   local d="$T_TMP/rel/$1"; mkdir -p "$d/decal"
   cp -a "$REPO/decal" "$REPO/install.sh" "$REPO/lib" "$REPO/modules" "$d/decal/"; echo "$1" > "$d/decal/MARK"
+  mkdir -p "$d/decal/usb/bin"; echo "x86 $1" > "$d/decal/usb/bin/Decal-x86_64"; echo "arm $1" > "$d/decal/usb/bin/Decal-aarch64"   # as build.yml adds them
   tar -czf "$d/decal.tar.gz" -C "$d" decal; (cd "$d" && sha256sum decal.tar.gz > decal.tar.gz.sha256)
   serve "$DL/releases/download/$1/decal.tar.gz" "$d/decal.tar.gz"; serve "$DL/releases/download/$1/decal.tar.gz.sha256" "$d/decal.tar.gz.sha256"
 }
@@ -227,5 +228,16 @@ out=$(TMPDIR="$T_TMP/ro" DECAL_VERSION=latest DECAL_NO_MENU=1 bash "$REPO/instal
 assert_eq "$(cat "$H/VERSION")" "v1.9.0" "...the new version in place"
 assert_eq "$(ls -A "$(dirname "$H")" | grep -c '^\.decal-new')" "0" "...no leftovers beside it"
 chmod 755 "$T_TMP/ro"
+# one release download: install.sh --fetch-to DIR fetches, checks and unpacks without installing (audit batch 4)
+release v2.0.0; latest v2.0.0; before=$(cat "$H/VERSION")
+out=$(DECAL_HOME="$H" DECAL_VERSION=latest bash "$REPO/install.sh" --fetch-to "$T_TMP/f" 2>/dev/null); assert_eq "$?" "0" "--fetch-to: rc"
+assert_eq "$(cat "$out/MARK" 2>/dev/null)" "v2.0.0" "--fetch-to: prints the unpacked decal"
+assert_eq "$(cat "$H/VERSION")" "$before" "...and installs nothing"
+echo "0000  decal.tar.gz" > "$T_TMP/fsum"; serve "$DL/releases/download/v2.0.0/decal.tar.gz.sha256" "$T_TMP/fsum"
+DECAL_VERSION=latest bash "$REPO/install.sh" --fetch-to "$T_TMP/f2" >/dev/null 2>&1; assert_eq "$?" "1" "--fetch-to: a damaged download refused"
+# decal usb in a checkout without launchers: takes them from the release through install.sh (no curl of its own)
+release v2.1.0; latest v2.1.0; mkdir -p "$T_TMP/up"; printf '[eee-conf]\nword = "u"\n' > "$T_TMP/up/profile.toml"
+out=$("$REPO/decal" usb --from "$T_TMP/up" --decal online --to "folder:$T_TMP/uf" --yes 2>&1); assert_eq "$?" "0" "usb: launchers from the release"
+assert_eq "$(cat "$T_TMP/uf/Decal" 2>/dev/null)" "x86 v2.1.0" "...the release's launcher on the stick"
 kill "$GMPID" 2>/dev/null
 t_done
