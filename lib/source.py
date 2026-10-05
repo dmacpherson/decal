@@ -172,18 +172,8 @@ class _NoDowngrade(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _origin(url):
-    u = urllib.parse.urlparse(url)
-    return u.scheme, u.hostname, u.port or {"https": 443, "http": 80}.get(u.scheme)
-
-
-class _KeyStaysHome(_NoDowngrade):
-    """A redirect to another host (GitHub hands downloads to codeload) doesn't take the key along."""
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new is not None and _origin(newurl) != _origin(req.full_url):   # as curl: another scheme, host or port
-            new.remove_header("Authorization")
-        return new
+class _KeyStaysHome(_NoDowngrade, gh.KeyStaysHome):
+    """https only, and the key stays with the scheme, host and port it was given to (gh.py's rule)."""
 
 
 def download(url, path, token=None):

@@ -126,7 +126,17 @@ out=$(ask '1\n\x1b3\n' me/prof --need read); assert_eq "$?" "1" "Esc while waiti
 out=$(ask '1\n3\n' me/prof --need read); assert_eq "$?" "1" "the code request fails: no key"
 assert_contains "$(cat "$T_TMP/screen")" "GitHub didn't start a sign-in" "plain words, no traceback"
 assert_not_contains "$(cat "$T_TMP/screen")" "Traceback" "no traceback on screen"
+echo disabled > "$G/device_fail"
+out=$(ask '1
+3
+' me/prof --need read); assert_contains "$(cat "$T_TMP/screen")" "can't sign in with a code here: choose Make a token myself" "an app without the device flow: points to making a token"
 rm "$G/device_fail"
+# an arrow key while waiting doesn't cancel the sign-in (its escape sequence isn't Esc)
+printf 'pending
+ok
+' > "$G/device_script"
+assert_eq "$(ask '1
+[A' me/prof --need read)" "s3cret" "an arrow key while waiting: the sign-in goes on"
 
 # make a token myself: expiry, the page, a wrong paste, then a good one (spaces trimmed); t while waiting gets here too
 assert_eq "$(ask '2\n\nwrong\n  s3cret  \n' me/prof --need read)" "s3cret" "a pasted token, after a wrong one"
@@ -211,4 +221,21 @@ echo ok > "$G/device_script"
 assert_eq "$(ask '1\n' - --need read)" "s3cret" "sign in without a repo (to list your profiles)"
 assert_contains "$(cat "$T_TMP/screen")" "so decal can read your profiles" "...says what for"
 kill "$GHPID" 2>/dev/null
+# GitHub having trouble (5xx, too many requests) isn't the key's fault
+busy() { python3 - "$1" <<'PY'
+import os, sys, threading, http.server
+sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import gh, auth
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(int(sys.argv[1])); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(b"{}")
+    def log_message(self, *a): pass
+s = http.server.HTTPServer(("127.0.0.1", 0), H); threading.Thread(target=s.serve_forever, daemon=True).start()
+gh.API = f"http://127.0.0.1:{s.server_port}"
+print(auth.check("decal-x", "write", "k", True))
+PY
+}
+export REPO
+assert_eq "$(busy 503)" "14" "GitHub 503 on /user: busy, not a bad key"
+assert_eq "$(busy 429)" "14" "too many requests: busy"
+assert_eq "$(busy 401)" "10" "401: still a bad key"
 t_done

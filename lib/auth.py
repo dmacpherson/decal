@@ -17,17 +17,25 @@ from gh import WEB, Offline  # noqa: E402
 # "CLIENT_ID:slug" of the Decal Profile and Decal Profile Write GitHub Apps (public IDs; device flow needs no secret)
 APPS = {"read": "Iv23li49m8npqJvYxiW8:decal-profile", "write": "Iv23lia2BX1vjfZuUstJ:decal-profile-write"}
 DAYS = [("30 days", "30"), ("90 days", "90"), ("1 year", "365"), ("never expires", "none")]
-OK, BAD_KEY, CANT_SEE, READ_ONLY, OFFLINE = 0, 10, 11, 12, 13
+OK, BAD_KEY, CANT_SEE, READ_ONLY, OFFLINE, BUSY = 0, 10, 11, 12, 13, 14
 WHY = {BAD_KEY: "GitHub didn't accept that key (mistyped, revoked or expired)",
        CANT_SEE: "that key can't see {repo}: it doesn't exist, or the key wasn't given access to it",
        READ_ONLY: "that key can only read {repo}; saving needs one that can write",
-       OFFLINE: "couldn't reach GitHub: check the internet connection"}
+       OFFLINE: "couldn't reach GitHub: check the internet connection",
+       BUSY: "GitHub isn't answering properly right now: try again in a minute"}
+
+
+def busy(code):
+    """GitHub having trouble (a 5xx) or asking us to slow down (429): nothing to do with the key."""
+    return code >= 500 or code == 429
 
 
 def check(repo, need, token, may_create=False):
     """OK when TOKEN can read (or write) REPO; with MAY_CREATE a missing repo is fine (stamp creates it)."""
     try:
         code, me = gh.get("/user", token)
+        if busy(code):
+            return BUSY
         if code == 401:
             return BAD_KEY
         if repo == "-":   # signing in to list your profiles: the key works, that's all
@@ -37,6 +45,8 @@ def check(repo, need, token, may_create=False):
                 return BAD_KEY
             repo = f"{me.get('login')}/{repo}"
         code, info = gh.get(f"/repos/{repo}", token)
+        if busy(code):
+            return BUSY
         if code == 401:
             return BAD_KEY
         if code == 404 and may_create:
@@ -126,16 +136,41 @@ class Tty:
         return buf.decode(errors="replace").strip()
 
     def key(self, timeout):
+        """A key pressed within TIMEOUT: Esc, t, or "" (nothing, or another key: an arrow or F-key's escape
+        sequence is read whole, so it neither cancels nor reaches the next prompt)."""
         if not self.real:   # a file of keystrokes: Esc or t if that's next; anything else is for the next prompt
             pos = self.i.tell()
             c = self.i.read(1)
+            if c == b"\x1b":
+                after = self.i.tell()
+                if self._sequence(lambda: self.i.read(1)):
+                    return ""
+                self.i.seek(after)   # a plain Esc: what follows is for the next prompt
             if c in (b"\x1b", b"t", b"T"):
                 return c.decode()
             self.i.seek(pos)
             time.sleep(timeout)
             return ""
         r, _, _ = select.select([self.i], [], [], timeout)
-        return self.i.read(1).decode(errors="replace") if r else ""
+        if not r:
+            return ""
+        c = self.i.read(1)
+        if c == b"\x1b" and self._sequence(lambda: self.i.read(1) if select.select([self.i], [], [], 0.05)[0] else b""):
+            return ""
+        return c.decode(errors="replace")
+
+    @staticmethod
+    def _sequence(more):
+        """After an Esc: True (and the rest read) when an escape sequence follows (ESC [ ... or ESC O x)."""
+        c = more()
+        if c == b"O":
+            more()
+            return True
+        if c != b"[":
+            return False
+        while (c := more()) and not 0x40 <= c[0] <= 0x7e:
+            pass
+        return True
 
     @contextlib.contextmanager
     def keys(self):
@@ -184,7 +219,7 @@ def post_form(url, data):
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         try:
-            return json.loads(e.read() or b"{}") | {"error": f"HTTP {e.code}"}
+            return {"error": f"HTTP {e.code}"} | json.loads(e.read() or b"{}")   # GitHub's own error name wins
         except ValueError:
             return {"error": f"HTTP {e.code}"}
     except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as e:
@@ -266,7 +301,10 @@ def sign_in(tty, repo, need, may_create):
             tty.say(WHY[OFFLINE])
             return None
         if "device_code" not in d:
-            tty.say("GitHub didn't start a sign-in: " + (d.get("error_description") or d.get("error") or "no reason given"))
+            if d.get("error") == "device_flow_disabled":   # a fork's app set up without it
+                tty.say("This GitHub app can't sign in with a code here: choose Make a token myself.")
+            else:
+                tty.say("GitHub didn't start a sign-in: " + (d.get("error_description") or d.get("error") or "no reason given"))
             return None
         url, code = d["verification_uri"], d["user_code"]
         opened, copied = open_browser(url), copy(code)

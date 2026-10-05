@@ -72,8 +72,9 @@ gh_odd() { python3 - "$1" <<'EOF'
 import os, sys, threading, http.server
 sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import github, gh
 if sys.argv[1] == "bare":   # a timeout with no words of its own
-    def no(*a, **k): raise TimeoutError()
-    gh.urllib.request.urlopen = no
+    class No:
+        def open(self, *a, **k): raise TimeoutError()
+    gh.urllib.request.build_opener = lambda *a: No()
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if sys.argv[1] == "drop":
