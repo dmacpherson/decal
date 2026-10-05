@@ -156,6 +156,7 @@ run_module() {
   local action=$1 name=$2
   (
     set -euo pipefail
+    unset GITHUB_TOKEN GH_TOKEN   # no module needs a GitHub key (CLAUDE.md → Security: keys only where needed)
     DECAL_TAGS=$(tags_for "$name"); export DECAL_TAGS
     export MODULE_DIR="$MODULES_DIR/$name"
     source "$LS_REPO/lib/common.sh"
@@ -429,8 +430,8 @@ usb_bin() {
   if [[ -f $c/Decal-x86_64 ]]; then echo "$c"; return 0; fi
   info "getting the stick launchers (this copy of decal doesn't have them)"
   t=$(mktemp -d "$LS_RUNTMP/rel.XXXXXX")
-  if ! curl -fsSL https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz -o "$t/d.tgz" \
-     || ! curl -fsSL https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz.sha256 -o "$t/sum"; then
+  if ! curl -fsSL --proto =https --proto-redir =https https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz -o "$t/d.tgz" \
+     || ! curl -fsSL --proto =https --proto-redir =https https://github.com/dmacpherson/decal/releases/latest/download/decal.tar.gz.sha256 -o "$t/sum"; then
     die "couldn't download the stick launchers"
   fi
   [[ $(sha256sum "$t/d.tgz" | cut -d' ' -f1) == "$(cut -d' ' -f1 < "$t/sum")" ]] || die "the launchers download is damaged"
@@ -546,13 +547,14 @@ gh_auth() {
   export GITHUB_TOKEN=$t
 }
 gh_tarball() {
-  local url="${DECAL_GITHUB_API:-https://api.github.com}/repos/$1/tarball${2:+/$2}" tok hdr="$LS_RUNTMP/gh-auth" code asked=0
+  local url="${DECAL_GITHUB_API:-https://api.github.com}/repos/$1/tarball${2:+/$2}" tok code asked=0
   have curl || die "curl is needed to download $1"
   tok=$(gh_token)
   while :; do
-    ( umask 077; if [[ -n $tok ]]; then printf 'Authorization: Bearer %s\n' "$tok"; fi > "$hdr" )   # not on the command line
-    code=$(curl -sSL --connect-timeout 10 -H @"$hdr" -o "$3" -w '%{http_code}' "$url" 2>/dev/null) || code=${code:-000}
-    rm -f "$hdr"
+    # the key goes to curl on its stdin (printf is a builtin): never on a command line, never in a file
+    code=$(if [[ -n $tok ]]; then printf 'Authorization: Bearer %s\n' "$tok"; fi \
+           | curl -sSL --proto =https --proto-redir =https --connect-timeout 10 -H @- -o "$3" -w '%{http_code}' "$url" 2>/dev/null) \
+      || code=${code:-000}
     [[ $code == 200 ]] && return 0
     if [[ $code =~ ^(401|403|404)$ && $asked == 0 ]]; then
       asked=1

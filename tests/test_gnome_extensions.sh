@@ -171,4 +171,6 @@ v7() { grep "^$1=" <<<"$out" | head -1 | cut -d= -f2-; }
 assert_eq "$(v7 MINE)" "2" "removing Decal Tweaks keeps the user's own GTK css"
 assert_eq "$(v7 BLOCK4)" "0" "and takes its Apps too block out"
 assert_eq "$(v7 GTK3)" "gone" "a stylesheet with only the block goes"
+# extensions.gnome.org (or the profile's source) is reached over https only, never redirected to http
+assert_not_contains "$(grep '^curl' "$STUBS/calls" | grep -v -- '--proto =https --proto-redir =https')" "extension-info" "every extension download is https only"
 t_done

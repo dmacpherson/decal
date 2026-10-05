@@ -20,7 +20,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # _get URL [OUT] : download (stdout without OUT); curl or wget
 _get() {
   if [[ $1 == /* ]]; then if [[ -n ${2:-} ]]; then cp "$1" "$2"; else cat "$1"; fi; return; fi   # a local copy
-  if have curl; then curl -fsSL --connect-timeout 10 --retry 2 ${2:+-o "$2"} "$1"
+  if have curl; then curl -fsSL --proto =https --proto-redir =https --connect-timeout 10 --retry 2 ${2:+-o "$2"} "$1"
   elif have wget; then wget -q --timeout=20 -O "${2:--}" "$1"
   else die "curl or wget is needed"; fi
 }

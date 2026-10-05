@@ -86,4 +86,15 @@ assert_eq "$(readlink -f "$DECAL_USER_STATE/logs/last.log")" "$(readlink -f "$lo
 # temp files a module makes (and forgets) go with the run's own temp dir
 mkdir -p "$T_TMP/outer"; TMPDIR="$T_TMP/outer" "$S" add aaa-ok >/dev/null 2>&1
 assert_eq "$(ls -A "$T_TMP/outer")" "" "module temp files cleaned up with the run"
+# modules never see a GitHub key (CLAUDE.md → Security: keys only where needed)
+KM="$T_TMP/keymods"; mkdir -p "$KM/peek"; echo '{"keys": {}}' > "$KM/peek/schema.json"
+cat > "$KM/peek/module.sh" <<'MOD'
+MODULE_DESC="peeks at the environment"
+module_add() { echo "token=[${GITHUB_TOKEN:-}${GH_TOKEN:-}]" >> "$LS_TEST_LOG"; }
+module_remove() { :; }
+module_status() { echo not-installed; }
+MOD
+printf '[peek]\n' > "$DECAL_PROFILE/profile.toml"; : > "$LS_TEST_LOG"
+GITHUB_TOKEN=s3cret GH_TOKEN=other DECAL_MODULES_DIR="$KM" "$S" add peek >/dev/null 2>&1
+assert_eq "$(cat "$LS_TEST_LOG")" "token=[]" "a module sees no GitHub key"
 t_done

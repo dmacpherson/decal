@@ -12,6 +12,7 @@ stub curl '
 url=${@: -1}; out=""; w=""; hdr=""
 while [ $# -gt 0 ]; do case $1 in -o) out=$2; shift;; -w) w=$2; shift;; -H) hdr=${2#@}; shift;; esac; shift; done
 f="$WEB/$(printf "%s" "$url" | sed "s#[/:@]#_#g")"
+if [ "$hdr" = - ]; then hdr="$STUBS/stdin-header"; cat > "$hdr"; fi   # -H @-: the header arrives on stdin
 if [ -n "$hdr" ]; then cat "$hdr" >> "$STUBS/headers" 2>/dev/null; echo >> "$STUBS/headers"; fi
 if [ -e "$f" ] && { [ ! -e "$f.token" ] || grep -qF "$(cat "$f.token")" "$hdr" 2>/dev/null; }; then
   if [ -n "$out" ]; then cp "$f" "$out"; else cat "$f"; fi; [ -z "$w" ] || printf 200; exit 0
@@ -36,7 +37,8 @@ export DECAL_PROFILE_HOME="$T_TMP/active"
 # first install: the newest release, checksum checked, linked into ~/.local/bin
 release v1.0.0; latest v1.0.0
 out=$(bash "$REPO/install.sh" 2>&1); assert_eq "$?" "0" "install rc"
-assert_eq "$(cat "$H/VERSION")" "v1.0.0" "newest release installed"; assert_eq "$(cat "$H/MARK")" "v1.0.0" "its files"
+assert_eq "$(cat "$H/VERSION")" "v1.0.0" "newest release installed"
+assert_contains "$(grep releases/latest "$STUBS/calls")" "--proto =https --proto-redir =https" "installer downloads: https only, no http redirect"; assert_eq "$(cat "$H/MARK")" "v1.0.0" "its files"
 assert_eq "$(readlink "$BIN/decal")" "$H/decal" "decal linked into ~/.local/bin"
 assert_file "$H/.installed" "marked as an install (it updates itself)"; assert_eq "$(cat "$H/.channel")" "latest" "channel remembered"
 assert_contains "$out" "add $BIN to your PATH" "says when ~/.local/bin isn't on PATH"
@@ -115,6 +117,8 @@ serve https://api.github.com/repos/me/prof/tarball "$T_TMP/gh.tar.gz"; echo "Bea
 out=$(GITHUB_TOKEN=s3cret "$REPO/decal" --yes apply github:me/prof 2>&1); assert_eq "$?" "0" "github: apply rc"
 assert_contains "$(cat "$LS_TEST_LOG")" "eee add from-github" "github: profile applied"
 assert_contains "$(cat "$STUBS/headers")" "Authorization: Bearer s3cret" "token sent as a header"
+assert_contains "$(grep 'repos/me/prof/tarball' "$STUBS/calls")" "-H @- " "...on curl's stdin, never in a file"
+assert_contains "$(grep 'repos/me/prof/tarball' "$STUBS/calls")" "--proto =https --proto-redir =https" "...https only, no http redirect"
 assert_not_contains "$(calls)" "s3cret" "token not on the command line"
 assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:me/prof" "source recorded"
 printf '[eee-conf]\nword = "newer"\n' > "$T_TMP/gh/me-prof-abc/profile.toml"; tar -czf "$T_TMP/gh.tar.gz" -C "$T_TMP/gh" me-prof-abc

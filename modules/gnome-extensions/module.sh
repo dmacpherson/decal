@@ -129,10 +129,10 @@ _shell_major() { gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -1
 
 _install_from_ego() {  # UUID -> 0 installed, 1 unavailable
   local uuid=$1 major url tmp; major=$(_shell_major)
-  url=$(curl -fsS "$P_source/extension-info/?uuid=$uuid&shell_version=$major" \
+  url=$(curl -fsS --proto =https --proto-redir =https "$P_source/extension-info/?uuid=$uuid&shell_version=$major" \
         | python3 -c 'import json,sys; print(json.load(sys.stdin)["download_url"])' 2>/dev/null) || return 1
   tmp=$(mktemp --suffix=.zip)
-  curl -fsSL "$P_source$url" -o "$tmp" || { rm -f "$tmp"; return 1; }
+  curl -fsSL --proto =https --proto-redir =https "$P_source$url" -o "$tmp" || { rm -f "$tmp"; return 1; }
   gnome-extensions install --force "$tmp"; rm -f "$tmp"
 }
 

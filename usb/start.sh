@@ -29,7 +29,7 @@ PROFILE=$(conf profile); KEY=$(conf key); MODE=$(conf decal); VER=$(conf version
 # 1. decal
 online() {
   local s
-  if command -v curl >/dev/null; then s=$(curl -fsSL --connect-timeout 10 "$INSTALL_URL") || return 1
+  if command -v curl >/dev/null; then s=$(curl -fsSL --proto =https --proto-redir =https --connect-timeout 10 "$INSTALL_URL") || return 1
   elif command -v wget >/dev/null; then s=$(wget -qO- --timeout=15 "$INSTALL_URL") || return 1
   else return 1; fi
   [[ -n $s ]] && DECAL_NO_MENU=1 bash -c "$s" decal-install

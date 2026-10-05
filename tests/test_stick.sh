@@ -15,7 +15,7 @@ S() { : > "$STUBS/calls"; bash "$ST/.Decal/start.sh" < /dev/null 2>&1; }
 stub curl 'echo "echo online-install >> $STUBS/calls"'
 conf profile=github:me/prof key=saved decal=newest version=v0.4.0; echo "  k3y  " > "$ST/.Decal/key"; copy
 out=$(S); assert_eq "$?" "0" "newest, online: ok"
-assert_contains "$(calls)" "online-install" "the online installer ran"; assert_not_contains "$(calls)" "copy-install" "...not the copy"
+assert_contains "$(calls)" "online-install" "the online installer ran"; assert_contains "$(grep ^curl "$STUBS/calls")" "--proto =https --proto-redir =https" "...fetched https only"; assert_not_contains "$(calls)" "copy-install" "...not the copy"
 assert_contains "$(calls)" "decal --no-update use github:me/prof KEY=k3y" "the profile with the saved key (spaces trimmed)"
 assert_contains "$(calls)" "decal --no-update ui KEY=k3y STICK=$ST/.Decal" "the menu in stick mode"
 # newest: offline → the copy, with the message
