@@ -90,6 +90,10 @@ state_append() {
 
 # stamp helpers (module_stamp): a line for the summary; copy a file/folder into the stamp (prints REL);
 # a TOML list of strings
+# --- asking on the terminal (DECAL_TTY_IN / DECAL_TTY_OUT stand in for it in tests) ---
+have_tty() { { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null; }
+# tty_ask PROMPT : one answer, in REPLY ("" at the end of input)
+tty_ask() { printf '%s' "$1" >> "${DECAL_TTY_OUT:-/dev/tty}"; REPLY=""; IFS= read -r REPLY < "${DECAL_TTY_IN:-/dev/tty}" || true; }
 # --- what a module put in place: one name per line in a record, so remove takes exactly that ---
 rec_has() { grep -qxF "$2" "$1" 2>/dev/null; }            # rec_has REC NAME
 rec_add() { rec_has "$1" "$2" || echo "$2" >> "$1"; }     # rec_add REC NAME

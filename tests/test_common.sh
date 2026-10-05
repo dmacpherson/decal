@@ -85,4 +85,9 @@ assert_file "$STAMP_DIR/themes/cursor/Mine/index.theme" "...the theme bundled"; 
 stub dconf 'echo "'"'"'Adwaita'"'"'"'
 assert_eq "$(stamp_theme icons icon-theme "$T_TMP/hi")" "" "stamp_theme: a system theme isn't stamped"
 assert_contains "$(cat "$STAMP_NOTES")" "icons: Adwaita (comes with the system: not stamped)" "...and says so"
+# asking on the terminal (DECAL_TTY_IN/OUT stand in for it in tests)
+DECAL_TTY_IN=/nonexistent have_tty; assert_eq "$?" "1" "have_tty: none"
+printf 'two\n' > "$T_TMP/tty-in"; DECAL_TTY_IN="$T_TMP/tty-in" have_tty; assert_eq "$?" "0" "have_tty: there"
+DECAL_TTY_IN="$T_TMP/tty-in" DECAL_TTY_OUT="$T_TMP/tty-out" tty_ask "Which? "; assert_eq "$REPLY" "two" "tty_ask: the answer in REPLY"
+assert_eq "$(cat "$T_TMP/tty-out")" "Which? " "...after the question"
 t_done
