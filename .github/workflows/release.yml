@@ -1,6 +1,6 @@
 # Push a tag like v1.2.0 -> a GitHub release with decal.tar.gz and its checksum (what install.sh downloads), built by
 # build.yml (the USB stick launchers inside). A tag with a "-" (v1.2.0-rc1) is a pre-release: never "latest".
-# Run the checks first (bash tests/run.sh, shellcheck, gitleaks); this only packages.
+# Run the checks first, on dev before tools/promote.sh (bash tests/run.sh, shellcheck, gitleaks); this only packages.
 name: release
 on:
   push:
