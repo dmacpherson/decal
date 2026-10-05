@@ -69,6 +69,25 @@ def check(repo, need, token, may_create=False):
 
 
 
+def scopes_write(scopes):
+    """A classic token's X-OAuth-Scopes: can it write to repos?"""
+    return any(s.strip() in ("repo", "public_repo") for s in scopes.split(","))
+
+
+def stick_ok(token):
+    """"" when TOKEN may be saved on a USB stick (it can only read); else why not."""
+    if token.startswith(("ghp_", "gho_")):
+        return "a classic or gh token can write to your repos"
+    req = urllib.request.Request(API + "/user", headers={"Authorization": "Bearer " + token,
+                                                          "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            scopes = r.headers.get("X-OAuth-Scopes") or ""
+    except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError):
+        return ""   # checked again when it's used; reading is all the stick does
+    return "that token can write to your repos (repo scope)" if scopes_write(scopes) else ""
+
+
 def shown(repo):
     return "your profiles" if repo == "-" else repo
 
@@ -410,7 +429,7 @@ def days_arg(v):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["get", "check", "token-url", "install-url"])
+    ap.add_argument("cmd", choices=["get", "check", "stick-ok", "token-url", "install-url"])
     ap.add_argument("repo", nargs="?")
     ap.add_argument("--need", choices=["read", "write"], default="read")
     ap.add_argument("--may-create", action="store_true")
@@ -423,6 +442,10 @@ def main():
         if not u:
             sys.exit("error: no Decal Profile app configured")
         print(u)
+    elif a.cmd == "stick-ok":   # the key in GITHUB_TOKEN may go on a USB stick: exit 1 with the reason when not
+        why = stick_ok(os.environ.get("GITHUB_TOKEN", ""))
+        if why:
+            sys.exit(f"error: {why}")
     elif a.cmd == "get":
         if not a.repo:
             ap.error("get needs a repo")

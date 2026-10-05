@@ -34,8 +34,13 @@ out=$(S); assert_eq "$?" "1" "damaged copy: refused"; assert_contains "$out" "Th
 assert_not_contains "$(calls)" "copy-install" "...and doesn't run it"
 # the profile copy on the stick: packed and used (lives on the machine afterwards)
 copy; mkdir -p "$ST/.Decal/profile"; echo '[apps]' > "$ST/.Decal/profile/profile.toml"; conf profile=copy key=none decal=copy
-out=$(S); assert_contains "$(calls)" "decal --no-update use /" "copy: a packed copy is used"
-assert_contains "$(calls)" "stick-profile.tar.gz" "...from a temporary archive"
+out=$(S); assert_contains "$(calls)" "decal --no-update use $XDG_CACHE_HOME/decal/stick-profile.tar.gz" "copy: packed to one stable place"
+A="$XDG_CONFIG_HOME/decal/profile"; mkdir -p "$A"; cp "$ST/.Decal/profile/profile.toml" "$A/"; echo "$XDG_CACHE_HOME/decal/stick-profile.tar.gz" > "$A/.decal-source"
+out=$(S); assert_not_contains "$(calls)" "decal --no-update use" "the same profile already here: not used again (no pile of backups)"
+assert_contains "$out" "already here" "...says so"
+echo '[wallpaper]' >> "$ST/.Decal/profile/profile.toml"
+out=$(S); assert_contains "$(calls)" "decal --no-update use $XDG_CACHE_HOME/decal/stick-profile.tar.gz" "a changed profile on the stick: used (decal keeps a backup)"
+rm -rf "$A"
 # a saved key that no longer works
 conf profile=github:me/prof key=saved decal=copy; : > "$STUBS/use-fails"
 out=$(S); assert_eq "$?" "1" "a dead key: fails"; assert_contains "$out" "The key on this stick no longer works" "...says what to do"

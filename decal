@@ -482,6 +482,9 @@ do_usb() {
       key=$(env -u GITHUB_TOKEN -u GH_TOKEN python3 "$LS_REPO/lib/auth.py" get "${src#github:}" --need read) || die "no key: nothing written"
     fi
   fi
+  if [[ -n $key ]] && ! GITHUB_TOKEN=$key python3 "$LS_REPO/lib/auth.py" stick-ok 2>/dev/null; then
+    die "that key can write to your repos: it's not put on a stick (use Sign in with GitHub, or a read-only token)"
+  fi
   bin=$(usb_bin) || exit 1
   ver=$(cat "$LS_REPO/VERSION" 2>/dev/null || echo "dev-$(git -C "$LS_REPO" rev-parse --short HEAD 2>/dev/null || echo local)")
   files="$LS_RUNTMP/stick"; rm -rf "$files"; mkdir -p "$files/.Decal"
@@ -506,6 +509,10 @@ do_usb() {
     case $how in saved-key) echo "key=saved" ;; sign-in) echo "key=ask" ;; *) echo "key=none" ;; esac
     echo "decal=$dmode"; echo "version=$ver"; } > "$files/.Decal/stick.conf"
   sed -e "s|{profile}|$how_text|" -e "s|{version}|$ver ($dmode)|" -e "s|{made}|$(date +%F)|" "$LS_REPO/usb/README.txt" > "$files/.Decal/README.txt"
+  local fs; fs=$(findmnt -no FSTYPE --target "$target" 2>/dev/null || true)
+  if [[ $fs == vfat || $fs == msdos ]]; then
+    printf '\nThis stick is FAT32: Linux mounts it so nothing on it can be started by double-clicking. Start decal\nfrom a terminal instead:  bash .Decal/start.sh   (or reformat the stick as exFAT; Ventoy sticks are exFAT).\n' >> "$files/.Decal/README.txt"
+  fi
   info "on $target:"; (cd "$files" && find Decal .Decal -type f | sort | sed 's/^/    /') >&2
   if (( ! yes )); then
     { : < "${DECAL_TTY_IN:-/dev/tty}"; } 2>/dev/null || die "usb: nothing written: add --yes to write without asking"
@@ -515,6 +522,7 @@ do_usb() {
   res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || die "couldn't write to $target"
   info "done: double-click Decal on any Linux PC (Ctrl+H shows the .Decal folder)"
   if (( arm )); then info "ARM machines: double-click .Decal/Decal-ARM"; fi
+  if [[ $fs == vfat || $fs == msdos ]]; then warn "this stick is FAT32: double-clicking Decal won't work on it; start it with: bash .Decal/start.sh (or use an exFAT stick)"; fi
   if [[ $res == upgraded ]]; then warn "the old hand-made setup was replaced: revoke its token on GitHub (Settings → Developer settings → tokens)"; fi
   if [[ $target == "$HOME"/* || $to == folder* ]]; then info "copy Decal and .Decal/ together; zipping or some cloud drives drop the 'can run' bit Decal needs"; fi
 }

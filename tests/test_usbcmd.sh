@@ -35,6 +35,17 @@ assert_eq "$(cat "$T/.Decal/key")" "r3ad" "the given read key, not GITHUB_TOKEN"
 assert_eq "$(grep -rl s3cret "$T" | wc -l)" "0" "GITHUB_TOKEN never written to the stick"
 U --from me/p --how sign-in --to "$T" --yes >/dev/null; assert_nofile "$T/.Decal/key" "sign-in: no key on the stick"
 assert_contains "$(cat "$T/.Decal/stick.conf")" "key=ask" "...stick.conf says ask"
+# a key that can write is never put on a stick: classic and gh tokens refused (before anything is written)
+rm -rf "$T"; mkdir -p "$T"
+out=$(DECAL_STICK_KEY=ghp_classic GITHUB_TOKEN=s3cret U --from me/p --how saved-key --to "$T" --yes); assert_eq "$?" "1" "a classic token (ghp_): refused"
+assert_contains "$out" "can write" "...says why"; assert_nofile "$T/.Decal" "...nothing written"
+out=$(DECAL_STICK_KEY=gho_ghlogin GITHUB_TOKEN=s3cret U --from me/p --how saved-key --to "$T" --yes); assert_eq "$?" "1" "a gh token (gho_): refused"
+assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import auth; print(auth.scopes_write('repo, read:org'), auth.scopes_write('read:org'), auth.scopes_write(''))")" "True False False" "classic scopes: repo means it can write"
+# FAT32: the summary and the stick's README say double-click won't work there
+stub findmnt 'echo vfat'; rm -rf "$T"; mkdir -p "$T"
+out=$(U --from "$P" --to "$T" --yes); assert_contains "$out" "FAT32" "FAT32: the summary warns"
+assert_contains "$(cat "$T/.Decal/README.txt")" "This stick is FAT32" "FAT32: the README says how to start it"
+rm -f "$STUBS/findmnt"
 # no terminal, no --yes: stops before writing
 rm -rf "$T"; mkdir -p "$T"
 out=$(setsid -w "$REPO/decal" usb --from "$P" --to "$T" 2>&1 < /dev/null); assert_eq "$?" "1" "no terminal, no --yes: stops"

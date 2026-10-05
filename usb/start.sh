@@ -58,9 +58,15 @@ export DECAL_STICK=$HERE
 # 2. the profile (on this machine afterwards: unplugging the stick is fine)
 case $PROFILE in
   copy)
-    t="$(mktemp -d)/stick-profile.tar.gz"
-    tar -czf "$t" -C "$HERE/profile" . 2>/dev/null || fail "The profile copy on this stick can't be read: run decal usb to refresh it."
-    "$DECAL" --no-update use "$t" || fail "Couldn't use the profile on this stick (see above)." ;;
+    t="${XDG_CACHE_HOME:-$HOME/.cache}/decal/stick-profile.tar.gz"; mkdir -p "$(dirname "$t")"
+    active="${XDG_CONFIG_HOME:-$HOME/.config}/decal/profile"
+    if [[ $(cat "$active/.decal-source" 2>/dev/null) == "$t" ]] \
+       && diff -rq -x .decal-source -x .decal-stamp "$HERE/profile" "$active" >/dev/null 2>&1; then
+      say "the profile from this stick is already here"   # nothing to do: no new copy, no backup
+    else
+      tar -czf "$t" -C "$HERE/profile" . 2>/dev/null || fail "The profile copy on this stick can't be read: run decal usb to refresh it."
+      "$DECAL" --no-update use "$t" || fail "Couldn't use the profile on this stick (see above)."
+    fi ;;
   *)
     if [[ $KEY == saved ]]; then
       GITHUB_TOKEN=$(tr -d '[:space:]' < "$HERE/key" 2>/dev/null); export GITHUB_TOKEN

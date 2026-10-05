@@ -87,18 +87,21 @@ def write(target, src):
     os.rename(new, cur)
     os.sync()
     shutil.rmtree(old, ignore_errors=True)
-    how = "written"
-    if old_layout(target):   # the hand-made stick: its files go only now the new setup is in place
-        for f in OLD_FILES:
+    how = "upgraded" if old_layout(target) else "written"
+    d = os.path.join(target, "Decal")
+    if how == "upgraded":   # the hand-made stick: its files inside Decal/ go now the new setup is in place
+        for f in OLD_FILES[1:]:
             try:
                 os.remove(os.path.join(target, f))
             except FileNotFoundError:
                 pass
-        how = "upgraded"
-    d = os.path.join(target, "Decal")
     if os.path.isdir(d):   # a Decal folder can't share the launcher's name (FAT/exFAT ignore case, too)
         if os.listdir(d):
-            os.rename(d, os.path.join(target, "Decal-old"))
+            keep, n = os.path.join(target, "Decal-old"), 1
+            while os.path.exists(keep):   # never onto an earlier one
+                n += 1
+                keep = os.path.join(target, f"Decal-old-{n}")
+            os.rename(d, keep)
         else:
             os.rmdir(d)
     tmp = os.path.join(target, "Decal.new")
@@ -108,6 +111,11 @@ def write(target, src):
     except OSError:
         pass
     os.replace(tmp, d)
+    if how == "upgraded":   # the old launcher last: the stick always has one
+        try:
+            os.remove(os.path.join(target, OLD_FILES[0]))
+        except FileNotFoundError:
+            pass
     os.sync()
     return how
 

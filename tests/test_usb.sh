@@ -49,6 +49,11 @@ assert_eq "$(python3 "$U" write "$OLD" "$SRC")" "upgraded" "upgrade: says so"
 assert_eq "$(cat "$OLD/Decal")" "launcher" "upgrade: Decal is the launcher now"
 assert_nofile "$OLD/decal-me" "upgrade: the old launcher gone"; assert_eq "$(grep -rl T0KEN "$OLD" | wc -l)" "0" "upgrade: the old token gone"
 assert_eq "$(cat "$OLD/Decal-old/notes.txt")" "mine" "upgrade: your own files kept, in Decal-old"
+# a second upgrade of a hand-made stick whose Decal-old/ is already taken: a free name, never a stranded stick
+O2="$T_TMP/o2"; mkdir -p "$O2/Decal" "$O2/Decal-old"; echo x > "$O2/decal-me"; echo s > "$O2/Decal/decal-me.sh"; echo again > "$O2/Decal/more.txt"; echo first > "$O2/Decal-old/notes.txt"
+out=$(python3 "$U" write "$O2" "$SRC" 2>&1); assert_eq "$?" "0" "upgrade with Decal-old taken: works"
+assert_eq "$(cat "$O2/Decal")" "launcher" "...the launcher in place"; assert_eq "$(cat "$O2/Decal-old/notes.txt")" "first" "...the earlier Decal-old untouched"
+assert_eq "$(cat "$O2/Decal-old-2/more.txt")" "again" "...the new leftovers in Decal-old-2"; assert_nofile "$O2/decal-me" "...the old launcher gone"
 # a folder target
 python3 "$U" write "$T_TMP/folder" "$SRC" >/dev/null; assert_file "$T_TMP/folder/.Decal/stick.conf" "folder: written"
 t_done
