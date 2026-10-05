@@ -168,14 +168,11 @@ def find_github(token):
 
 
 def active():
-    """The active profile's source: where a link points, the recorded source, a checkout's origin, else the folder."""
+    """The active profile's source: where a link points, a checkout's origin (never a .decal-source it carries), the
+    recorded source, else the folder."""
     d = os.environ.get("DECAL_PROFILE") or PROFILE_HOME
     if os.path.islink(d) or os.environ.get("DECAL_PROFILE"):
         return os.path.realpath(d)
-    try:
-        return open(os.path.join(d, ".decal-source")).read().strip()
-    except OSError:
-        pass
     if os.path.isdir(os.path.join(d, ".git")):
         try:
             r = subprocess.run(["git", "-C", d, "remote", "get-url", "origin"], capture_output=True, text=True)
@@ -183,7 +180,11 @@ def active():
                 return r.stdout.strip()
         except OSError:   # no git here: the folder itself
             pass
-    return os.path.realpath(d) if os.path.isdir(d) else ""
+        return os.path.realpath(d)
+    try:
+        return open(os.path.join(d, ".decal-source")).read().strip()
+    except OSError:
+        return os.path.realpath(d) if os.path.isdir(d) else ""
 
 
 def listing(only=""):

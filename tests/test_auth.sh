@@ -239,4 +239,10 @@ export REPO
 assert_eq "$(busy 503)" "14" "GitHub 503 on /user: busy, not a bad key"
 assert_eq "$(busy 429)" "14" "too many requests: busy"
 assert_eq "$(busy 401)" "10" "401: still a bad key"
+# an ignored key (an arrow) doesn't cut the wait short: the next check with GitHub keeps its interval
+printf '\x1b[A' > "$T_TMP/arrow"
+assert_eq "$(python3 -c "
+import sys, time; sys.path.insert(0, '$REPO/lib'); import auth
+t = auth.Tty.__new__(auth.Tty); t.i = open('$T_TMP/arrow', 'rb'); t.real = False
+s = time.monotonic(); t.key(0.3); print('waited' if time.monotonic() - s >= 0.25 else 'cut short')")" "waited" "an arrow key: the wait goes on to its end"
 t_done

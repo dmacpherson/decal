@@ -200,6 +200,9 @@ already done, or decided against (the reasons are there). Still open:
 - A git checkout profile's links are checked after `git pull`, so a bad link is refused once it's already there.
 - In a real terminal, Esc followed within 50 ms by another key loses that key during the sign-in wait.
 - Release notes for v0.4.0: `release-notes-v0.4.0.md` (draft).
+- The install address is written twice: `lib/cmd_stamp.sh` (its "on another machine" line) and `profiles.py readme`.
+- `usb.py write` moves any case variant of a `Decal` folder aside (with a note), not only `Decal` itself: needed on
+  FAT/exFAT, where the launcher can't sit next to it (the plan said "exact case"; this is the ruling).
 
 ## Part 4: Save back from a stick
 

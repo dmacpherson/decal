@@ -110,7 +110,7 @@ stage_profile() {
 links_inside() {
   local l
   while IFS= read -r -d '' l; do
-    inside "$1" "$l" || die "$2: a link that leads outside it: ${l#"$1"/} (not used)"
+    [[ $(realpath -m -- "$l") == "$(realpath -m -- "$1")" ]] || inside "$1" "$l" || die "$2: a link that leads outside it: ${l#"$1"/} (not used)"
   done < <(find "$1" -path "$1/.git" -prune -o -type l -print0)
 }
 # set_profile SOURCE : make SOURCE the active profile at $PROFILE_HOME (dry-run: only staged)
@@ -153,16 +153,20 @@ activate_staged() {
 # trust SOURCE : a profile that isn't yours (lib/source.py yours): say whose it is, offer a preview, ask.
 # --yes / DECAL_YES=1 skips the question; no terminal: stops with how to go on.
 # asked SOURCE : you said yes to SOURCE (or --yes): not asked about again (it still isn't "yours" until applied)
-asked() { mkdir -p "$LS_USER_STATE"; rec_add "$LS_USER_STATE/asked" "$1"; }
-trust() {   # trust SOURCE [VERB] : VERB is what "y" does (apply it / use it)
-  local src=$1 verb=${2:-apply} login="" tok a fd done=applied
-  if [[ $verb == use ]]; then done=used; fi
+asked() {   # git+URL is remembered as URL too (what the checkout's origin says)
+  mkdir -p "$LS_USER_STATE"; rec_add "$LS_USER_STATE/asked" "$1"
+  if [[ $1 == git+* ]]; then rec_add "$LS_USER_STATE/asked" "${1#git+}"; fi
+}
+trust() {   # trust SOURCE [VERB [AGAIN]] : VERB is what "y" does (apply/use/add it); AGAIN: the command to suggest
+  local src=$1 verb=${2:-apply} login="" tok a fd done=applied again=${3:-}
+  case $verb in use) done=used ;; add) done=added ;; esac
+  again=${again:-decal --yes $verb $src}
   if [[ ${DECAL_YES:-} == 1 ]]; then asked "$src"; return 0; fi   # asked not to ask (the installer: you typed the source)
   if grep -qxF -- "$src" "$LS_USER_STATE/asked" 2>/dev/null; then return 0; fi   # you said yes to it before
   if [[ $src == github:* ]]; then tok=$(gh_token); if [[ -n $tok ]]; then login=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami 2>/dev/null || true); fi; fi
   if python3 "$LS_REPO/lib/source.py" yours "$src" --login "$login"; then return 0; fi
   warn "this profile is from ${src#github:}, not you: it can install software and change system settings"
-  if ! have_tty; then die "not $done: to $verb it anyway, run decal --yes $verb $src"; fi
+  if ! have_tty; then die "not $done: to $verb it anyway, run $again"; fi
   exec {fd}<"${DECAL_TTY_IN:-/dev/tty}"
   while :; do
     printf 'p preview what it would change · y %s it · n stop [p]: ' "$verb" >> "${DECAL_TTY_OUT:-/dev/tty}"

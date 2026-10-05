@@ -29,10 +29,10 @@ _usb_copy() {
   if [[ -d $LS_REPO/.git ]]; then
     (cd "$LS_REPO" && git ls-files -z | while IFS= read -r -d '' f; do
        if [[ -e $f && $f != tests/* && $f != docs/* ]]; then printf '%s\0' "$f"; fi; done \
-     | tar -czf "$1" --null -T - --transform 's,^,decal/,')
+     | tar -czf "$1" --null -T - --transform 's,^,decal/,S')   # S: link targets stay as they are
   else
     tar -czf "$1" -C "$(dirname "$LS_REPO")" --exclude=tests --exclude=docs --exclude=__pycache__ \
-      --transform "s,^$(basename "$LS_REPO"),decal," "$(basename "$LS_REPO")"
+      --transform "s,^$(basename "$LS_REPO"),decal,S" "$(basename "$LS_REPO")"
   fi
 }
 # do_usb [--from SRC] [--how saved-key|sign-in|copy|latest] [--decal newest|copy|online] [--arm]

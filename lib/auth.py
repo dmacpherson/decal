@@ -136,8 +136,15 @@ class Tty:
         return buf.decode(errors="replace").strip()
 
     def key(self, timeout):
-        """A key pressed within TIMEOUT: Esc, t, or "" (nothing, or another key: an arrow or F-key's escape
-        sequence is read whole, so it neither cancels nor reaches the next prompt)."""
+        """A key pressed within TIMEOUT: Esc, t, or "" once TIMEOUT is over (nothing, or other keys: an arrow or
+        F-key's escape sequence is read whole, so it neither cancels nor reaches the next prompt)."""
+        end = time.monotonic() + timeout
+        while True:
+            k = self._key(max(0.0, end - time.monotonic()))
+            if k or time.monotonic() >= end:
+                return k
+
+    def _key(self, timeout):
         if not self.real:   # a file of keystrokes: Esc or t if that's next; anything else is for the next prompt
             pos = self.i.tell()
             c = self.i.read(1)
@@ -216,10 +223,12 @@ def post_form(url, data):
     req = urllib.request.Request(url, data=urllib.parse.urlencode(data).encode(), headers={"Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
-            return json.loads(r.read() or b"{}")
+            d = json.loads(r.read() or b"{}")
+            return d if isinstance(d, dict) else {}
     except urllib.error.HTTPError as e:
         try:
-            return {"error": f"HTTP {e.code}"} | json.loads(e.read() or b"{}")   # GitHub's own error name wins
+            d = json.loads(e.read() or b"{}")
+            return {"error": f"HTTP {e.code}"} | (d if isinstance(d, dict) else {})   # GitHub's own error name wins
         except ValueError:
             return {"error": f"HTTP {e.code}"}
     except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as e:
@@ -276,7 +285,7 @@ def wait_for_access(tty, repo, need, token, may_create):
         if c == OK:
             tty.say("Signed in.")
             return token
-        if c not in (CANT_SEE, OFFLINE):   # OFFLINE: a blip, keep the approved key and try again
+        if c not in (CANT_SEE, OFFLINE, BUSY):   # OFFLINE, BUSY: a blip, keep the approved key and try again
             tty.say(WHY[c].format(repo=repo))
             return None
         if time.monotonic() >= give_up:

@@ -155,7 +155,7 @@ assert_eq "$(cd "$T_TMP" && py 'ui.stamp_dest({"action": "enter"}, "~/x.tar.gz")
 # one answer to "which profile is active" (decal and the menu ask profiles.py)
 A="$T_TMP/act"; mkdir -p "$A"; git -C "$A" init -q; git -C "$A" remote add origin https://example.com/me/p.git
 assert_eq "$(DECAL_PROFILE_HOME="$A" env -u DECAL_PROFILE python3 "$REPO/lib/profiles.py" active)" "https://example.com/me/p.git" "active: a git checkout's origin"
-echo "github:me/p" > "$A/.decal-source"
+rm -rf "$A/.git"; echo "github:me/p" > "$A/.decal-source"   # an unpacked download (a checkout's own file never counts)
 assert_eq "$(DECAL_PROFILE_HOME="$A" env -u DECAL_PROFILE python3 "$REPO/lib/profiles.py" active)" "github:me/p" "active: the recorded source"
 # the stick menu reads stick.conf the way decal usb wrote it
 SC="$T_TMP/sc/.Decal"; mkdir -p "$SC"; printf '# made\nprofile=github:me/p  # mine\nkey=saved\n' > "$SC/stick.conf"

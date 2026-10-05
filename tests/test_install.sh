@@ -240,6 +240,7 @@ A="$DECAL_PROFILE_HOME"; rm -rf "$A"; mkdir -p "$A"; printf '[eee-conf]\nword = 
 : > "$LS_TEST_LOG"
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" add all 2>&1 < /dev/null); assert_eq "$?" "1" "add: a stranger's active profile, never asked: stops"
 assert_contains "$out" "this profile is from fourth/q" "...says whose it is"; assert_eq "$(cat "$LS_TEST_LOG")" "" "...nothing added"
+assert_contains "$out" "run decal --yes add all" "...and suggests the command that was run, with --yes"
 setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" --yes add all >/dev/null 2>&1 < /dev/null; assert_eq "$?" "0" "...--yes: added"
 setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" add all >/dev/null 2>&1 < /dev/null; assert_eq "$?" "0" "...and not asked again"
 # decal use, answered yes, then add (what the menu runs): one question, not two

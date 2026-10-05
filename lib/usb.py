@@ -111,7 +111,9 @@ def write(target, src):
             except FileNotFoundError:
                 pass
     if os.path.isdir(d):   # a Decal folder can't share the launcher's name (FAT/exFAT ignore case, too)
-        name = next((n for n in os.listdir(target) if n.lower() == "decal" and os.path.isdir(os.path.join(target, n))), "Decal")
+        names = os.listdir(target)   # Decal itself when it's there (a case-sensitive stick may hold decal/ too)
+        name = "Decal" if "Decal" in names else next(
+            (n for n in names if n.lower() == "decal" and os.path.isdir(os.path.join(target, n))), "Decal")
         d = os.path.join(target, name)
         if os.listdir(d):
             keep, n = os.path.join(target, f"{name}-old"), 1

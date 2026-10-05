@@ -174,4 +174,28 @@ PY
 python3 "$SRC" unpack --links inside "$U/zl.zip" "$U/zl"; assert_eq "$(readlink "$U/zl/T/cursors/default")" "left_ptr" "zip: a link inside kept"
 out=$(python3 "$SRC" unpack --links inside "$U/zo.zip" "$U/zo" 2>&1); assert_contains "$out" "points outside the archive" "zip: a link out refused"
 out=$(python3 "$SRC" unpack "$U/zl.zip" "$U/zn" 2>&1); assert_contains "$out" "links and special files aren't allowed" "zip: links refused unless asked for"
+# attacks on links="inside" (review): a later link changing where an earlier one leads; a folder entry through a link;
+# a link with a NUL in it
+python3 - "$U" <<'PY'
+import io, os, stat, sys, tarfile, zipfile
+u = sys.argv[1]
+def zlink(z, name, target):
+    i = zipfile.ZipInfo(name); i.external_attr = (stat.S_IFLNK | 0o777) << 16; z.writestr(i, target)
+with zipfile.ZipFile(f"{u}/zorder.zip", "w") as z:   # L looks inside until s appears
+    zlink(z, "L", "s/s/s/../../.."); zlink(z, "s", ".")
+with zipfile.ZipFile(f"{u}/zdir.zip", "w") as z:
+    zlink(z, "L", "s/s/s/../../.."); zlink(z, "s", "."); z.writestr(zipfile.ZipInfo("L/ESCAPED-DIR/"), "")
+with zipfile.ZipFile(f"{u}/znul.zip", "w") as z:
+    zlink(z, "n", "a\0b")
+t = tarfile.open(f"{u}/torder.tgz", "w:gz")
+for name, target in (("L", "s/s/s/../../.."), ("s", ".")):
+    i = tarfile.TarInfo(name); i.type = tarfile.SYMTYPE; i.linkname = target; t.addfile(i)
+t.close()
+PY
+for a in zorder.zip torder.tgz; do mkdir -p "$U/at-$a"
+  out=$(python3 "$SRC" unpack --links inside "$U/$a" "$U/at-$a/dest" 2>&1); assert_eq "$?" "1" "links that end up leading out ($a): refused"
+  assert_contains "$out" "outside the archive" "...says why"; done
+mkdir -p "$U/at-dir"; out=$(python3 "$SRC" unpack --links inside "$U/zdir.zip" "$U/at-dir/dest" 2>&1); assert_eq "$?" "1" "a zip folder through a link out: refused"
+assert_eq "$(find "$T_TMP" -name ESCAPED-DIR | wc -l)" "0" "...nothing made outside"
+out=$(python3 "$SRC" unpack --links inside "$U/znul.zip" "$U/at-nul" 2>&1); assert_eq "$?" "1" "a link with a NUL: refused"; assert_not_contains "$out" "Traceback" "...no traceback"
 t_done

@@ -124,4 +124,7 @@ python3 "$P" readme "$R" "My Linux setup" stamp --source github:me/decal-me --no
 assert_contains "$(cat "$R/README.md")" "bash -s -- github:me/decal-me" "readme: the install line with the source"
 assert_contains "$(cat "$R/README.md")" "- icons: Papirus" "readme: what's in a stamp"
 assert_contains "$(cat "$R/README.md")" "saved by \`decal stamp\`" "readme: says how it was made"
+# a git checkout's own .decal-source never says where it came from: its origin does (review)
+H2="$T_TMP/hostile"; mkdir -p "$H2"; git -C "$H2" init -q; git -C "$H2" remote add origin https://evil.example/x.git; echo /home/anything > "$H2/.decal-source"
+assert_eq "$(DECAL_PROFILE_HOME="$H2" env -u DECAL_PROFILE python3 "$P" active)" "https://evil.example/x.git" "active: a checkout's origin, never a .decal-source it carries"
 t_done

@@ -118,4 +118,12 @@ GR="$T_TMP/gitprof"; mkdir -p "$GR"; cp "$P/profile.toml" "$GR/"; ln -s /etc "$G
 git -C "$GR" init -q; git -C "$GR" -c user.email=t@t -c user.name=t add -A; git -C "$GR" -c user.email=t@t -c user.name=t commit -qm p
 out=$("$S" --yes use "file://$GR" 2>&1); assert_eq "$?" "1" "git source with a link out: refused"
 assert_contains "$out" "a link that leads outside it: escape" "...says which"
+# a link to the checkout itself is fine (it leads nowhere outside)
+GS="$T_TMP/gitself"; mkdir -p "$GS"; cp "$P/profile.toml" "$GS/"; ln -s . "$GS/self"
+git -C "$GS" init -q; git -C "$GS" -c user.email=t@t -c user.name=t add -A; git -C "$GS" -c user.email=t@t -c user.name=t commit -qm p
+out=$("$S" --yes use "file://$GS" 2>&1); assert_eq "$?" "0" "git source with a link to itself: used"
+# git+ sources: the yes is remembered in the form add sees too (the checkout's origin, without git+)
+G2="$T_TMP/gitplus"; cp -a "$GS" "$G2"; "$S" --yes use "git+file://$G2" >/dev/null 2>&1
+grep -qxF "git+file://$G2" "$DECAL_USER_STATE/asked" && grep -qxF "file://$G2" "$DECAL_USER_STATE/asked"
+assert_eq "$?" "0" "git+ source: remembered with and without git+"
 t_done

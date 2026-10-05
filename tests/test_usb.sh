@@ -71,4 +71,8 @@ python3 "$U" conf-text --profile github:me/p --key saved --decal newest --versio
 assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import usb; print(usb.read_conf('$SC'))")" "{'profile': 'github:me/p', 'key': 'saved', 'decal': 'newest', 'version': 'v0.4.0'}" "conf-text: read back the same"
 assert_contains "$(head -1 "$SC/stick.conf")" "# Made by decal v0.4.0" "...with its header"
 out=$(python3 "$U" conf-text --profile $'x\nkey=saved' --key none --decal copy --version v 2>&1); assert_eq "$?" "1" "conf-text: a value with a new line refused"
+# a case-sensitive stick with both decal/ and Decal/: Decal/ is the one moved aside, decal/ left alone (review)
+CS="$T_TMP/cs"; mkdir -p "$CS/decal" "$CS/Decal"; echo mine > "$CS/decal/f"; echo old > "$CS/Decal/g"
+out=$(python3 "$U" write "$CS" "$SRC" 2>&1); assert_eq "$?" "0" "both decal/ and Decal/: written"
+assert_eq "$(cat "$CS/decal/f")" "mine" "...decal/ untouched"; assert_file "$CS/Decal-old/g" "...Decal/ kept as Decal-old"
 t_done

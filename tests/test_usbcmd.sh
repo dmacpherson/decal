@@ -81,7 +81,9 @@ out=$("$REPO/decal" new decal-q --from empty --to stick: 2>&1); assert_eq "$?" "
 rm -rf "$DECAL_MEDIA/My Stick" "$DECAL_MEDIA/Other"
 # the decal copy from a git checkout: its tracked files only, and -dirty when it has edits
 GC="$T_TMP/gc"; git clone -q "$REPO" "$GC"; for f in decal install.sh lib usb modules; do cp -a "$REPO/$f" "$GC/"; done; echo junk > "$GC/lib/untracked-junk"; echo "# edit" >> "$GC/decal"
+ln -s install.sh "$GC/lnk"; git -C "$GC" add lnk   # a tracked link: it must still point at its neighbour
 "$GC/decal" usb --from "$P" --to "folder:$T_TMP/gcs" --yes >/dev/null 2>&1; assert_eq "$?" "0" "usb from a git checkout"
+assert_contains "$(tar -tvzf "$T_TMP/gcs/.Decal/decal.tar.gz" | grep 'decal/lnk')" "-> install.sh" "...links keep their targets"
 assert_not_contains "$(tar -tzf "$T_TMP/gcs/.Decal/decal.tar.gz")" "untracked-junk" "...untracked files left out"
 assert_contains "$(cat "$T_TMP/gcs/.Decal/stick.conf")" "-dirty" "...the version says it has edits"
 t_done
