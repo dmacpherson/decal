@@ -7,7 +7,7 @@ implementation; this file records what's already decided so each part's design s
 | Part | What | Status |
 |---|---|---|
 | 1 | GitHub sign-in | **Done** (merged 2026-10-04): `docs/superpowers/specs/2026-10-04-github-sign-in-design.md` |
-| 2 | Profile browser | Spec written: `docs/superpowers/specs/2026-10-04-profile-browser-design.md` |
+| 2 | Profile browser | **Built** on branch `profile-browser` (review pending): `docs/superpowers/specs/2026-10-04-profile-browser-design.md` |
 | 2b | Profile review ("What this profile will do") | After 2 |
 | 3 | USB maker | After 2 |
 | 4 | Save back from a stick | After 3 |

@@ -41,6 +41,9 @@ From your GitHub stamp (`decal stamp --github` prints this line with your name f
 curl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- github:YOUR-NAME/decal-YOUR-NAME
 ```
 
+Any GitHub link works too (`https://github.com/you/decal-you`, or just `you/decal-you`), and so does a link to a
+`.tar.gz` or `.zip`.
+
 From a stamp file you've copied over:
 
 ```bash
@@ -90,7 +93,9 @@ The menu runs these same commands and shows them before it does anything.
 
 ```bash
 decal use ~/my-profile            # make it the active profile, without applying anything
-decal apply ~/my-profile          # a folder, a .tar.gz, a git URL or github:owner/repo: becomes the active profile, then applied (never removes anything)
+decal apply ~/my-profile          # a folder, a .tar.gz/.zip, owner/repo or a GitHub link, an archive link, a git URL: becomes the active profile, then applied (never removes anything)
+decal profiles                    # the profiles decal can see: yours on GitHub, stamps here, USB sticks, recently used
+decal new decal-work --from empty # a new profile: from this machine (default), a copy, or a starter; --to github|file|stick
 decal status                      # what's applied
 decal add cursor icons            # apply some modules from the active profile
 decal remove wallpaper            # undo exactly what add did
@@ -144,10 +149,18 @@ stamp is one commit, and it ends with the line to put the setup on the next mach
 
 ### Profiles
 
-A profile can be a folder (a USB stick is fine), a `.tar.gz` from `decal stamp`, a git URL, or
-`github:owner/repo[@branch]`, downloaded without git. For a private repo set `GITHUB_TOKEN` (a
-fine-grained token with read access to it: `curl … | GITHUB_TOKEN=… bash -s -- github:…`), be logged
-in with `gh`, or sign in when it asks (see [Signing in to GitHub](#signing-in-to-github)).
+A profile can be a folder (a USB stick is fine), a `.tar.gz` / `.tgz` / `.zip` (from `decal stamp`, or a link to
+one), `owner/repo` or any GitHub link (downloaded without git; `@branch` or a `/tree/branch` link for a branch), or
+a git URL. A folder or file by that name here wins over `owner/repo`. `decal profiles` lists the ones decal can
+see: yours on GitHub (repos with a `profile.toml`; stamp tags them `decal-profile`), stamps in your home folder,
+USB sticks, and recently used ones. `decal new NAME` makes one: from this machine, a copy of another, or a
+starter with everything commented out; on GitHub, in a file, or on the stick. A private repo needs a GitHub
+key: `GITHUB_TOKEN`, your `gh` login, or sign in when decal asks (see [Signing in to GitHub](#signing-in-to-github)).
+
+Applying a profile that isn't yours (someone else's repo or link, used for the first time) asks first and offers
+a preview: it can install software and change system settings. `--yes` skips the question; the one-line installer
+uses it, since you typed the source yourself. Downloads are https only, and archives are unpacked safely (nothing
+outside the profile folder, no links, 200 MB at most).
 
 Everything fetched from outside has a `source` key: `git+https://…` (with
 `path`/`ref`), `github-release:owner/repo` (with `asset`/`version`), an
