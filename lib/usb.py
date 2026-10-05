@@ -141,8 +141,9 @@ def main():
     else:
         try:
             print(write(a.args[0], a.args[1]))
-        except OSError as e:
-            sys.exit(f"error: couldn't write to {a.args[0]}: {e.strerror or e} (is the stick full, read-only or unplugged?)")
+        except Exception as e:   # OSError and shutil.Error alike: plain words, never a traceback
+            why = getattr(e, "strerror", None) or str(e) or type(e).__name__
+            sys.exit(f"error: couldn't write to {a.args[0]}: {why} (is the stick full, read-only or unplugged?)")
 
 
 if __name__ == "__main__":

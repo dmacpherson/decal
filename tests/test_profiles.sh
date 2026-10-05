@@ -75,6 +75,9 @@ kill "$GHPID" 2>/dev/null
 gh_odd() { python3 - "$1" <<'EOF'
 import os, sys, threading, http.server
 sys.path.insert(0, os.path.join(os.environ["REPO"], "lib")); import github
+if sys.argv[1] == "bare":   # a timeout with no words of its own
+    def no(*a, **k): raise TimeoutError()
+    github.urllib.request.urlopen = no
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if sys.argv[1] == "drop":
@@ -93,4 +96,13 @@ EOF
 export REPO
 assert_contains "$(gh_odd html 2>&1)" "Fail: couldn't reach GitHub" "a web page instead of GitHub: plain failure"
 assert_contains "$(gh_odd drop 2>&1)" "Fail: couldn't reach GitHub" "GitHub hangs up: plain failure"
+assert_contains "$(gh_odd bare 2>&1)" "couldn't reach GitHub (TimeoutError)" "a failure with no message: still says what"
+# a stick or stamp whose profile.toml isn't text: skipped, the rest still listed, no traceback (review)
+mkdir -p "$DECAL_MEDIA/Bad/.Decal/profile" "$HOME/decal-bad"; printf 'a = "\xff"\n' > "$DECAL_MEDIA/Bad/.Decal/profile/profile.toml"
+printf 'a = "\xff"\n' > "$HOME/decal-bad/profile.toml"; : > "$HOME/decal-bad/.decal-stamp"
+out=$(python3 "$P" list --json --only local 2>&1); assert_eq "$?" "0" "a profile that isn't text: listing still works"
+assert_not_contains "$out" "Traceback" "...without a traceback"; assert_contains "$out" "decal-work" "...the others still listed"
+assert_not_contains "$out" "\"Bad\"" "a stick profile that isn't text: left out"
+assert_contains "$out" "Ventoy" "...the other stick still listed"
+rm -rf "$DECAL_MEDIA/Bad" "$HOME/decal-bad"
 t_done

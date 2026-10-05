@@ -54,9 +54,12 @@ def until(text, limit=20.0):
         r, _, _ = select.select([fd], [], [], 0.1)
         if r:
             try:
-                buf += os.read(fd, 65536)
+                data = os.read(fd, 65536)
             except OSError:
-                return False
+                return None   # the program ended before TEXT showed
+            if not data:
+                return None
+            buf += data
     return None
 
 

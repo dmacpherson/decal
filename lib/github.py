@@ -40,7 +40,7 @@ def call(method, path, body=None, ok=(200, 201)):
     except urllib.error.URLError as e:
         raise Fail(f"couldn't reach GitHub ({e.reason})")
     except (OSError, http.client.HTTPException) as e:   # the connection dropped midway
-        raise Fail(f"couldn't reach GitHub ({e or type(e).__name__})")
+        raise Fail(f"couldn't reach GitHub ({str(e) or type(e).__name__})")
 
 
 def need(res, what):

@@ -37,8 +37,8 @@ online() {
 }
 reachable() {   # GitHub answers at all (any answer counts: a dead key still gets one)
   local u=${DECAL_GITHUB_API:-https://api.github.com}
-  if command -v curl >/dev/null; then curl -sS --proto =https --proto-redir =https --connect-timeout 10 -o /dev/null "$u" 2>/dev/null
-  elif command -v wget >/dev/null; then wget -q --spider --timeout=15 "$u" 2>/dev/null
+  if command -v curl >/dev/null; then curl -sS --proto =https --proto-redir =https --connect-timeout 10 --max-time 20 -o /dev/null "$u" 2>/dev/null
+  elif command -v wget >/dev/null; then local rc=0; wget -q --spider --timeout=15 "$u" 2>/dev/null || rc=$?; (( rc == 0 || rc == 8 ))   # 8: GitHub answered (an error still counts)
   else return 1; fi
 }
 from_copy() {   # 0 installed · 2 no copy · fails (exits) when damaged
