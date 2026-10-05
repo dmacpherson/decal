@@ -40,11 +40,11 @@ assert_eq "$(cat "$DECAL_USER_STATE/tags")" "dev" "the tags used are remembered"
 D "$REPO/decal" ui -- 1 ENTER q; assert_contains "$(cat "$T_TMP/screen")" "[x] tag: dev" "...and pre-ticked next time"
 # remove: tick the dev tag, preview, confirm by typing remove
 : > "$LS_TEST_LOG"
-D "$REPO/decal" ui -- 3 SPACE ENTER WAIT ENTER r e m o v e ENTER WAIT ENTER q
+D "$REPO/decal" ui -- 4 SPACE ENTER WAIT ENTER r e m o v e ENTER WAIT ENTER q
 assert_eq "$(cat "$LS_TEST_LOG")" "onlydev remove" "remove: the dev tag's module peeled off, the rest kept"
 assert_contains "$(cat "$T_TMP/screen")" "Peeled off: tag dev" "remove: the result"
 : > "$LS_TEST_LOG"
-D "$REPO/decal" ui -- 3 DOWN DOWN SPACE ENTER WAIT ENTER n o p e ENTER q
+D "$REPO/decal" ui -- 4 DOWN DOWN SPACE ENTER WAIT ENTER n o p e ENTER q
 assert_eq "$(cat "$LS_TEST_LOG")" "" "remove: anything but \"remove\" typed cancels it"
 # no profile yet: only Apply, Stamp, Logs, and a line saying what to do
 DECAL_PROFILE="$T_TMP/none" D "$REPO/decal" ui -- q; S=$(cat "$T_TMP/screen")
@@ -141,4 +141,7 @@ UR="$T_TMP/urepo"; mkdir -p "$UR"; : > "$UR/.installed"; printf 'sleep 5\necho "
 assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import ui; ui.REPO = '$UR'; ui.CHECK_TIMEOUT = 1; print(repr(ui.update_note()))" 2>&1)" "''" "update check too slow: nothing shown, no crash"
 printf 'echo "v9 is out"\n' > "$UR/install.sh"
 assert_eq "$(python3 -c "import sys; sys.path.insert(0, '$REPO/lib'); import ui; ui.REPO = '$UR'; print(ui.update_note())" 2>&1)" "v9 is out" "update check answers: shown"
+# the main menu: USB in capitals, keys in order (audit batch 3)
+assert_eq "$(py 'ui.label("usb")')" "USB" "USB, not Usb"; assert_eq "$(py 'ui.label("apply")')" "Apply" "the rest capitalised"
+assert_eq "$(py '" ".join(k for k, *_ in ui.MENU)')" "1 2 3 4 5 6" "keys read 1 to 6 in order"
 t_done

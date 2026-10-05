@@ -20,11 +20,16 @@ ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 MENU = [  # key, word (the command), the sticker aside, what it does
     ("1", "apply", "stick it on", "put a profile on this machine"),
     ("2", "stamp", "take a print", "save this machine's setup as a profile"),
-    ("6", "usb", "a stick", "put decal on a USB stick"),
-    ("3", "remove", "peel it off", "undo what decal changed"),
-    ("4", "update", "fresh sheet", ""),
+    ("3", "usb", "a stick", "put decal on a USB stick"),
+    ("4", "remove", "peel it off", "undo what decal changed"),
     ("5", "logs", "the fine print", "what the last run did"),
+    ("6", "update", "fresh sheet", ""),   # last: only shown when a newer decal is out
 ]
+
+
+def label(word):
+    """A menu word as shown: USB in capitals, the rest capitalised."""
+    return "USB" if word == "usb" else word.capitalize()
 
 
 # --- talking to decal ------------------------------------------------------------------------------------------
@@ -857,7 +862,7 @@ class UI:
                     what = f"{d.update} is out"
                 y = top + n
                 self.put(y, 2, key, self.c(4, curses.A_BOLD))
-                self.put(y, 5, f" {word.capitalize():<8}", (curses.A_REVERSE if n == i else 0) | curses.A_BOLD)
+                self.put(y, 5, f" {label(word):<8}", (curses.A_REVERSE if n == i else 0) | curses.A_BOLD)
                 self.put(y, 16, f"{fun:<16}", self.c(5, curses.A_DIM))
                 self.put(y, 33, what)
             self.put(top + len(items) + 1, 2, "q", self.c(4, curses.A_BOLD)); self.put(top + len(items) + 1, 6, "Quit")

@@ -61,4 +61,7 @@ out=$("$REPO/decal" --profile 2>&1); assert_contains "$out" "--profile needs a p
 # GitHub out of reach: says so, not "HTTP 000"
 stub curl 'exit 7'; out=$("$REPO/decal" --yes use github:me/prof 2>&1); assert_contains "$out" "couldn't reach GitHub to get github:me/prof: check the internet connection" "offline: plain words"
 assert_not_contains "$out" "HTTP 000" "...no HTTP code"
+# --yes writes without asking, so it never guesses the drive (audit batch 3)
+out=$("$REPO/decal" usb --from "$P" --yes 2>&1); assert_eq "$?" "1" "--yes without --to: refused"
+assert_contains "$out" "--yes needs --to" "...says what to add"
 t_done
