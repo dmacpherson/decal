@@ -8,7 +8,7 @@
 
 **Tech Stack:** bash, Python 3.11+ standard library (urllib, tarfile, zipfile, tomllib, concurrent.futures), curses, decal's bash test harness and the fake GitHub server from part 1.
 
-**Spec:** `docs/superpowers/specs/2026-10-04-profile-browser-design.md` (roadmap: `docs/superpowers/specs/2026-10-04-usb-feature-roadmap.md`)
+**Spec:** `docs/design/2026-10-04-profile-browser-design.md` (roadmap: `docs/design/2026-10-04-usb-feature-roadmap.md`)
 
 ## Global Constraints
 
@@ -1740,7 +1740,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/superpowers/specs/2026-10-04-usb-feature-roadmap.md`
+- Modify: `docs/design/2026-10-04-usb-feature-roadmap.md`
 
 **Interfaces:**
 - Consumes: everything above.
@@ -1768,12 +1768,12 @@ outside the profile folder, no links, 200 MB at most).
 
 - [ ] **Step 2: Roadmap**
 
-In the roadmap's status table, set part 2 to `**Done** (merged …): spec docs/superpowers/specs/2026-10-04-profile-browser-design.md`, and under Part 2 note the deferred minors from its final review (added at finish).
+In the roadmap's status table, set part 2 to `**Done** (merged …): spec docs/design/2026-10-04-profile-browser-design.md`, and under Part 2 note the deferred minors from its final review (added at finish).
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add README.md docs/superpowers/specs/2026-10-04-usb-feature-roadmap.md
+git add README.md docs/design/2026-10-04-usb-feature-roadmap.md
 git commit -m "README: profiles from anywhere (links, owner/repo, .zip), decal profiles, decal new, the not-yours question
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"

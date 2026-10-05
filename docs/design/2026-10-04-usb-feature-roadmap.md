@@ -6,10 +6,10 @@ implementation; this file records what's already decided so each part's design s
 
 | Part | What | Status |
 |---|---|---|
-| 1 | GitHub sign-in | **Done** (merged 2026-10-04): `docs/superpowers/specs/2026-10-04-github-sign-in-design.md` |
-| 2 | Profile browser | **Done** (merged 2026-10-05): `docs/superpowers/specs/2026-10-04-profile-browser-design.md` |
+| 1 | GitHub sign-in | **Done** (merged 2026-10-04): `docs/design/2026-10-04-github-sign-in-design.md` |
+| 2 | Profile browser | **Done** (merged 2026-10-05): `docs/design/2026-10-04-profile-browser-design.md` |
 | 2b | Profile review ("What this profile will do") | After 2 |
-| 3 | USB maker | **Done** (merged 2026-10-05; trial release and real-stick test pending): `docs/superpowers/specs/2026-10-05-usb-maker-design.md` |
+| 3 | USB maker | **Done** (merged 2026-10-05; trial release and real-stick test pending): `docs/design/2026-10-05-usb-maker-design.md` |
 | 4 | Save back from a stick | **Done** (merged 2026-10-05; bounded: designed in chat) |
 
 Order matters: each part uses the ones before it.
@@ -107,7 +107,7 @@ Decal        ← double-click (a small static launcher binary)
 ```
 
 - The launcher is a static x86-64 binary (GNOME Files won't run scripts or .desktop files on double-click). A
-  prototype (copies in `docs/superpowers/specs/usb-prototype/`) exists on the maintainer's stick: `launch.c` built with musl in an Alpine container
+  prototype (copies in `docs/design/usb-prototype/`) exists on the maintainer's stick: `launch.c` built with musl in an Alpine container
   (`gcc -Os -static -s`), which runs `Decal/decal-me.sh` (to become `.Decal/…`) next to it; the script reopens itself
   in a terminal (ptyxis, kgx, gnome-terminal, konsole, xfce4-terminal, mate-terminal, tilix, alacritty, kitty,
   x-terminal-emulator, xterm) when started without one. The binary must be built reproducibly in the release

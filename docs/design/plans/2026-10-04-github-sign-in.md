@@ -8,7 +8,7 @@
 
 **Tech Stack:** bash, Python 3 standard library (urllib, termios, select), qrcodegen v1.8.0 (MIT), decal's bash test harness (`tests/lib.sh`) with a fake GitHub server (`tests/fixtures/fake_github_api.py`).
 
-**Spec:** `docs/superpowers/specs/2026-10-04-github-sign-in-design.md`
+**Spec:** `docs/design/2026-10-04-github-sign-in-design.md`
 
 ## Global Constraints
 
@@ -41,7 +41,7 @@
 - Create: `lib/qrcodegen.py` (vendored, unchanged)
 - Create: `lib/auth.py`
 - Create: `tests/test_auth.sh`
-- Modify: `docs/superpowers/specs/2026-10-04-github-sign-in-design.md` (write token page also pre-fills Administration write)
+- Modify: `docs/design/2026-10-04-github-sign-in-design.md` (write token page also pre-fills Administration write)
 
 **Interfaces:**
 - Produces (in `lib/auth.py`):
@@ -235,7 +235,7 @@ Expected: `test_auth.sh: 20 assertions, 0 failed`
 
 - [ ] **Step 6: Record the write token page's extra permission in the spec**
 
-In `docs/superpowers/specs/2026-10-04-github-sign-in-design.md`, replace
+In `docs/design/2026-10-04-github-sign-in-design.md`, replace
 `` `contents=write`), says which repo to pick`` with
 `` `contents=write&administration=write`, since a first stamp creates the repo), says which repo to pick``.
 
@@ -243,7 +243,7 @@ In `docs/superpowers/specs/2026-10-04-github-sign-in-design.md`, replace
 
 ```bash
 shellcheck tests/test_auth.sh
-git add lib/qrcodegen.py lib/auth.py tests/test_auth.sh docs/superpowers/specs/2026-10-04-github-sign-in-design.md
+git add lib/qrcodegen.py lib/auth.py tests/test_auth.sh docs/design/2026-10-04-github-sign-in-design.md
 git commit -m "auth: QR code (vendored qrcodegen), sign-in screen layout and the pre-filled token page
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"

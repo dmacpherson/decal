@@ -57,8 +57,8 @@ minutes. Use `UNTIL:text` steps rather than sleeps when adding flows.
   `build.yml` (launchers + `decal.tar.gz`, shared), `release.yml` (tags `v*`; `-` tags are pre-releases),
   `dev.yml` (each push to `dev` → the rolling `dev` pre-release), `pages.yml` (the installers site, main only).
 
-Design history and decisions: `docs/superpowers/specs/` (the USB feature roadmap lists what's done, what's next and
-the deferred minor fixes), plans in `docs/superpowers/plans/`.
+Design history and decisions: `docs/design/` (the USB feature roadmap lists what's done, what's next and
+the deferred minor fixes), plans in `docs/design/plans/`.
 
 ## How decal is built
 
@@ -94,7 +94,7 @@ first; writing a USB stick lists the files first. Never format, never touch file
 key) instead of retrying around it.
 
 **Build what's needed now; write down the rest.** Ideas and deferred minor fixes go in the roadmap
-(`docs/superpowers/specs/2026-10-04-usb-feature-roadmap.md`), not into code "just in case".
+(`docs/design/2026-10-04-usb-feature-roadmap.md`), not into code "just in case".
 
 **Say it plainly.** Messages say what happened and what to do next, in everyday words ("The key on this stick no
 longer works: run decal usb on your own machine to give it a new one"). No tracebacks reach the person. The menu's
@@ -165,8 +165,9 @@ file and a `Decal/` folder can't share a directory.
 
 ## Workflow
 
-- **New features**: design first (brainstorming → a spec in `docs/superpowers/specs/` → a plan in
-  `docs/superpowers/plans/` → build task by task, test first → a fresh whole-branch review → fix → merge).
+- **New features**: design first (brainstorming → a spec in `docs/design/` → a plan in
+  `docs/design/plans/` → build task by task, test first → a fresh whole-branch review → fix → merge). Specs and
+  plans go there, not in the skills' default `docs/superpowers/`; working scratch (`.superpowers/`) is never committed.
   Small, well-scoped changes are designed in chat and approved before building.
 - **Reviews**: every feature branch gets a fresh whole-branch code review before merging; small changes get one when
   they touch security-sensitive code (see Security) or more than a couple of files; anything security-sensitive also

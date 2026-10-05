@@ -1,6 +1,6 @@
 # Profile browser (part 2 of 4)
 
-Part of the USB stick feature (roadmap: `docs/superpowers/specs/2026-10-04-usb-feature-roadmap.md`). Builds on part 1
+Part of the USB stick feature (roadmap: `docs/design/2026-10-04-usb-feature-roadmap.md`). Builds on part 1
 (GitHub sign-in: `gh_auth`, `lib/auth.py`). Part 2b (profile review: Flathub/GNOME/Homebrew/link checks) comes
 after this and is out of scope here.
 

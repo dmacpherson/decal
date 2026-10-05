@@ -1,6 +1,6 @@
 # USB maker (part 3 of 4)
 
-Part of the USB stick feature (roadmap: `docs/superpowers/specs/2026-10-04-usb-feature-roadmap.md`). Builds on part 1
+Part of the USB stick feature (roadmap: `docs/design/2026-10-04-usb-feature-roadmap.md`). Builds on part 1
 (GitHub sign-in: `gh_auth`, `lib/auth.py`) and part 2 (profile browser: `lib/source.py`, `lib/profiles.py`,
 `decal profiles`, `decal new`, the menu's `browse()`). Part 4 (save back from a stick) comes next.
 
