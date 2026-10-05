@@ -321,7 +321,7 @@ do_stamp() {
   if [[ ${LS_DRY_RUN:-0} == 1 ]]; then printf '\n'; cat "$STAMP_DIR/profile.toml"; info "dry run: nothing saved"; return 0; fi
   local tok=""
   if (( gh )); then   # the token first: the README names the repo, and a wrong token shouldn't come after the work
-    tok=$(gh_token)
+    tok=$(gh_write_token)
     local why="" rc=0
     if [[ -n $tok ]]; then   # a key that's already there: can it save to the repo? (offline: let the push say)
       why=$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/auth.py" check "$repo" --need write --may-create 2>&1) || rc=$?
@@ -398,7 +398,7 @@ do_new() {
   esac
   if [[ -n $dest && -e $dest ]]; then die "$dest already exists: use decal stamp to update it"; fi
   if [[ $to == github ]]; then
-    tok=$(gh_token)
+    tok=$(gh_write_token)
     if [[ -z $tok ]]; then gh_auth "$name" write --may-create || die "no GitHub key: sign in when asked, set GITHUB_TOKEN, or log in with gh auth login"; tok=$GITHUB_TOKEN; fi
     repo="$(GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" whoami)/$name" || die "GitHub didn't accept the key"
     if GITHUB_TOKEN=$tok python3 "$LS_REPO/lib/github.py" exists "$repo"; then die "github:$repo already exists: use decal stamp -gh $repo to update it"; fi
@@ -538,6 +538,9 @@ find_profile_root() {  # DIR -> folder holding profile.toml (DIR or its single s
 # gh_tarball OWNER/REPO REF OUT : a GitHub repo as a .tar.gz without git. Private repos need a key: GITHUB_TOKEN,
 # GH_TOKEN or a `gh auth login`; without one, in a terminal, it asks (sign in with GitHub, or a token you make)
 gh_token() { local t=${GITHUB_TOKEN:-${GH_TOKEN:-}}; if [[ -z $t ]] && have gh; then t=$(gh auth token 2>/dev/null || true); fi; printf '%s' "$t"; }
+# gh_write_token : a key to write to GitHub with: from a USB stick (a borrowed PC) never the PC's GITHUB_TOKEN, GH_TOKEN
+# or gh login, only this menu session's key (DECAL_WRITE_KEY) or a fresh sign-in; elsewhere, the usual order
+gh_write_token() { if [[ -n ${DECAL_STICK:-} ]]; then printf '%s' "${DECAL_WRITE_KEY:-}"; else gh_token; fi; }
 # gh_auth REPO read|write [--may-create] : ask on the terminal for a key (lib/auth.py: sign in with a code or QR,
 # or paste a token); exported as GITHUB_TOKEN for the rest of this run, never saved. No terminal or cancelled: fails
 gh_auth() {
@@ -764,7 +767,9 @@ case $cmd in
   usb) if [[ $# -eq 0 && -t 0 && -t 1 ]]; then exec python3 "$LS_REPO/lib/ui.py" usb; fi; do_usb "$@" ;;
   use)
     [[ $# -eq 1 ]] || usage
-    set_profile "$1"
+    stage_profile "$1"
+    if [[ ${LS_DRY_RUN:-0} != 1 ]]; then trust "$STAGE_SRC"; fi   # someone else's profile asks here too (the menu uses use)
+    activate_staged
     info "active profile: $PROFILE_DIR (nothing applied yet: decal add all, or the menu)" ;;
   ui)
     [[ -t 0 && -t 1 ]] || die "the menu needs a terminal"

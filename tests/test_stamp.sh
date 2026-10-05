@@ -93,6 +93,14 @@ assert_eq "$?" "0" "stamp -gh without a key: signed in"
 assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "with the write app"
 assert_file "$G/tester_signed-in.json" "the stamp is on GitHub"
 assert_contains "$(cat "$T_TMP/screen")" "so decal can save to tester/signed-in" "says what the key is for"
+# started from a USB stick (a borrowed PC): the PC's keys are never used to write; a fresh Decal Profile Write sign-in
+echo ok > "$G/device_script"; : > "$G/device_log"; printf '1\n' > "$T_TMP/keys"
+out=$(env -u GH_TOKEN GITHUB_TOKEN=s3cret DECAL_STICK="$T_TMP" DECAL_GITHUB="$DECAL_GITHUB_API" DECAL_GITHUB_APP_WRITE=Iv-write:decal-write \
+  DECAL_TTY_IN="$T_TMP/keys" DECAL_TTY_OUT="$T_TMP/screen" "$S" stamp -gh tester/from-stick 2>&1); assert_eq "$?" "0" "from a stick: saved"
+assert_contains "$(cat "$G/device_log")" "code client_id=Iv-write" "from a stick: signed in fresh, the PC's GITHUB_TOKEN ignored"
+: > "$G/device_log"
+env -u GH_TOKEN GITHUB_TOKEN=pc-key DECAL_WRITE_KEY=s3cret DECAL_STICK="$T_TMP" "$S" stamp -gh tester/from-stick >/dev/null 2>&1
+assert_eq "$?" "0" "from a stick with the menu's session key (DECAL_WRITE_KEY): saved"; assert_eq "$(cat "$G/device_log")" "" "...without signing in again"
 # a key that's already set but doesn't work: checked before the work, explained, then sign in instead
 echo ok > "$G/device_script"; : > "$G/device_log"; printf '1\n' > "$T_TMP/keys"
 out=$(env -u GH_TOKEN GITHUB_TOKEN=wrong DECAL_GITHUB="$DECAL_GITHUB_API" DECAL_GITHUB_APP_WRITE=Iv-write:decal-write \

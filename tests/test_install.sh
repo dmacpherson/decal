@@ -208,4 +208,12 @@ assert_eq "$(cat "$T_TMP/site/install")" "$(cat "$REPO/install.sh")" "site: /ins
 assert_contains "$(sed -n 2p "$T_TMP/site/dev/install")" 'DECAL_VERSION=${DECAL_VERSION:-dev}' "site: /dev/install defaults to the dev channel"
 bash -n "$T_TMP/site/dev/install"; assert_eq "$?" "0" "site: /dev/install is valid bash"
 assert_file "$T_TMP/site/dev/install.sh" "site: /dev/install.sh too"; assert_file "$T_TMP/site/index.html" "site: index"
+# decal use asks too (the menu runs decal use, then add): someone else's profile can't slip in through it
+mkdir -p "$T_TMP/gh4/third-p-1"; printf '[eee-conf]\nword = "third"\n' > "$T_TMP/gh4/third-p-1/profile.toml"
+tar -czf "$T_TMP/gh4.tar.gz" -C "$T_TMP/gh4" third-p-1; serve https://api.github.com/repos/third/p/tarball "$T_TMP/gh4.tar.gz"
+before=$(cat "$DECAL_PROFILE_HOME/.decal-source" 2>/dev/null)
+out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" use third/p 2>&1 < /dev/null); assert_eq "$?" "1" "use: someone else's profile, no terminal: stops"
+assert_contains "$out" "this profile is from third/p, not you" "use: says whose it is"
+assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source" 2>/dev/null)" "$before" "use: the active profile unchanged"
+env -u GITHUB_TOKEN -u GH_TOKEN "$REPO/decal" --yes use third/p >/dev/null 2>&1; assert_eq "$(cat "$DECAL_PROFILE_HOME/.decal-source")" "github:third/p" "use --yes: used"
 t_done

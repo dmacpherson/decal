@@ -160,10 +160,10 @@ def save_targets(conf, stick):
 def clean_env(env, key, ghdir):
     """The environment for saving to GitHub: only this session's write key; no GITHUB_TOKEN/GH_TOKEN (the stick's
     read key), and gh pointed at an empty folder (a borrowed PC's gh login never touches your repo)."""
-    out = {k: v for k, v in env.items() if k not in ("GITHUB_TOKEN", "GH_TOKEN")}
+    out = {k: v for k, v in env.items() if k not in ("GITHUB_TOKEN", "GH_TOKEN", "DECAL_WRITE_KEY")}
     out["GH_CONFIG_DIR"] = ghdir
     if key:
-        out["GITHUB_TOKEN"] = key
+        out["DECAL_WRITE_KEY"] = key   # decal started from a stick takes only this key to write with
     return out
 
 
@@ -546,27 +546,6 @@ class UI:
             ENV["GITHUB_TOKEN"] = r.stdout.strip()
         self.scr.refresh()
 
-    def trusted(self, src):
-        """Someone else's profile: say so before using it (the preview comes later, before anything changes)."""
-        lib = os.path.join(REPO, "lib")
-        r = subprocess.run([sys.executable, os.path.join(lib, "source.py"), "resolve", src], capture_output=True, text=True, env=ENV)
-        if r.returncode != 0:
-            self.view("Apply · that profile", r.stderr.strip() or "decal couldn't read that", "esc back")
-            return False
-        canon = r.stdout.split("\t")[1]
-        login = ""
-        if canon.startswith("github:"):   # whatever key decal would use: this session's, GITHUB_TOKEN, GH_TOKEN, gh
-            rc, out = decal("whoami")
-            login = out.strip().splitlines()[-1] if rc == 0 and out.strip() else ""
-        y = subprocess.run([sys.executable, os.path.join(lib, "source.py"), "yours", canon, "--login", login], env=ENV)
-        if y.returncode == 0:
-            return True
-        who = canon.removeprefix("github:")
-        return self.view("Apply · someone else's profile",
-                         f"This profile is from {who}, not you.\n\nIt can install software and change system settings.\n"
-                         "You'll see a preview of every change before anything happens.",
-                         "enter go on · esc back")
-
     def do_new(self, start_from="", use=None):
         how = start_from or self.choose("New profile · start from", [
             ("this machine", "a stamp of how it's set up now", "this-machine"),
@@ -787,9 +766,7 @@ class UI:
             src = os.path.expanduser(src)
         else:
             src = v["source"]
-        if not self.trusted(src):   # the active profile too: it may be someone else's, used but never applied
-            return
-        if not v.get("active"):
+        if not v.get("active"):   # decal use asks first when it's someone else's profile
             if self.run([["use", src]], "that's the active profile now", "couldn't use it (see above)") != 0:
                 return
         self.apply_picked()

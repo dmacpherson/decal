@@ -116,7 +116,7 @@ assert_eq "$(py2 '[v for l, a, v in ui.save_targets({"profile": "copy"}, "/s/.De
 assert_eq "$(py2 '[(l, v) for l, a, v in ui.save_targets({"profile": "github:me/p"}, "/s/.Decal")]')" \
   "[('me/p', 'github'), ('somewhere else…', 'elsewhere')]" "save to: a GitHub stick → its repo (first), somewhere else"
 assert_eq "$(py2 'sorted(ui.clean_env({"GITHUB_TOKEN": "r", "GH_TOKEN": "g", "HOME": "/h"}, "w", "/empty").items())')" \
-  "[('GH_CONFIG_DIR', '/empty'), ('GITHUB_TOKEN', 'w'), ('HOME', '/h')]" "clean env: only the write key, gh hidden"
+  "[('DECAL_WRITE_KEY', 'w'), ('GH_CONFIG_DIR', '/empty'), ('HOME', '/h')]" "clean env: only the write key, gh hidden"
 assert_eq "$(py2 'sorted(ui.clean_env({"GITHUB_TOKEN": "r"}, "", "/empty"))')" "['GH_CONFIG_DIR']" "clean env: no key at all when none yet"
 # a copy stick: Save this machine → the copy on this stick, updated in place
 SV="$T_TMP/sv/.Decal"; mkdir -p "$SV/profile"; printf '[base]\non = false\n' > "$SV/profile/profile.toml"; : > "$SV/profile/.decal-stamp"
