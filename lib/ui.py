@@ -20,6 +20,8 @@ PROFILE = os.environ.get("DECAL_PROFILE") or os.environ.get("DECAL_PROFILE_HOME"
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "decal", "profile")
 ENV = dict(os.environ, DECAL_NO_UPDATE="1")   # decal already updated itself when the menu opened
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+MARK = [" ▄▀██▀▄ ", "▄█▀▀▀▀█▄", "▀█▄▄▄▄█▀"]   # the penguin, small (lib/logo.sh has the big one)
+MARK_COLORS = [44, 63, 135]                   # teal, blue, purple: lib/logo.sh's first, middle and last
 
 # --- talking to decal ------------------------------------------------------------------------------------------
 CHECK_TIMEOUT = 40
@@ -103,6 +105,10 @@ class UI:
             for i, c in enumerate([curses.COLOR_GREEN, curses.COLOR_YELLOW, curses.COLOR_RED, curses.COLOR_CYAN,
                                    curses.COLOR_MAGENTA], 1):
                 curses.init_pair(i, c, -1)
+            # the penguin mark: the logo's teal to purple (as lib/logo.sh), or the nearest 8 colours
+            mark = MARK_COLORS if curses.COLORS >= 256 else [curses.COLOR_CYAN, curses.COLOR_BLUE, curses.COLOR_MAGENTA]
+            for i, c in enumerate(mark, 6):
+                curses.init_pair(i, c, -1)
         except curses.error:
             pass
         self.wait = -1   # the key timeout (ms) screens set; -1: wait for a key
@@ -128,17 +134,18 @@ class UI:
     def header(self, title=""):
         self.scr.erase()
         d = self.d
-        self.put(0, 1, "▗▄▖", self.c(5, curses.A_BOLD)); self.put(0, 5, "decal", curses.A_BOLD)
-        self.put(0, 11, d.version.replace("decal ", ""), curses.A_DIM)
+        for n, row in enumerate(MARK):
+            self.put(n, 1, row, self.c(6 + n, curses.A_BOLD))
+        self.put(0, 11, "decal", curses.A_BOLD)
+        self.put(0, 17, d.version.replace("decal ", ""), curses.A_DIM)
         prof = f"profile: {d.where}" if d.profile else "no profile yet"
         tags = f" · tags: {', '.join(d.last_tags)}" if d.last_tags else ""
-        self.put(1, 1, "▐▛ ▜▌", self.c(5, curses.A_BOLD))
-        self.put(1, 7, f"{prof}{tags} · {d.counts()}", curses.A_DIM)
+        self.put(1, 11, f"{prof}{tags} · {d.counts()}", curses.A_DIM)
         w = self.scr.getmaxyx()[1]
-        self.put(2, 1, "─" * (w - 3), curses.A_DIM)
+        self.put(3, 1, "─" * (w - 3), curses.A_DIM)
         if title:
-            self.put(3, 2, title, curses.A_BOLD)
-        return 5 if title else 4
+            self.put(4, 2, title, curses.A_BOLD)
+        return 6 if title else 5
 
     def footer(self, text):
         h = self.scr.getmaxyx()[0]

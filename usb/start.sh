@@ -22,8 +22,22 @@ fi
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m%s\033[0m\n' "$*"; read -rp "Press Enter to close… " _ 2>/dev/null || true; exit 1; }
+# --- logo ---
+DECAL_LOGO=('   ▄█████▄   ' '  ██▄███▄██  ' '  ███▀ ▀███  ' ' ██▀     ▀██ ' '██         ██' ' ▀█▄▄▄▄▄▄▄█▀ ')
+DECAL_LOGO_COLORS=(44 38 33 63 99 135)
+# logo_print FD [TEXT...] : the logo on FD (1 or 2), each TEXT beside a row from the second on; in colour only on a
+# terminal that has it (NO_COLOR turns it off)
+logo_print() {
+  local fd=$1 i on="" off="" text=("${@:2}")
+  for ((i = 0; i < ${#DECAL_LOGO[@]}; i++)); do
+    if [[ -t $fd && ${TERM:-dumb} != dumb && -z ${NO_COLOR:-} ]]; then on=$'\e[1;38;5;'"${DECAL_LOGO_COLORS[i]}m"; off=$'\e[0m'; fi
+    printf '%s%s%s%s\n' "$on" "${DECAL_LOGO[i]}" "$off" "$( (( i >= 1 )) && [[ -n ${text[i - 1]:-} ]] && printf '  %s' "${text[i - 1]}")" >&"$fd"
+  done
+}
+# --- end logo ---
 conf() { sed -n "s/^$1=\([^[:space:]#]*\).*/\1/p" "$HERE/stick.conf" | head -1; }
 
+logo_print 1 "decal" "from your USB stick"; echo
 [[ $(uname -s) == Linux ]] || fail "decal only runs on Linux."
 unset GITHUB_TOKEN GH_TOKEN   # a borrowed PC's keys never reach your repos; only this stick's key (below) is used
 [[ -r $HERE/stick.conf ]] || fail "This stick has no stick.conf: run decal usb to set it up again."

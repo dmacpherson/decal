@@ -32,6 +32,7 @@ D() {  # D CMD... -- KEYS: drive the menu, starting once its main screen is up (
 D "$REPO/decal" ui -- q; assert_eq "$?" "0" "menu opens, q quits"
 S=$(cat "$T_TMP/screen")
 assert_contains "$S" "Apply" "menu: Apply"; assert_contains "$S" "stick it on" "...with its sticker name"
+assert_contains "$S" "▄█▀▀▀▀█▄" "menu: the penguin mark in the header"
 assert_contains "$S" "Remove" "menu: Remove (a profile is active)"; assert_not_contains "$S" "Update" "no Update unless a newer version is out"
 # apply: the active profile, tick the dev tag (brings its module), preview, apply, back, quit
 D "$REPO/decal" ui -- 1 "UNTIL:r refresh" ENTER "UNTIL:enter next" SPACE ENTER "UNTIL:enter apply" ENTER "UNTIL:go back to the menu" ENTER "UNTIL:q quit" q
