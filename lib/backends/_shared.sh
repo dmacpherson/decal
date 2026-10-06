@@ -1,8 +1,11 @@
 # shellcheck shell=bash disable=SC2034,SC2154,SC1090,SC1091  # sourced: vars shared across lib/ and modules
 # Backend-independent bookkeeping. Backends provide:
 #   _pkg_name LOGICAL -> distro name ('' = provided elsewhere)
-#   _pkg_present NAME ; _pkg_add NAMES... ; _pkg_del NAMES... ; _initramfs_rebuild
+#   _pkg_present NAME ; _pkg_add NAMES... ; _pkg_del NAMES... ; _initramfs_rebuild ; _pkg_known NAME (optional)
 _pkg_name() { if [[ -v "PKG_MAP[$1]" ]]; then printf '%s' "${PKG_MAP[$1]}"; else printf '%s' "$1"; fi; }
+
+# pkg_known NAME : the distro has a package by that name (modules ask this, never the package manager itself)
+pkg_known() { declare -F _pkg_known >/dev/null && _pkg_known "$1"; }
 
 pkg_install() {
   local owner=$1 l n missing=(); shift

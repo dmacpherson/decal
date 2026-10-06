@@ -5,7 +5,9 @@
                                                      (~/decal-* stamps), USB sticks (.Decal/profile), recently used
   profiles.py sticks                                 mounted drives (one per line)
   profiles.py empty DIR                              a starter profile: examples/profile, every section commented out
-  profiles.py readme DIR NAME FROM                   DIR/README.md for a profile called NAME, made from FROM
+  profiles.py readme DIR NAME FROM [--source S] [--notes FILE]   DIR/README.md for a profile called NAME, made from
+                                                     FROM (this-machine, empty, stamp or a source); S: how to get it
+  profiles.py usual-stamp USER                       where decal stamp saves by default
   profiles.py active                                 the active profile's source (decal and the menu ask this)
 
 GitHub uses the key in GITHUB_TOKEN (decal passes the one it found); none: a sign-in row instead. Never asks."""
@@ -59,8 +61,13 @@ def toml_in_archive(path):
                 names = sorted((n for n in z.namelist() if n.split("/")[-1] == "profile.toml"), key=depth)
                 return z.read(names[0]).decode() if names and depth(names[0]) <= 1 else None
         with tarfile.open(path, "r:gz") as t:
-            ms = sorted((m for m in t if m.isfile() and m.name.split("/")[-1] == "profile.toml"), key=lambda m: depth(m.name))
-            return t.extractfile(ms[0]).read().decode() if ms and depth(ms[0].name) <= 1 else None
+            found = None   # a top-level profile.toml ends the search; one a folder down is kept while looking on
+            for m in t:
+                if m.isfile() and m.name.split("/")[-1] == "profile.toml" and depth(m.name) <= 1:
+                    if depth(m.name) == 0:
+                        return t.extractfile(m).read().decode()
+                    found = found or t.extractfile(m).read().decode()
+            return found
     except (OSError, EOFError, tarfile.TarError, zipfile.BadZipFile, UnicodeDecodeError):
         return None
 
@@ -161,14 +168,11 @@ def find_github(token):
 
 
 def active():
-    """The active profile's source: where a link points, the recorded source, a checkout's origin, else the folder."""
+    """The active profile's source: where a link points, a checkout's origin (never a .decal-source it carries), the
+    recorded source, else the folder."""
     d = os.environ.get("DECAL_PROFILE") or PROFILE_HOME
     if os.path.islink(d) or os.environ.get("DECAL_PROFILE"):
         return os.path.realpath(d)
-    try:
-        return open(os.path.join(d, ".decal-source")).read().strip()
-    except OSError:
-        pass
     if os.path.isdir(os.path.join(d, ".git")):
         try:
             r = subprocess.run(["git", "-C", d, "remote", "get-url", "origin"], capture_output=True, text=True)
@@ -176,7 +180,11 @@ def active():
                 return r.stdout.strip()
         except OSError:   # no git here: the folder itself
             pass
-    return os.path.realpath(d) if os.path.isdir(d) else ""
+        return os.path.realpath(d)
+    try:
+        return open(os.path.join(d, ".decal-source")).read().strip()
+    except OSError:
+        return os.path.realpath(d) if os.path.isdir(d) else ""
 
 
 def listing(only=""):
@@ -252,22 +260,31 @@ def empty(dest):
         f.write("# A new decal profile: uncomment the sections you want, then decal apply this.\n" + "\n".join(out) + "\n")
 
 
-def readme(dest, name, made_from):
-    how = {"this-machine": "stamped from a machine with `decal new`", "empty": "started empty with `decal new`"}.get(
+def readme(dest, name, made_from, source="", notes=""):
+    """DEST/README.md for a profile (decal new, decal stamp): what it is, how to put it on a machine, and what's in it
+    (NOTES: a file of lines, from a stamp)."""
+    how = {"this-machine": "stamped from a machine with `decal new`", "empty": "started empty with `decal new`",
+           "stamp": f"saved by `decal stamp`: what was changed from the defaults on {datetime.date.today()}"}.get(
         made_from, f"copied from {made_from} with `decal new`")
     fence = "`" * 3
+    text = (f"# {name}\n\nA [decal](https://github.com/dmacpherson/decal) profile, {how}.\n\n"
+            f"## Put it on a machine\n\n{fence}bash\ncurl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- "
+            f"{source or name}\n{fence}\n")
+    if not source:
+        text += f"\n(Use `owner/{name}` for a GitHub repo, or the path of a file.)\n"
+    if notes:
+        text += "\n## In it\n\n" + "".join(f"- {l}\n" for l in open(notes).read().splitlines() if l.strip())
     with open(os.path.join(dest, "README.md"), "w") as f:
-        f.write(f"# {name}\n\nA [decal](https://github.com/dmacpherson/decal) profile, {how}.\n\n"
-                f"## Put it on a machine\n\n{fence}bash\ncurl -fsSL https://dmacpherson.github.io/decal/install | bash -s -- "
-                f"{name}\n{fence}\n\n(Use `owner/{name}` for a GitHub repo, or the path of a file.)\n")
+        f.write(text)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["list", "sticks", "empty", "readme", "active"])
+    ap.add_argument("cmd", choices=["list", "sticks", "empty", "readme", "active", "usual-stamp"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--only", choices=["local", "github"], default="")
+    ap.add_argument("--source", default=""); ap.add_argument("--notes", default="")
     a = ap.parse_args()
     if a.cmd == "list":
         d = listing(a.only)
@@ -278,8 +295,10 @@ def main():
         print("\n".join(sticks()))
     elif a.cmd == "empty":
         empty(a.args[0])
+    elif a.cmd == "usual-stamp":
+        print(usual_stamp(a.args[0]))
     else:
-        readme(*a.args[:3])
+        readme(*a.args[:3], source=a.source, notes=a.notes)
 
 
 if __name__ == "__main__":

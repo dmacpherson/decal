@@ -1,6 +1,7 @@
 # shellcheck shell=bash disable=SC2034,SC2154,SC1090,SC1091  # sourced: vars shared across lib/ and modules
 PKG_MAP[plymouth-script-plugin]=""   # script plugin ships in the plymouth package
 _pkg_present() { dpkg-query -W -f='${Status}' -- "$1" 2>/dev/null | grep -q 'install ok installed'; }
+_pkg_known() { apt-cache show -- "$1" >/dev/null 2>&1; }   # the distro has it (installed or not)
 _pkg_add() {
   if [[ ! -e ${LS_RUNTMP:-/nonexistent}/apt-updated ]]; then srun apt-get update; [[ -n ${LS_RUNTMP:-} ]] && : > "$LS_RUNTMP/apt-updated"; fi
   srun env DEBIAN_FRONTEND=noninteractive apt-get install -y -- "$@"

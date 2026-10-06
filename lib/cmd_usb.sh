@@ -9,8 +9,31 @@ usb_bin() {
   info "getting the stick launchers (this copy of decal doesn't have them)"
   t=$(mktemp -d "$LS_RUNTMP/rel.XXXXXX")
   top=$(DECAL_HOME=$LS_REPO bash "$LS_REPO/install.sh" --fetch-to "$t") || die "couldn't download the stick launchers"
-  [[ -f $top/usb/bin/Decal-x86_64 ]] || die "the latest release has no stick launchers yet"
+  if [[ ! -f $top/usb/bin/Decal-x86_64 ]]; then   # a branch's archive has none (CI builds them): the latest release's
+    rm -rf "$t"; mkdir -p "$t"
+    top=$(DECAL_HOME=$LS_REPO DECAL_VERSION=latest bash "$LS_REPO/install.sh" --fetch-to "$t") || die "couldn't download the stick launchers"
+    [[ -f $top/usb/bin/Decal-x86_64 ]] || die "the latest release has no stick launchers yet"
+  fi
   mkdir -p "$c"; cp "$top/usb/bin/"* "$c/"; echo "$c"
+}
+# _usb_version : this decal's version: an install's VERSION, or a checkout's commit (-dirty with edits)
+_usb_version() {
+  if [[ -r $LS_REPO/VERSION ]]; then cat "$LS_REPO/VERSION"; return; fi
+  local v; v="dev-$(git -C "$LS_REPO" rev-parse --short HEAD 2>/dev/null || echo local)"
+  if [[ -d $LS_REPO/.git ]] && ! git -C "$LS_REPO" diff --quiet HEAD 2>/dev/null; then v+="-dirty"; fi
+  printf '%s\n' "$v"
+}
+# _usb_copy OUT : this decal as a .tar.gz (decal/...): an install's files, or a checkout's tracked files (as they are
+# now); never .git, tests or docs
+_usb_copy() {
+  if [[ -d $LS_REPO/.git ]]; then
+    (cd "$LS_REPO" && git ls-files -z | while IFS= read -r -d '' f; do
+       if [[ -e $f && $f != tests/* && $f != docs/* ]]; then printf '%s\0' "$f"; fi; done \
+     | tar -czf "$1" --null -T - --transform 's,^,decal/,S')   # S: link targets stay as they are
+  else
+    tar -czf "$1" -C "$(dirname "$LS_REPO")" --exclude=tests --exclude=docs --exclude=__pycache__ \
+      --transform "s,^$(basename "$LS_REPO"),decal,S" "$(basename "$LS_REPO")"
+  fi
 }
 # do_usb [--from SRC] [--how saved-key|sign-in|copy|latest] [--decal newest|copy|online] [--arm]
 #        [--to MOUNTPOINT|DEVICE|folder[:PATH]] [--yes] : put decal on a USB stick (or in a folder)
@@ -52,20 +75,11 @@ do_usb() {
     how=copy
   fi
   [[ $how =~ ^(saved-key|sign-in|copy|latest)$ ]] || die "usb: --how saved-key, sign-in, copy or latest"
-  # the key: always a fresh read key, never GITHUB_TOKEN / GH_TOKEN / gh
-  if [[ $how == saved-key ]]; then
-    if [[ -n ${DECAL_STICK_KEY:-} ]]; then key=$DECAL_STICK_KEY
-    else
-      have_tty || die "usb: a saved key needs a terminal to sign in (or DECAL_STICK_KEY)"
-      info "the stick gets its own read-only key (your gh login or GITHUB_TOKEN are never put on a stick)"
-      key=$(env -u GITHUB_TOKEN -u GH_TOKEN python3 "$LS_REPO/lib/auth.py" get "${src#github:}" --need read) || die "no key: nothing written"
-    fi
-  fi
-  if [[ -n $key ]] && ! GITHUB_TOKEN=$key python3 "$LS_REPO/lib/auth.py" stick-ok 2>/dev/null; then
-    die "that key can write to your repos: it's not put on a stick (use Sign in with GitHub, or a read-only token)"
+  if [[ $how == saved-key && -z ${DECAL_STICK_KEY:-} ]]; then   # the key comes after "Write these?": checked now
+    have_tty || die "usb: a saved key needs a terminal to sign in (or DECAL_STICK_KEY)"
   fi
   bin=$(usb_bin) || exit 1
-  ver=$(cat "$LS_REPO/VERSION" 2>/dev/null || echo "dev-$(git -C "$LS_REPO" rev-parse --short HEAD 2>/dev/null || echo local)")
+  ver=$(_usb_version)
   files="$LS_RUNTMP/stick"; rm -rf "$files"; mkdir -p "$files/.Decal"
   cp "$bin/Decal-x86_64" "$files/Decal"
   if (( arm )); then cp "$bin/Decal-aarch64" "$files/.Decal/Decal-ARM"; fi
@@ -73,19 +87,14 @@ do_usb() {
   case $how in
     copy) copy_profile "$STAGE_DIR" "$files/.Decal/profile"; : > "$files/.Decal/profile/.decal-stamp"
           how_text="a copy of $src" ;;
-    saved-key) ( umask 077; printf '%s\n' "$key" > "$files/.Decal/key" ); how_text="$src (with a read-only key)" ;;
+    saved-key) ( umask 077; : > "$files/.Decal/key" ); how_text="$src (with a read-only key)" ;;   # filled in below
     sign-in) how_text="$src (signs in each time)" ;;
     latest) how_text="$src (public: always the latest)" ;;
   esac
-  if [[ $dmode != online ]]; then   # this decal's own files (installed or a checkout), without .git, tests or docs
-    tar -czf "$files/.Decal/decal.tar.gz" -C "$(dirname "$LS_REPO")" --exclude=.git --exclude=tests --exclude=docs \
-      --exclude=__pycache__ --exclude=.superpowers --transform "s,^$(basename "$LS_REPO"),decal," "$(basename "$LS_REPO")"
-    (cd "$files/.Decal" && sha256sum decal.tar.gz > decal.tar.gz.sha256)
-  fi
-  { echo "# Made by decal $ver on $(date +%F). Run decal usb to change it."
-    if [[ $how == copy ]]; then echo "profile=copy"; else echo "profile=$src"; fi
-    case $how in saved-key) echo "key=saved" ;; sign-in) echo "key=ask" ;; *) echo "key=none" ;; esac
-    echo "decal=$dmode"; echo "version=$ver"; } > "$files/.Decal/stick.conf"
+  if [[ $dmode != online ]]; then _usb_copy "$files/.Decal/decal.tar.gz"; (cd "$files/.Decal" && sha256sum decal.tar.gz > decal.tar.gz.sha256); fi
+  python3 "$LS_REPO/lib/usb.py" conf-text --profile "$( [[ $how == copy ]] && echo copy || echo "$src")" \
+    --key "$(case $how in saved-key) echo saved ;; sign-in) echo ask ;; *) echo none ;; esac)" --decal "$dmode" \
+    --version "$ver" > "$files/.Decal/stick.conf" || die "usb: couldn't write stick.conf"
   sed -e "s|{profile}|$how_text|" -e "s|{version}|$ver ($dmode)|" -e "s|{made}|$(date +%F)|" "$LS_REPO/usb/README.txt" > "$files/.Decal/README.txt"
   local fs; fs=$(findmnt -no FSTYPE --target "$target" 2>/dev/null || true)
   if [[ $fs == vfat || $fs == msdos ]]; then
@@ -95,6 +104,17 @@ do_usb() {
   if (( ! yes )); then
     have_tty || die "usb: nothing written: add --yes to write without asking"
     tty_ask "Write these to $target? [Y/n] " || REPLY=n; [[ ${REPLY:-y} == [Yy]* ]] || die "nothing written"
+  fi
+  # the key: always a fresh read key, never GITHUB_TOKEN / GH_TOKEN / gh; one that can write never goes on a stick
+  if [[ $how == saved-key ]]; then
+    if [[ -n ${DECAL_STICK_KEY:-} ]]; then key=$DECAL_STICK_KEY
+    else
+      info "the stick gets its own read-only key (your gh login or GITHUB_TOKEN are never put on a stick)"
+      key=$(env -u GITHUB_TOKEN -u GH_TOKEN python3 "$LS_REPO/lib/auth.py" get "${src#github:}" --need read) || die "no key: nothing written"
+    fi
+    GITHUB_TOKEN=$key python3 "$LS_REPO/lib/auth.py" stick-ok 2>/dev/null \
+      || die "that key can write to your repos: it's not put on a stick (use Sign in with GitHub, or a read-only token); nothing written"
+    printf '%s\n' "$key" > "$files/.Decal/key"
   fi
   res=$(python3 "$LS_REPO/lib/usb.py" write "$target" "$files") || exit 1   # usb.py says why
   info "done: double-click Decal on any Linux PC (Ctrl+H shows the .Decal folder)"

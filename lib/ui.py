@@ -8,7 +8,8 @@ import curses, glob, json, os, re, subprocess, sys, tempfile, threading
 import profiles, usb  # noqa: E402  (lib/, next to this file)
 from profiles import tilde  # noqa: E402
 from menu_logic import (MENU, STICK_ITEMS, apply_cmds, browser_rows, clean_env, drive_label, label,  # noqa: E402,F401
-                        pick_row, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header, usb_cmd)
+                        latest, parse_status, parse_tags, pick_row, toggle, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header,
+                        usb_cmd)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DECAL = os.path.join(REPO, "decal")
@@ -19,6 +20,8 @@ PROFILE = os.environ.get("DECAL_PROFILE") or os.environ.get("DECAL_PROFILE_HOME"
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "decal", "profile")
 ENV = dict(os.environ, DECAL_NO_UPDATE="1")   # decal already updated itself when the menu opened
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+MARK = [" ▄▀██▀▄ ", "▄█▀▀▀▀█▄", "▀█▄▄▄▄█▀"]   # the penguin, small (lib/logo.sh has the big one)
+MARK_COLORS = [44, 63, 135]                   # teal, blue, purple: lib/logo.sh's first, middle and last
 
 # --- talking to decal ------------------------------------------------------------------------------------------
 CHECK_TIMEOUT = 40
@@ -60,21 +63,11 @@ class Data:
             self.version = "(git checkout)"
         self.profile = has_profile()
         self.where = tilde(os.path.realpath(PROFILE)) if self.profile else ""
-        self.tags, self.mod_tags = [], {}
-        if self.profile:
-            for line in decal("tags")[1].splitlines():
-                parts = line.split()
-                if len(parts) >= 2 and not line.startswith("==>"):
-                    self.tags.append(parts[0])
-                    for m in parts[1:]:
-                        self.mod_tags.setdefault(m, []).append(parts[0])
+        self.tags, self.mod_tags = parse_tags(decal("tags")[1]) if self.profile else ([], {})
         self.base = set(sections("")) if self.profile else set()
         self.all = set(sections("all")) if self.profile else set()
-        self.status = {}
-        for line in decal("--tags", "all", "status")[1].splitlines() if self.profile else decal("status")[1].splitlines():
-            m = re.match(r"^(\S+)\s{2,}(.*)$", line)
-            if m and os.path.isdir(os.path.join(MODULES, m.group(1))):
-                self.status[m.group(1)] = m.group(2)
+        known = {m for m in os.listdir(MODULES) if os.path.isdir(os.path.join(MODULES, m))}
+        self.status = parse_status(decal("--tags", "all", "status")[1] if self.profile else decal("status")[1], known)
         try:
             self.last_tags = [t for t in open(os.path.join(STATE, "tags")).read().strip().split(",") if t in self.tags]
         except OSError:   # never applied with the menu's memory: the tags whose modules are already here
@@ -112,6 +105,10 @@ class UI:
             for i, c in enumerate([curses.COLOR_GREEN, curses.COLOR_YELLOW, curses.COLOR_RED, curses.COLOR_CYAN,
                                    curses.COLOR_MAGENTA], 1):
                 curses.init_pair(i, c, -1)
+            # the penguin mark: the logo's teal to purple (as lib/logo.sh), or the nearest 8 colours
+            mark = MARK_COLORS if curses.COLORS >= 256 else [curses.COLOR_CYAN, curses.COLOR_BLUE, curses.COLOR_MAGENTA]
+            for i, c in enumerate(mark, 6):
+                curses.init_pair(i, c, -1)
         except curses.error:
             pass
         self.wait = -1   # the key timeout (ms) screens set; -1: wait for a key
@@ -137,17 +134,18 @@ class UI:
     def header(self, title=""):
         self.scr.erase()
         d = self.d
-        self.put(0, 1, "▗▄▖", self.c(5, curses.A_BOLD)); self.put(0, 5, "decal", curses.A_BOLD)
-        self.put(0, 11, d.version.replace("decal ", ""), curses.A_DIM)
+        for n, row in enumerate(MARK):
+            self.put(n, 1, row, self.c(6 + n, curses.A_BOLD))
+        self.put(0, 11, "decal", curses.A_BOLD)
+        self.put(0, 17, d.version.replace("decal ", ""), curses.A_DIM)
         prof = f"profile: {d.where}" if d.profile else "no profile yet"
         tags = f" · tags: {', '.join(d.last_tags)}" if d.last_tags else ""
-        self.put(1, 1, "▐▛ ▜▌", self.c(5, curses.A_BOLD))
-        self.put(1, 7, f"{prof}{tags} · {d.counts()}", curses.A_DIM)
+        self.put(1, 11, f"{prof}{tags} · {d.counts()}", curses.A_DIM)
         w = self.scr.getmaxyx()[1]
-        self.put(2, 1, "─" * (w - 3), curses.A_DIM)
+        self.put(3, 1, "─" * (w - 3), curses.A_DIM)
         if title:
-            self.put(3, 2, title, curses.A_BOLD)
-        return 5 if title else 4
+            self.put(4, 2, title, curses.A_BOLD)
+        return 6 if title else 5
 
     def footer(self, text):
         h = self.scr.getmaxyx()[0]
@@ -294,13 +292,7 @@ class UI:
             if k == "up": i = (i - 1) % len(items)
             elif k == "down": i = (i + 1) % len(items)
             elif k == "space":
-                if kind == "tag":
-                    on_t ^= {name}
-                    if mode == "apply":   # a tag brings its modules in, and takes away ones only it had
-                        on_m |= {m for m in rows if name in d.mod_tags.get(m, []) and self.available(m, on_t)}
-                        on_m = {m for m in on_m if self.available(m, on_t)}
-                else:   # a module only a tag has can be ticked on its own (decal add MODULE uses its tag's settings)
-                    on_m ^= {name}
+                on_t, on_m = toggle(kind, name, on_t, on_m, mode, rows, d.base, d.mod_tags)
             elif k == "a":
                 on_m = {m for m in rows if mode != "apply" or self.available(m, on_t)}
             elif k == "n":
@@ -350,15 +342,14 @@ class UI:
 
     def browse(self, title, purpose):
         """The profile browser: local entries at once, GitHub filled in by a background thread."""
-        state = {"data": self.profiles_json("local"), "gh": None}
+        state = {"data": self.profiles_json("local"), "gh": None, "run": 0}
         state["data"].setdefault("entries", [])
 
-        def github():
-            state["gh"] = self.profiles_json("github")
-
-        def start():
+        def start():   # each listing is numbered: only the newest lands (after r or a sign-in)
+            state["run"] += 1
             state["gh"] = None
-            threading.Thread(target=github, daemon=True).start()
+            run = state["run"]
+            threading.Thread(target=lambda: latest(state, run, self.profiles_json("github")), daemon=True).start()
 
         start()
         user = os.environ.get("USER") or "me"
@@ -729,8 +720,9 @@ def main():
 
     def run(scr):
         ui = UI(scr)
-        if start == "usb":
+        if start == "usb":   # decal usb in a terminal: just its steps, then back to the shell
             ui.do_usb()
+            return
         if os.environ.get("DECAL_STICK"):
             ui.stick_main()
         else:

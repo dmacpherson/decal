@@ -146,3 +146,48 @@ def stamp_dest(v, typed=""):
     if v.get("kind") == "github":
         return "", v["source"].removeprefix("github:")
     return v["source"], ""
+
+
+def latest(state, run, value):
+    """A background GitHub listing lands only when no newer one has started since (a slow, older one never replaces
+    a fresher one)."""
+    if run == state.get("run"):
+        state["gh"] = value
+
+
+def parse_tags(text):
+    """decal tags' lines (TAG MODULE...) as (tags, {module: [tags]})."""
+    tags, mod_tags = [], {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and not line.startswith("==>"):
+            tags.append(parts[0])
+            for m in parts[1:]:
+                mod_tags.setdefault(m, []).append(parts[0])
+    return tags, mod_tags
+
+
+def parse_status(text, known):
+    """decal status' lines (MODULE  STATUS) as {module: status}, for the modules in KNOWN only."""
+    out = {}
+    for line in text.splitlines():
+        m = re.match(r"^(\S+)\s{2,}(.*)$", line)
+        if m and m.group(1) in known:
+            out[m.group(1)] = m.group(2)
+    return out
+
+
+def toggle(kind, name, on_t, on_m, mode, rows, base, mod_tags):
+    """Space on a picker row: (tags ticked, modules ticked) after it. In apply, a tag brings its modules in and takes
+    away the ones only it had; a module only a tag has can be ticked on its own (it uses its tag's settings)."""
+    on_t, on_m = set(on_t), set(on_m)
+    if kind != "tag":
+        return on_t, on_m ^ {name}
+    on_t ^= {name}
+    if mode == "apply":
+        def available(m):
+            return m in base or any(t in on_t for t in mod_tags.get(m, []))
+        on_m |= {m for m in rows if name in mod_tags.get(m, []) and available(m)}
+        on_m = {m for m in on_m if available(m)}
+    return on_t, on_m
+

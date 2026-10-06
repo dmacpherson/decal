@@ -7,6 +7,8 @@ export LS_REPO
 MODULES_DIR="${DECAL_MODULES_DIR:-$LS_REPO/modules}"
 # shellcheck source=lib/common.sh
 source "$LS_REPO/lib/common.sh"
+# shellcheck source=lib/logo.sh
+source "$LS_REPO/lib/logo.sh"
 # the commands' own files (functions only; they run here, with decal's variables)
 # shellcheck source=lib/stage.sh
 source "$LS_REPO/lib/stage.sh"
@@ -18,6 +20,7 @@ source "$LS_REPO/lib/cmd_new.sh"
 source "$LS_REPO/lib/cmd_usb.sh"
 
 usage() {
+  if [[ -t 2 ]]; then logo_print 2 "decal" "stick your Linux setup onto any machine" "peel it off cleanly"; echo >&2; fi
   cat >&2 <<'EOF'
 usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [--only T] <command> [module...]
   (add/apply skip modules already applied with unchanged settings; --force applies them anyway)
@@ -99,8 +102,9 @@ case $cmd in
     [[ -e $LS_REPO/.installed ]] || die "$LS_REPO is a git checkout: update it with git pull (decal update is for installs made with install.sh)"
     t=$(_installer); DECAL_HOME=$LS_REPO bash "$t" --update; rc=$?; rm -f "$t"; exit "$rc" ;;
   version)
-    if [[ -e $LS_REPO/.installed ]]; then echo "decal $(cat "$LS_REPO/VERSION" 2>/dev/null) ($(cat "$LS_REPO/.channel" 2>/dev/null || echo latest))"
-    else echo "decal (git checkout at $LS_REPO)"; fi
+    if [[ -e $LS_REPO/.installed ]]; then v="decal $(cat "$LS_REPO/VERSION" 2>/dev/null) ($(cat "$LS_REPO/.channel" 2>/dev/null || echo latest))"
+    else v="decal (git checkout at $LS_REPO)"; fi
+    if [[ -t 1 ]]; then logo_print 1 "$v"; else echo "$v"; fi   # the menu reads the plain line
     exit 0 ;;
 esac
 self_update
@@ -318,6 +322,11 @@ case $cmd in
     [[ $# -ge 1 ]] || usage
     if [[ $cmd == add ]]; then
       pyprof check || die "fix $PROFILE_DIR/profile.toml first (nothing was changed)"
+      # the active profile, if nobody was ever asked about it (made active by an older decal use): ask now
+      if [[ ${LS_DRY_RUN:-0} != 1 && $PROFILE_DIR == "$PROFILE_HOME" ]]; then
+        src=$(env -u DECAL_PROFILE DECAL_PROFILE_HOME="$PROFILE_HOME" python3 "$LS_REPO/lib/profiles.py" active 2>/dev/null || true)
+        if [[ -n $src ]]; then STAGE_DIR=$PROFILE_DIR trust "$src" add "decal --yes ${ORIG_ARGS[*]}"; fi
+      fi
       if [[ $# -eq 1 && $1 == all ]]; then names=$(profile_modules); else names=$(resolve "$@") || exit 1; fi
     else
       check_tags

@@ -5,7 +5,7 @@ WANTS=/etc/systemd/system/sockets.target.wants/docker.socket   # enabled by link
 SHIM=/usr/local/bin/docker-compose                               # some distros only ship the `docker compose` plugin
 ST="$LS_STATE/docker"
 _me() { id -un; }
-_compose_pkg() { if [[ $PLATFORM == debian ]] && apt-cache show docker-compose-v2 >/dev/null 2>&1; then echo docker-compose-v2; else echo docker-compose; fi; }
+_compose_pkg() { if [[ $PLATFORM == debian ]] && pkg_known docker-compose-v2; then echo docker-compose-v2; else echo docker-compose; fi; }
 _in_group() { id -nG "$(_me)" 2>/dev/null | tr ' ' '\n' | grep -qx docker; }
 
 _group_add() {

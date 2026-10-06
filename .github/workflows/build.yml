@@ -13,11 +13,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - { runner: ubuntu-latest, arch: x86_64 }
+          - { runner: ubuntu-24.04, arch: x86_64 }
           - { runner: ubuntu-24.04-arm, arch: aarch64 }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
       - name: Build (static, musl)
@@ -25,18 +25,18 @@ jobs:
           docker run --rm -v "$PWD:/w" -w /w alpine:3 sh -c \
             'apk add -q gcc musl-dev && gcc -Os -static -s -o Decal-${{ matrix.arch }} usb/launch.c'
           file Decal-${{ matrix.arch }} | tee /dev/stderr | grep -q 'statically linked\|static-pie linked'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: launcher-${{ matrix.arch }}
           path: Decal-${{ matrix.arch }}
   package:
     needs: launchers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: launcher-*
           path: bin
@@ -49,7 +49,7 @@ jobs:
           tar -czf dist/decal.tar.gz -C stage decal
           (cd dist && sha256sum decal.tar.gz > decal.tar.gz.sha256)
           tar -tzf dist/decal.tar.gz decal/decal decal/install.sh decal/usb/bin/Decal-x86_64 decal/usb/bin/Decal-aarch64 >/dev/null
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: package
           path: dist/
