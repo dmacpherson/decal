@@ -1,7 +1,4 @@
-<p align="center"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo.png">
-  <img src="assets/logo-light.png" width="240" alt="decal: a glossy teal-to-purple Tux sticker, one corner peeling">
-</picture></p>
+<p align="center"><img src="assets/logo.png" width="200" alt="decal: a glossy teal-to-purple Tux sticker, one corner peeling"></p>
 
 <h1 align="center">decal</h1>
 
@@ -287,8 +284,8 @@ notes (`main` is what's released). Tests: `bash tests/run.sh`; distro e2e: `bash
 pulled; `--keep-images` keeps them). Neither leaves files behind. Extensions that ship with decal
 (Decal Tweaks) are checked inside a throwaway headless GNOME Shell: `bash tests/shell/run.sh`.
 
-Logo: a glossy Tux sticker, after Larry Ewing's Tux the Linux penguin (`assets/logo.png`, `assets/logo-light.png` for
-light backgrounds, `assets/social-preview.png` for link previews).
+Logo: a glossy Tux sticker, after Larry Ewing's Tux the Linux penguin (`assets/logo.png`; `assets/social-preview.png`
+for link previews).
 
 ## Licence
 
