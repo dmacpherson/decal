@@ -17,6 +17,20 @@ set -euo pipefail
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+# --- logo ---
+DECAL_LOGO=('   ▄█████▄   ' '  ██▄███▄██  ' '  ███▀ ▀███  ' ' ██▀     ▀██ ' '██         ██' ' ▀█▄▄▄▄▄▄▄█▀ ')
+DECAL_LOGO_COLORS=(44 38 33 63 99 135)
+# logo_print FD [TEXT...] : the logo on FD (1 or 2), each TEXT beside a row from the second on; in colour only on a
+# terminal that has it (NO_COLOR turns it off)
+logo_print() {
+  local fd=$1 i on="" off="" text=("${@:2}")
+  for ((i = 0; i < ${#DECAL_LOGO[@]}; i++)); do
+    if [[ -t $fd && ${TERM:-dumb} != dumb && -z ${NO_COLOR:-} ]]; then on=$'\e[1;38;5;'"${DECAL_LOGO_COLORS[i]}m"; off=$'\e[0m'; fi
+    printf '%s%s%s%s\n' "$on" "${DECAL_LOGO[i]}" "$off" "$( (( i >= 1 )) && [[ -n ${text[i - 1]:-} ]] && printf '  %s' "${text[i - 1]}")" >&"$fd"
+  done
+}
+# --- end logo ---
+
 have() { command -v "$1" >/dev/null 2>&1; }
 # _get URL [OUT] : download (stdout without OUT); curl or wget
 _get() {
@@ -87,6 +101,9 @@ main() {
     --fetch-to) mode=fetch; dest=${2:-}; [[ -n $dest ]] || die "--fetch-to needs a folder"; shift 2 ;;
   esac
   if (( ${DECAL_FAKE_EUID:-$EUID} == 0 )) && [[ ${DECAL_ALLOW_ROOT:-0} != 1 ]]; then die "run as your normal user, not root (decal uses sudo itself when it needs to)"; fi
+  if [[ $mode == install && -t 2 && -z ${DECAL_NO_MENU:-} ]]; then   # a first look (not on every self-update or a stick's)
+    logo_print 2 "decal" "stick your Linux setup onto any machine" "peel it off cleanly"; echo >&2
+  fi
   local t; for t in tar python3; do have "$t" || die "$t is needed: install it with your package manager, then run this again"; done
   local version=${DECAL_VERSION:-$(cat "$home/.channel" 2>/dev/null || echo latest)}
   local cur; cur=$(cat "$home/VERSION" 2>/dev/null || true)
