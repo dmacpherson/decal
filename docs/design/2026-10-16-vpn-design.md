@@ -50,18 +50,20 @@ before anything runs. The profile only ever picks names: repo URLs, keys and fin
 Three vendors need a signed repo on apt and dnf, which `modules/claude` already does for apt inline. It becomes
 one helper in `lib/backends/_shared.sh`, used by both modules (claude moves onto it, unchanged in behaviour):
 
-- `repo_add OWNER NAME KEY_URL FINGERPRINT APT_LINE DNF_BASEURL`: downloads the key with `ls_fetch` (https only),
-  checks it has `FINGERPRINT` (`gpg --show-keys`), and fails closed if not. Then it writes the key and the source:
+- `repo_add NAME --key URL FPR [--key URL FPR]... [--apt LINE] [--dnf BASEURL] [--repo-gpgcheck]` (several keys:
+  Proton signs each Fedora release with its own): downloads each key with `ls_fetch` (https only), checks it holds
+  exactly one primary key with the pinned fingerprint (`gpg --show-keys`), and fails closed if not. Then it writes the key and the source:
   - apt: the key to `/usr/share/keyrings/NAME-archive-keyring.asc`, `APT_LINE` (with `signed-by=` that key) to
     `/etc/apt/sources.list.d/NAME.list`, and the apt-updated marker cleared so the backend refreshes.
   - dnf, rpm-ostree: the key to `/etc/pki/rpm-gpg/decal-NAME.asc` and `/etc/yum.repos.d/NAME.repo` with
     `baseurl=DNF_BASEURL`, `gpgcheck=1` (and `repo_gpgcheck=1` where the vendor's own repo file sets it) and
     `gpgkey=file:///etc/pki/rpm-gpg/decal-NAME.asc`.
-    The key is pinned locally, never fetched again by dnf from a URL. rpm-ostree reads the same folder.
+    The key is pinned locally, never fetched again by dnf from a URL. rpm-ostree reads the same folder. Key files
+    are named by fingerprint; when decal learns a new key list, the next add rewrites the repo.
   - arch: nothing (the helper isn't called there).
   - The record is written first, so an interrupted add can still be undone. A repo file that already exists and
     wasn't written by decal (someone added Tailscale's repo by hand) is used as is and not recorded.
-- `repo_remove OWNER NAME`: deletes exactly the files its record lists.
+- `repo_remove NAME`: deletes exactly the files its record lists.
 - Apt lines that name a release use `VERSION_CODENAME` from `/etc/os-release` (Tailscale's apt repo is per release).
 
 The exact repo URLs and fingerprints are pinned in the plan, each checked against the vendor's published docs.
@@ -88,15 +90,19 @@ repo is added for it.
    Recorded only when decal turned it on.
 3. `tailscale set --operator=$USER` (needs tailscaled running), so you and the tray control it without sudo.
    Recorded. Before the reboot on Atomic it's skipped with "after the reboot, run decal add vpn again".
-4. Tray at login: `tailscale configure systray --enable-startup=systemd`, run as you (never with sudo; Tailscale
-   1.88+). Recorded.
+4. Tray at login: `tailscale configure systray --enable-startup=systemd` (it only writes
+   `~/.config/systemd/user/tailscale-systray.service`), then `systemctl --user enable` + `start` it, all as you
+   (never with sudo; Tailscale 1.88+). Recorded; a unit you made yourself is left alone.
 5. "Tailscale is ready: sign in from the Tailscale icon in the tray (or run tailscale up)."
 
-**netbird**: the repo and both packages; `netbird` service enabled and recorded the same way. `netbird-ui` at
+**netbird**: the repo and both packages. NetBird's package turns its service on itself; where it couldn't (Fedora
+Atomic, at layering time) decal runs `netbird service install` + `start` after the reboot, recorded. `netbird-ui` at
 login: if the package doesn't add a login entry itself (the plan checks), decal adds one to `~/.config/autostart`,
 recorded. "Sign in from the NetBird icon in the tray."
 
-**protonvpn**: the repo and `proton-vpn-gnome-desktop`. On Fedora Atomic a warning: "Proton VPN supports Fedora
+**protonvpn**: the repo and `proton-vpn-gnome-desktop`. On Fedora the repo trusts Proton's key for this release
+and every later one decal knows (Proton publishes the next release's ahead), so an upgrade keeps working; a release
+decal has no key for is skipped with a warning. On Fedora Atomic a warning: "Proton VPN supports Fedora
 Workstation; on Atomic it's layered and may need a reboot". "Open Proton VPN and sign in."
 
 **wireguard / openvpn / openconnect**: packages only. "Add connections in Settings → Network → VPN."
@@ -107,8 +113,7 @@ module doesn't change another module's section.
 
 ## Remove
 
-Per service, from its records, newest first: tray autostart off (`tailscale configure systray --enable-startup=none`
-or the unit removed), operator cleared (`tailscale set --operator=`, only if it's still the recorded user), service
+Per service, from its records, newest first: tray autostart off (`systemctl --user disable --now`, the unit removed), operator cleared (`tailscale set --operator=`, only if it's still the recorded user), service
 disabled and stopped (only if decal enabled it), packages decal installed removed (`pkg_remove vpn-<service>`), then
 the repo (`repo_remove`).
 
