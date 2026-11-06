@@ -34,7 +34,7 @@ out=$(DECAL_TTY_IN="$T_TMP/k2" DECAL_TTY_OUT="$T_TMP/scr2" N decal-g --from empt
 assert_contains "$(cat "$T_TMP/scr2")" "2) Ventoy" "...listed them"
 assert_file "$DECAL_MEDIA/Other/.Decal/profile/profile.toml" "...and used the one chosen"
 # several sticks, the way past the question: --to stick:NAME (audit batch 3)
-out=$(N decal-h --from empty --to stick 2>&1 < /dev/null); assert_eq "$?" "1" "two sticks, no terminal: stops"
+out=$(setsid -w "$REPO/decal" new decal-h --from empty --to stick 2>&1 < /dev/null); assert_eq "$?" "1" "two sticks, no terminal: stops"
 assert_contains "$out" "--to stick:NAME" "...says how to pick one"
 rm -rf "$DECAL_MEDIA/Other/.Decal"
 out=$(N decal-h --from empty --to stick:Other < /dev/null); assert_eq "$?" "0" "--to stick:Other: no question"

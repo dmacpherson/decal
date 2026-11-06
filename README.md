@@ -114,6 +114,7 @@ The menu runs these same commands and shows them before it does anything.
 
 ```bash
 decal use ~/my-profile            # make it the active profile, without applying anything
+decal review ~/my-profile         # inspect what a profile will install, download, or change (trust signals)
 decal apply ~/my-profile          # a folder, a .tar.gz/.zip, owner/repo or a GitHub link, an archive link, a git URL: becomes the active profile, then applied (never removes anything)
 decal profiles                    # the profiles decal can see: yours on GitHub, stamps here, USB sticks, recently used
 decal new decal-work --from empty # a new profile: from this machine (default), a copy, or a starter; --to github|file|stick[:NAME]

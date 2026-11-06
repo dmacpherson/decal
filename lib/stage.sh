@@ -169,9 +169,10 @@ trust() {   # trust SOURCE [VERB [AGAIN]] : VERB is what "y" does (apply/use/add
   if ! have_tty; then die "not $done: to $verb it anyway, run $again"; fi
   exec {fd}<"${DECAL_TTY_IN:-/dev/tty}"
   while :; do
-    printf 'p preview what it would change · y %s it · n stop [p]: ' "$verb" >> "${DECAL_TTY_OUT:-/dev/tty}"
+    printf 'r review what it installs · p preview commands · y %s it · n stop [r]: ' "$verb" >> "${DECAL_TTY_OUT:-/dev/tty}"
     IFS= read -r a <&"$fd" || a=n
-    case ${a:-p} in
+    case ${a:-r} in
+      r|R) python3 "$LS_REPO/lib/review.py" "$STAGE_DIR" || true ;;
       p|P) DECAL_NO_UPDATE=1 DECAL_YES=1 DECAL_PROFILE=$STAGE_DIR "$LS_REPO/decal" --dry-run add all || true ;;
       y|Y) exec {fd}<&-; asked "$src"; return 0 ;;
       *) die "not $done" ;;

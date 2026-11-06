@@ -39,6 +39,7 @@ usage: ./decal [--dry-run] [--verbose] [--force] [--profile DIR] [--tags T,..] [
                              link to an archive, a git URL. Someone else's profile: decal asks first (--yes skips)
                              (never removes anything; use remove, or [apps] remove-* lists)
   use    <profile source>    make it the active profile without applying anything
+  review [PROFILE] [--json]  inspect what a profile will install, download, or change (trust signals)
   whoami                     the GitHub account of the key decal would use
   profiles [--json] [--sign-in]  the profiles decal can see: yours on GitHub, stamps on this machine, USB
                              sticks, recently used (--sign-in: sign in to GitHub first if there's no key)
@@ -401,6 +402,14 @@ case $cmd in
     if [[ ${LS_DRY_RUN:-0} != 1 ]]; then trust "$STAGE_SRC" use; fi   # someone else's profile asks here too (the menu uses use)
     activate_staged
     info "active profile: $PROFILE_DIR (nothing applied yet: decal add all, or the menu)" ;;
+  review)
+    if [[ $# -ge 1 && $1 != --* ]]; then
+      stage_profile "$1"; shift
+      python3 "$LS_REPO/lib/review.py" "$STAGE_DIR" "$@"
+    else
+      [[ -d $PROFILE_DIR ]] || die "no active profile: provide a profile to review (decal review PROFILE)"
+      python3 "$LS_REPO/lib/review.py" "$PROFILE_DIR" "$@"
+    fi ;;
   ui)
     [[ -t 0 && -t 1 ]] || die "the menu needs a terminal"
     exec python3 "$LS_REPO/lib/ui.py" ;;
