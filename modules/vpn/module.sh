@@ -47,6 +47,7 @@ module_add() {
   for s in "${SERVICES[@]}"; do
     if _wanted "$s"; then "${s}_add"; elif rec_has "$REC" "$s"; then _take_off "$s"; fi
   done
+  _tray_check
 }
 module_remove() {
   local i
@@ -72,4 +73,21 @@ module_status() {
   if (( ${#P_install[@]} == 0 || missing == ${#P_install[@]} )); then echo not-installed
   elif (( ${#todo[@]} )); then echo "partial ($(_join "${todo[@]}" "${ok[@]}"))"
   else echo "installed ($(_join "${ok[@]}"))"; fi
+}
+
+# GNOME shows tray icons only with the AppIndicator extension; it's [gnome-extensions]' to add, so just say so
+TRAY_EXT=appindicatorsupport@rgcjonas.gmail.com
+_tray_check() {
+  _wanted tailscale || _wanted netbird || _wanted protonvpn || return 0
+  if ! have gnome-shell || ! have gsettings; then return 0; fi
+  if gsettings get org.gnome.shell enabled-extensions 2>/dev/null | grep -qF "'$TRAY_EXT'"; then return 0; fi
+  warn "GNOME shows tray icons only with the AppIndicator extension: add \"$TRAY_EXT\" to enable in [gnome-extensions] if your profile doesn't have it yet"
+}
+# stamp: the services this machine uses (Tailscale and NetBird when their service is on) -> [vpn]
+module_stamp() {
+  local s used=()
+  for s in "${SERVICES[@]}"; do if "${s}_stamp"; then used+=("$s"); fi; done
+  (( ${#used[@]} )) || return 0
+  stamp_note "vpn: $(_join "${used[@]}") (sign in again on the new machine: sign-ins, keys and connections aren't copied)"
+  printf '[vpn]\ninstall = %s\n' "$(toml_list "${used[@]}")"
 }

@@ -257,4 +257,24 @@ assert_eq "$(cat "$DECAL_ROOT/etc/apt/sources.list.d/protonvpn-stable.sources")"
 # Arch: only in the AUR
 reset_pv; export DECAL_PLATFORM=arch; out=$(run_mod add 2>&1)
 assert_contains "$out" "only the AUR" "arch: Proton VPN skipped with a word"
+
+# --- stamp: what this machine uses; Bazzite's Tailscale that was never turned on isn't "used"
+reset_pv; export DECAL_PLATFORM=fedora; export STAMP_NOTES="$T_TMP/notes"; : > "$STAMP_NOTES"
+printf 'tailscale\nNetworkManager-openvpn-gnome\nproton-vpn-gnome-desktop\n' > "$PKGDB"
+stub wg; stub systemctl 'case "$*" in *"is-enabled --quiet tailscaled.service"*) exit 0;; *is-enabled*) exit 1;; esac; exit 0'
+assert_eq "$(mod_run vpn module_stamp 2>/dev/null)" '[vpn]
+install = ["tailscale", "protonvpn", "wireguard", "openvpn"]' "stamp: services in use"
+assert_contains "$(cat "$STAMP_NOTES")" "sign in again" "stamp: note says sign-ins aren't copied"
+stub systemctl 'case "$*" in *is-enabled*) exit 1;; esac; exit 0'
+assert_not_contains "$(mod_run vpn module_stamp 2>/dev/null)" "tailscale" "stamp: Tailscale installed but off: not stamped"
+rm -f "$STUBS/wg"; : > "$PKGDB"
+assert_eq "$(mod_run vpn module_stamp 2>/dev/null)" "" "stamp: nothing in use: no section"
+# GNOME without the AppIndicator extension: tray icons won't show: a word on how to fix it
+reset_pv; echo tailscale > "$PKGDB"; prof 'install = ["tailscale"]'; fake_tailscale
+stub gsettings "echo \"['other@x']\""
+out=$(run_mod add 2>&1); assert_contains "$out" "appindicatorsupport@rgcjonas.gmail.com" "tray: says which extension to add"
+prof 'install = ["wireguard"]'; out=$(run_mod add 2>&1)
+assert_not_contains "$out" "appindicator" "tray: no word when nothing needs a tray"
+stub gsettings "echo \"['appindicatorsupport@rgcjonas.gmail.com']\""
+run_mod remove >/dev/null 2>&1
 t_done

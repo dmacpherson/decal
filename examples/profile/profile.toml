@@ -106,3 +106,6 @@ flatpak = true                    # also for Flatpak apps (e.g. Brave), via the 
 # gpu = true                      # GPU build (Homebrew cask ollama-binary); false = CPU-only
 # igpu = "auto"                   # integrated GPU (laptops): auto = only when there's no discrete GPU; "on" / "off"
 # models = ["llama3.2"]           # downloaded in the background if missing (never deleted)
+
+# [vpn]                           # VPN tools; you sign in on each machine (nothing secret goes in a profile)
+# install = ["tailscale"]         # any of: tailscale, netbird, protonvpn, wireguard, openvpn, openconnect
