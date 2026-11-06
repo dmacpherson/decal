@@ -4,17 +4,39 @@ MODULE_NEEDS_ROOT=1
 # One file per service here, each defining NAME_add, NAME_remove, NAME_status (prints nothing when complete,
 # "skipped: …" when it can't apply on this system, else what's missing) and NAME_stamp (succeeds when it's in use).
 # Signing in, auth keys and connections are never decal's: you sign in on each machine.
-SERVICES=(wireguard openvpn openconnect)
+SERVICES=(tailscale wireguard openvpn openconnect)
 ST="$LS_STATE/vpn"
 REC="$ST/services"   # the services decal set up here, one per line
 # shellcheck source=/dev/null
 source "$MODULE_DIR/nm.sh"
+# shellcheck source=/dev/null
+source "$MODULE_DIR/tailscale.sh"
 
 _wanted() { local s; for s in "${P_install[@]}"; do if [[ $s == "$1" ]]; then return 0; fi; done; return 1; }
 _mark() { rec_has "$REC" "$1" || state_append "$REC" "$1"; }   # before a service's first change: remove can undo it
 _take_off() { "$1_remove"; state_drop "$REC" "$1"; }
 _join() { local out="" x; for x; do out+="${out:+, }$x"; done; printf '%s' "$out"; }
 _os_release() { ( . "$(sys_path /etc/os-release)" 2>/dev/null; eval "printf '%s' \"\${$1:-}\"" ); }   # VAR: decal's own names only
+
+# system services: enabled by their link (works before a Fedora Atomic reboot too, like docker), started when the unit
+# is on the running system; recorded only when decal turned them on, so remove never turns off one you had on
+_wants() { sys_path "/etc/systemd/system/multi-user.target.wants/$1"; }
+_svc_enabled() { [[ -L $(_wants "$1") || -e $(_wants "$1") ]] || systemctl is-enabled --quiet "$1" 2>/dev/null; }
+_svc_on() {
+  _svc_enabled "$1" && return 0
+  step "turning on $1"
+  state_append "$ST/enabled" "$1"
+  srun mkdir -p "$(dirname "$(_wants "$1")")"; srun ln -s "/usr/lib/systemd/system/$1" "$(_wants "$1")"
+  if [[ -e $(sys_path "/usr/lib/systemd/system/$1") ]]; then
+    srun systemctl daemon-reload; srun systemctl start "$1" || warn "$1 didn't start: see systemctl status $1"
+  fi
+}
+_svc_off() {
+  rec_has "$ST/enabled" "$1" || return 0
+  if [[ -e $(sys_path "/usr/lib/systemd/system/$1") ]]; then srun systemctl stop "$1" 2>/dev/null || true; fi
+  srun rm -f "$(_wants "$1")"; srun systemctl daemon-reload 2>/dev/null || true
+  state_drop "$ST/enabled" "$1"
+}
 
 module_add() {
   local s
