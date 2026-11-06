@@ -118,4 +118,43 @@ rm -rf "$DECAL_STATE"; : > "$STUBS/calls"
 stub flatpak 'case "$*" in "info --system -- "*) exit 1;; "remotes --system --show-disabled --columns=name") echo flathub;; install*) exit 1;; esac; exit 0'
 run_mod add >/dev/null 2>&1
 assert_contains "$(cat "$DECAL_STATE/apps/managed" 2>/dev/null)" "com.discordapp.Discord" "recorded before installing"
+
+# prefer order resolution: flatpak -> distro -> brew
+rm -rf "$DECAL_STATE" "$DECAL_USER_STATE"; : > "$STUBS/calls"
+cat > "$PROFILE_DIR/profile.toml" <<'EOF'
+[apps]
+prefer = ["flatpak", "distro", "brew"]
+install = ["com.fp.App", "distrotool", "brewtool"]
+EOF
+stub flatpak 'case "$*" in "remotes --system --show-disabled --columns=name") echo flathub;; "remote-info --system -- flathub com.fp.App") exit 0;; "remote-info "*) exit 1;; "info --system -- "*) exit 1;; esac; exit 0'
+stub rpm 'case "$*" in *"-q --quiet -- flatpak"*) exit 0;; *) exit 1;; esac'
+stub dnf 'case "$*" in "-q info -- distrotool") exit 0;; "-q info -- "*) exit 1;; esac; exit 0'
+stub brew 'case "$*" in "info brewtool") exit 0;; "info "*) exit 1;; "list brewtool") exit 1;; esac; exit 0'
+
+run_mod add >/dev/null 2>&1
+assert_contains "$(calls)" "flatpak install --system --noninteractive -y -- flathub com.fp.App" "prefer: resolved to flatpak"
+assert_contains "$(calls)" "dnf install -y -- distrotool" "prefer: resolved to distro"
+assert_contains "$(calls)" "brew install brewtool" "prefer: resolved to brew"
+assert_eq "$(sort "$DECAL_STATE/apps/prefer-sources")" "brewtool brew
+com.fp.App flatpak
+distrotool distro" "prefer: provenance recorded"
+
+# remove: each item uninstalled from its recorded source
+stub flatpak 'case "$*" in "info --system -- com.fp.App") exit 0;; "info --system -- "*) exit 1;; esac; exit 0'
+stub rpm 'case "$*" in *"-q --quiet -- flatpak"*|*"-q --quiet -- distrotool"*) exit 0;; *) exit 1;; esac'
+stub brew 'case "$*" in "list brewtool") exit 0;; esac; exit 0'
+run_mod remove >/dev/null 2>&1
+assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y -- com.fp.App" "remove: uninstalled from flatpak"
+assert_contains "$(calls)" "dnf remove -y -- distrotool" "remove: uninstalled from distro"
+assert_contains "$(calls)" "brew uninstall brewtool" "remove: uninstalled from brew"
+assert_nofile "$DECAL_STATE/apps/prefer-sources" "prefer records cleared"
+
+# schema check: invalid prefer source rejected
+cat > "$PROFILE_DIR/profile.toml" <<'EOF'
+[apps]
+prefer = ["snap"]
+EOF
+python3 "$REPO/lib/profile.py" check --profile "$PROFILE_DIR" --modules "$REPO/modules" >/dev/null 2>&1
+assert_eq "$?" "2" "invalid prefer source refused"
+
 t_done
