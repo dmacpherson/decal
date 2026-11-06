@@ -123,3 +123,9 @@ flatpak = true                    # also for Flatpak apps (e.g. Brave), via the 
 # [git.aliases]
 # co = "checkout"
 # st = "status -sb"
+
+# [ssh]                           # SSH client config, public authorized keys, and known hosts
+# authorized-keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... personal-laptop"]
+# known-hosts = ["github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"]
+# [ssh.hosts]
+# devserver = "HostName dev.internal\n  User dev"

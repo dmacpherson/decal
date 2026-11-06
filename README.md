@@ -106,6 +106,7 @@ opens. Run `decal usb` again to update the stick.
 | ollama | Ollama (local AI models) from Homebrew, GPU build (integrated GPUs too, on machines without a discrete one), running as your user, plus your models |
 | vpn | VPN tools, any of: Tailscale (service on, you control it without sudo, tray icon at login; Bazzite's own too), NetBird and Proton VPN with their tray apps, WireGuard, OpenVPN, OpenConnect. You sign in on each machine |
 | git | Git user identity, default branch, signing keys, and core workflow preferences |
+| ssh | SSH client configuration, public authorized keys, known host keys, and host blocks |
 
 ## In depth
 
