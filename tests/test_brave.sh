@@ -61,7 +61,8 @@ rm -rf "$B"; out=$(run_mod add 2>&1); assert_eq "$?" "0" "never-opened Brave: no
 assert_contains "$out" "open it once" "says to open Brave once"
 # undo goes to the browser profile decal changed, even after [brave] profile changes or the section is gone (audit batch 2)
 run_mod remove >/dev/null 2>&1
-P1="$(dirname "$B")/Profile 1"; mkdir -p "$P1"; echo '{"brave":{"new_tab_page":{"show_clock":false}}}' > "$P1/Preferences"
+P1="$(dirname "$B")/Profile 1"; mkdir -p "$P1" "$B"; echo '{"brave":{"new_tab_page":{"show_clock":false}}}' > "$P1/Preferences"
+echo '{"brave":{"new_tab_page":{"show_clock":false}}}' > "$B/Preferences"
 sed -i 's/^\[brave\]$/&\nprofile = "Profile 1"/' "$PROFILE_DIR/profile.toml"; run_mod add >/dev/null 2>&1
 assert_eq "$(q brave.new_tab_page.show_clock "$P1/Preferences")" "true" "applied to Profile 1"
 cp "$B/Preferences" "$T_TMP/default-before"

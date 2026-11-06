@@ -169,7 +169,7 @@ assert_eq "$(grep -c 'stranger/prof/tarball' "$GM/log")" "1" "...downloaded once
 # use alone doesn't make it yours: only applying does
 mkdir -p "$T_TMP/gh3/other-x-1"; printf '[eee-conf]\nword = "x"\n' > "$T_TMP/gh3/other-x-1/profile.toml"
 tar -czf "$T_TMP/gh3.tar.gz" -C "$T_TMP/gh3" other-x-1; tb other/x "$T_TMP/gh3.tar.gz" public
-env -u GITHUB_TOKEN -u GH_TOKEN "$REPO/decal" use other/x >/dev/null 2>&1
+setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" use other/x >/dev/null 2>&1 < /dev/null
 assert_not_contains "$(cut -f1 "$DECAL_USER_STATE/recent")" "github:other/x" "use: not remembered as yours"
 out=$(setsid -w env -u GITHUB_TOKEN -u GH_TOKEN PATH="$PATH" "$REPO/decal" apply other/x 2>&1 < /dev/null); assert_eq "$?" "1" "...so apply still asks"
 # now it's recently used: no question next time
