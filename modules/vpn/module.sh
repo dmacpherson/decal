@@ -4,7 +4,7 @@ MODULE_NEEDS_ROOT=1
 # One file per service here, each defining NAME_add, NAME_remove, NAME_status (prints nothing when complete,
 # "skipped: …" when it can't apply on this system, else what's missing) and NAME_stamp (succeeds when it's in use).
 # Signing in, auth keys and connections are never decal's: you sign in on each machine.
-SERVICES=(tailscale netbird wireguard openvpn openconnect)
+SERVICES=(tailscale netbird protonvpn wireguard openvpn openconnect)
 ST="$LS_STATE/vpn"
 REC="$ST/services"   # the services decal set up here, one per line
 # shellcheck source=/dev/null
@@ -13,6 +13,8 @@ source "$MODULE_DIR/nm.sh"
 source "$MODULE_DIR/tailscale.sh"
 # shellcheck source=/dev/null
 source "$MODULE_DIR/netbird.sh"
+# shellcheck source=/dev/null
+source "$MODULE_DIR/protonvpn.sh"
 
 _wanted() { local s; for s in "${P_install[@]}"; do if [[ $s == "$1" ]]; then return 0; fi; done; return 1; }
 _mark() { rec_has "$REC" "$1" || state_append "$REC" "$1"; }   # before a service's first change: remove can undo it

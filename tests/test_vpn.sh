@@ -211,4 +211,50 @@ assert_contains "$(calls)" "wireguard-tools" "arch: the rest installed"
 assert_eq "$(run_mod status 2>/dev/null)" "installed (netbird: not available on Arch, wireguard)" "arch: status counts the skip as done"
 run_mod remove >/dev/null 2>&1
 stub systemctl 'case "$*" in *is-enabled*) exit 1;; esac; exit 0'
+
+# --- Proton VPN
+PA=84B0D3492C76C9C6F5873C18EDA3E22630349F1C; P44=6929133BDE1CE1CFA9EDB286D84176F6844830D4; P45=D3AA11B3B1BFB96DF3CA26A2D59CE240EB3EE0B0
+fake_key "$K/pv-apt.asc" "$PA"; fake_key "$K/pv-44.asc" "$P44"; fake_key "$K/pv-45.asc" "$P45"
+fake_fetch() { ls_fetch() { echo "ls_fetch $*" >> "$STUBS/calls"
+  case $1 in https://repo.protonvpn.com/debian/public_key.asc) echo "$K/pv-apt.asc";;
+    https://repo.protonvpn.com/fedora-44-stable/public_key.asc) echo "$K/pv-44.asc";;
+    https://repo.protonvpn.com/fedora-45-stable/public_key.asc) echo "$K/pv-45.asc";; *) return 1;; esac; }; }
+reset_pv() { rm -rf "$DECAL_STATE" "$DECAL_ROOT/etc"; : > "$PKGDB"; : > "$STUBS/calls"; mkdir -p "$DECAL_ROOT/etc"; }
+prof 'install = ["protonvpn"]'
+# Fedora 44: Proton's repo with this release's key and the next one's (a Fedora upgrade keeps working)
+reset_pv; export DECAL_PLATFORM=fedora; printf 'ID=fedora\nVERSION_ID=44\n' > "$DECAL_ROOT/etc/os-release"
+out=$(run_mod add 2>&1); assert_eq "$?" "0" "proton: rc"
+R="$(cat "$DECAL_ROOT/etc/yum.repos.d/protonvpn-stable.repo")"
+assert_contains "$R" "baseurl=https://repo.protonvpn.com/fedora-\$releasever-stable" "proton: Proton's repo"
+assert_contains "$R" "decal-protonvpn-stable-$P44.asc" "proton: this release's key"
+assert_contains "$R" "decal-protonvpn-stable-$P45.asc" "proton: the next release's key too"
+assert_not_contains "$(calls)" "fedora-43-stable" "proton: older releases' keys not trusted"
+assert_contains "$(calls)" "dnf install -y -- proton-vpn-gnome-desktop" "proton: the app"
+assert_contains "$out" "sign in" "proton: says what to do next"
+: > "$STUBS/calls"; run_mod remove >/dev/null 2>&1
+assert_contains "$(calls)" "dnf remove -y -- proton-vpn-gnome-desktop" "proton: remove: the app"
+assert_nofile "$DECAL_ROOT/etc/yum.repos.d/protonvpn-stable.repo" "proton: remove: the repo"
+# Fedora Atomic: layered, with a word that Proton supports Fedora Workstation
+reset_pv; export DECAL_PLATFORM=fedora-atomic; printf 'ID=bazzite\nID_LIKE="fedora"\nVERSION_ID=44\n' > "$DECAL_ROOT/etc/os-release"
+out=$(run_mod add 2>&1)
+assert_contains "$(calls)" "rpm-ostree install --allow-inactive proton-vpn-gnome-desktop" "atomic: layered"
+assert_contains "$out" "Proton supports Fedora Workstation" "atomic: says it isn't officially supported"
+run_mod remove >/dev/null 2>&1
+# a Fedora release this decal has no Proton key for: skipped with a word, nothing trusted
+reset_pv; export DECAL_PLATFORM=fedora; printf 'ID=fedora\nVERSION_ID=99\n' > "$DECAL_ROOT/etc/os-release"
+out=$(run_mod add 2>&1); assert_eq "$?" "0" "unknown release: rc 0"
+assert_contains "$out" "Fedora 99" "unknown release: says which"
+assert_nofile "$DECAL_ROOT/etc/yum.repos.d/protonvpn-stable.repo" "unknown release: no repo"
+# Debian: Proton's apt repo; set up before by Proton's own package (.sources): used as is
+reset_pv; export DECAL_PLATFORM=debian; printf 'ID=debian\nVERSION_CODENAME=trixie\n' > "$DECAL_ROOT/etc/os-release"
+run_mod add >/dev/null 2>&1
+assert_eq "$(cat "$DECAL_ROOT/etc/apt/sources.list.d/protonvpn-stable.list")" "deb [signed-by=/usr/share/keyrings/protonvpn-stable-archive-keyring.asc] https://repo.protonvpn.com/debian stable main" "debian: Proton's repo"
+run_mod remove >/dev/null 2>&1
+reset_pv; printf 'ID=debian\n' > "$DECAL_ROOT/etc/os-release"; mkdir -p "$DECAL_ROOT/etc/apt/sources.list.d"; echo proton > "$DECAL_ROOT/etc/apt/sources.list.d/protonvpn-stable.sources"
+run_mod add >/dev/null 2>&1; run_mod remove >/dev/null 2>&1
+assert_nofile "$DECAL_ROOT/etc/apt/sources.list.d/protonvpn-stable.list" "debian: no second source next to Proton's own"
+assert_eq "$(cat "$DECAL_ROOT/etc/apt/sources.list.d/protonvpn-stable.sources")" "proton" "debian: Proton's own source kept"
+# Arch: only in the AUR
+reset_pv; export DECAL_PLATFORM=arch; out=$(run_mod add 2>&1)
+assert_contains "$out" "only the AUR" "arch: Proton VPN skipped with a word"
 t_done
