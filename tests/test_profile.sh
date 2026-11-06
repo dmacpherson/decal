@@ -131,4 +131,16 @@ assert_contains "$out" "profile.toml isn't UTF-8 text" "...says why"; assert_not
 for v in 'pkgs = ["@virtualization"]' 'pkgs = ["perl(Foo::Bar)"]' 'pkgs = ["texlive-*"]'; do
   assert_contains "$(bad "$v")" "groups (@…), provides (…(…)) and wildcards aren't supported: list each package by name" "named in the message: $v"
 done
+# names with a fixed set of values (e.g. [vpn] install): anything else is refused before a module runs
+V="$T_TMP/vm"; mkdir -p "$V/pick"; : > "$V/pick/module.sh"
+echo '{"keys": {"install": {"type": "names", "values": ["tailscale", "wireguard"], "default": []}}}' > "$V/pick/schema.json"
+VP="$T_TMP/vp"; mkdir -p "$VP"
+printf '[pick]\ninstall = ["wireguard", "tailscale"]\n' > "$VP/profile.toml"
+python3 "$REPO/lib/profile.py" check --profile "$VP" --modules "$V" >/dev/null 2>&1; assert_eq "$?" "0" "values: listed names accepted"
+printf '[pick]\ninstall = ["tailscale", "evilvpn"]\n' > "$VP/profile.toml"
+out=$(python3 "$REPO/lib/profile.py" check --profile "$VP" --modules "$V" 2>&1); rc=$?
+assert_eq "$(( rc != 0 ))" "1" "values: an unlisted name fails the check"
+assert_contains "$out" "'evilvpn': expected one of 'tailscale', 'wireguard'" "values: says which name and what's allowed"
+printf '[pick]\ninstall = []\n' > "$VP/profile.toml"
+python3 "$REPO/lib/profile.py" check --profile "$VP" --modules "$V" >/dev/null 2>&1; assert_eq "$?" "0" "values: an empty list is fine"
 t_done
