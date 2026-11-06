@@ -1,0 +1,12 @@
+{"keys": {
+  "name": {"type": "string", "default": ""},
+  "email": {"type": "string", "default": ""},
+  "default-branch": {"type": "string", "default": "main"},
+  "editor": {"type": "string", "default": ""},
+  "signing-key": {"type": "string", "default": ""},
+  "sign-commits": {"type": "bool", "default": false},
+  "auto-setup-remote": {"type": "bool", "default": true},
+  "pull-rebase": {"type": "bool", "default": false},
+  "ignores": {"type": "strings", "default": []},
+  "aliases.*": {"type": "string"}
+}}

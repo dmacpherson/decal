@@ -109,3 +109,17 @@ flatpak = true                    # also for Flatpak apps (e.g. Brave), via the 
 
 # [vpn]                           # VPN tools; you sign in on each machine (nothing secret goes in a profile)
 # install = ["tailscale"]         # any of: tailscale, netbird, protonvpn, wireguard, openvpn, openconnect
+
+# [git]                           # Git user identity, default branch, signing keys, and preferences
+# name = "Your Name"
+# email = "you@example.com"
+# default-branch = "main"
+# editor = "nano"
+# signing-key = ""                # GPG key ID for signing commits
+# sign-commits = false
+# auto-setup-remote = true
+# pull-rebase = false
+# ignores = [".DS_Store", "*.swp"]
+# [git.aliases]
+# co = "checkout"
+# st = "status -sb"
