@@ -102,7 +102,20 @@ def inspect_profile(profile_dir, shell_version=None, offline=False):
 
     # 1. Flatpaks
     apps_sec = data.get("apps", {})
-    flatpaks = apps_sec.get("flatpaks", [])
+    prefer = apps_sec.get("prefer", ["flatpak", "distro", "brew"])
+    flatpaks = list(apps_sec.get("flatpaks", []))
+    install_apps = apps_sec.get("install", [])
+    if isinstance(install_apps, list):
+        for app in install_apps:
+            if not isinstance(app, str):
+                continue
+            if "." in app or (prefer and prefer[0] == "flatpak"):
+                flatpaks.append(app)
+            elif prefer and prefer[0] == "brew":
+                results["homebrew"].append({"formula": app, "flags": []})
+            else:
+                results["native_packages"]["install"].append(app)
+
     if isinstance(flatpaks, list):
         for fp in flatpaks:
             if not isinstance(fp, str):

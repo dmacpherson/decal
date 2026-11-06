@@ -1,4 +1,6 @@
 {"keys": {
+  "prefer": {"type": "names", "values": ["flatpak", "distro", "brew"], "default": ["flatpak", "distro", "brew"]},
+  "install": {"type": "names", "default": []},
   "flatpaks": {"type": "names", "default": []},
   "packages": {"type": "names", "default": []},
   "purge-data": {"type": "bool", "default": false},
