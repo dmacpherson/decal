@@ -1,0 +1,3 @@
+{"keys": {
+  "install": {"type": "names", "values": ["wireguard", "openvpn", "openconnect"], "default": []}
+}}
