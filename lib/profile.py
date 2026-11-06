@@ -177,6 +177,9 @@ def check(sec, key, spec, v, pdir):
         for x in v:
             if not rule_ok(t[:-1], x):
                 raise ProfileError(f"profile.toml: [{sec}] {key}: {x!r}: expected {expected(t[:-1], x)}")
+            if "values" in spec and x not in spec["values"]:
+                raise ProfileError(f"profile.toml: [{sec}] {key}: {x!r}: expected one of "
+                                   + ", ".join(repr(y) for y in spec["values"]))
         return v
     if t == "globs-or-glob":
         return check(sec, key, dict(spec, type="globs"), [v] if isinstance(v, str) else v, pdir)

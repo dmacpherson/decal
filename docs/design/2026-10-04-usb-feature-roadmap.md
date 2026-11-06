@@ -223,6 +223,12 @@ in memory only); the stick's read key, GITHUB_TOKEN, GH_TOKEN and the PC's gh lo
   - a per-module or per-item override;
   - the default order, which should match today's behaviour so existing profiles don't change;
   - how `status` reports where something came from.
+- vpn: Proton signs each Fedora release's repo with a new key; decal pins them (`modules/vpn/protonvpn.sh`). Upgrading
+  to a release decal has no key for yet fails on Proton's packages until `decal add vpn` runs with a newer decal: add
+  each new key when Proton publishes it (ahead of the release).
+- vpn: an end-to-end container run with the real Tailscale/NetBird/Proton repos (`tests/containers`), opt-in like the
+  others (needs the network).
+- vpn: NetBird and Proton VPN on Arch (AUR only today); ZeroTier, Mullvad if anyone asks.
 
 ## The maintainer's own stick (works today, keep it working)
 

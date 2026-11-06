@@ -14,3 +14,5 @@ txn_hooks_add() {
 
 _pkg_del_check() { local out; out=$(pacman -Rp -- "$@" 2>&1 >/dev/null) || { echo "$out" | tr '\n' ' '; return 1; }; }
 PKG_MAP[docker-engine]=docker
+PKG_MAP[nm-openvpn]=networkmanager-openvpn
+PKG_MAP[nm-openconnect]=networkmanager-openconnect

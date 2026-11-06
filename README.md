@@ -104,6 +104,7 @@ opens. Run `decal usb` again to update the stick.
 | claude | Claude Code (CLI) and the Claude desktop app (Linux beta: Debian/Ubuntu only) |
 | tools | Command-line tools from their official installers (uv), updated on every apply |
 | ollama | Ollama (local AI models) from Homebrew, GPU build (integrated GPUs too, on machines without a discrete one), running as your user, plus your models |
+| vpn | VPN tools, any of: Tailscale (service on, you control it without sudo, tray icon at login; Bazzite's own too), NetBird and Proton VPN with their tray apps, WireGuard, OpenVPN, OpenConnect. You sign in on each machine |
 
 ## In depth
 

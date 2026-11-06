@@ -72,3 +72,14 @@ mod_run() {
     eval "$penv"
     source ./module.sh; "$@" )
 }
+# fake_key FILE FPR... : a key file (armored-looking) holding these primary keys; stub_gpg reads it like gpg would.
+# fake_key -b FILE FPR... : the same without the armor (a binary key, e.g. Tailscale's for apt)
+fake_key() {
+  local armor=1; if [[ $1 == -b ]]; then armor=0; shift; fi
+  local f=$1; shift
+  { if (( armor )); then echo '-----BEGIN PGP PUBLIC KEY BLOCK-----'; fi
+    printf 'PUB=%s\n' "$@"
+    if (( armor )); then echo '-----END PGP PUBLIC KEY BLOCK-----'; fi; } > "$f"
+}
+# stub_gpg : gpg --show-keys --with-colons FILE lists FILE's fake_key primary keys (a pub line, then its fpr line)
+stub_gpg() { stub gpg 'k="${*: -1}"; grep -o "PUB=[A-F0-9]*" "$k" | while read -r l; do echo "pub:-:255:22:0000000000000000:1::::::scESC:"; echo "fpr:::::::::${l#PUB=}:"; done'; }
