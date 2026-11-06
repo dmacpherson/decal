@@ -8,7 +8,7 @@ implementation; this file records what's already decided so each part's design s
 |---|---|---|
 | 1 | GitHub sign-in | **Done** (merged 2026-10-04): `docs/design/2026-10-04-github-sign-in-design.md` |
 | 2 | Profile browser | **Done** (merged 2026-10-05): `docs/design/2026-10-04-profile-browser-design.md` |
-| 2b | Profile review ("What this profile will do") | After 2 |
+| 2b | Profile review ("What this profile will do") | **Done** (merged 2026-11-06): `docs/design/2026-11-06-profile-review-design.md` |
 | 3 | USB maker | **Done** (merged 2026-10-05; trial release and real-stick test pending): `docs/design/2026-10-05-usb-maker-design.md` |
 | 4 | Save back from a stick | **Done** (merged 2026-10-05; bounded: designed in chat) |
 
