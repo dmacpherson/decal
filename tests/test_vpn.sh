@@ -164,4 +164,51 @@ reset_ts; echo tailscale > "$PKGDB"; fake_tailscale; mkdir -p "$(dirname "$WANTS
 ln -s /usr/lib/systemd/system/tailscaled.service "$WANTS"; : > "$DECAL_ROOT/usr/lib/systemd/system/tailscaled.service"
 run_mod add >/dev/null 2>&1; run_mod remove >/dev/null 2>&1
 assert_eq "$(readlink "$WANTS")" "/usr/lib/systemd/system/tailscaled.service" "a service you had on stays on"
+
+# --- NetBird
+NBY=AA9C09AA9DEA2F58112B40DFDFFEAB2FD267A61F; NBA=EFE37DF047DF7CCDF1FC54FA83F79AD029778355
+fake_key "$K/nb-yum.asc" "$NBY"; fake_key "$K/nb-apt.asc" "$NBA"
+fake_fetch() { ls_fetch() { echo "ls_fetch $*" >> "$STUBS/calls"
+  case $1 in https://pkgs.netbird.io/yum/repodata/repomd.xml.key) echo "$K/nb-yum.asc";; https://pkgs.netbird.io/debian/public.key) echo "$K/nb-apt.asc";; *) return 1;; esac; }; }
+AUTO="$XDG_CONFIG_HOME/autostart/netbird-ui.desktop"
+reset_nb() { rm -rf "$DECAL_STATE" "$DECAL_USER_STATE" "$DECAL_ROOT/etc" "$AUTO" "$STUBS/netbird"; : > "$PKGDB"; : > "$STUBS/calls"; }
+prof 'install = ["netbird"]'
+# Fedora: NetBird's repo and both packages; its package turns the service on itself; the UI at login
+reset_nb; export DECAL_PLATFORM=fedora; stub netbird
+stub systemctl 'case "$*" in *"is-enabled --quiet netbird"*) exit 0;; *is-enabled*) exit 1;; esac; exit 0'
+out=$(run_mod add 2>&1); assert_eq "$?" "0" "netbird: rc"
+assert_contains "$(cat "$DECAL_ROOT/etc/yum.repos.d/netbird.repo")" "baseurl=https://pkgs.netbird.io/yum/" "netbird: NetBird's repo"
+assert_contains "$(calls)" "dnf install -y -- netbird netbird-ui" "netbird: both packages"
+assert_not_contains "$(calls)" "netbird service install" "netbird: the package already turned its service on"
+assert_contains "$(cat "$AUTO")" "Exec=netbird-ui" "netbird: the tray app at login"
+assert_contains "$out" "sign in from the NetBird icon" "netbird: says what to do next"
+: > "$STUBS/calls"; out=$(run_mod remove 2>&1)
+assert_contains "$(calls)" "dnf remove -y -- netbird netbird-ui" "netbird: remove: packages"
+assert_nofile "$AUTO" "netbird: remove: login entry"
+assert_nofile "$DECAL_ROOT/etc/yum.repos.d/netbird.repo" "netbird: remove: repo"
+assert_contains "$out" "NetBird dashboard" "netbird: remove: says the machine is still listed there"
+# Fedora Atomic after the reboot: the service isn't on yet (the package couldn't do it while layering): decal does it
+reset_nb; export DECAL_PLATFORM=fedora-atomic; printf 'netbird\nnetbird-ui\n' > "$PKGDB"; stub netbird
+stub systemctl 'case "$*" in *is-enabled*) exit 1;; esac; exit 0'
+run_mod add >/dev/null 2>&1
+assert_contains "$(calls)" "netbird service install" "atomic: decal installs the service"
+assert_contains "$(calls)" "netbird service start" "atomic: and starts it"
+: > "$STUBS/calls"; run_mod remove >/dev/null 2>&1
+assert_contains "$(calls)" "netbird service uninstall" "atomic: remove takes the service away"
+# your own login entry stays
+reset_nb; export DECAL_PLATFORM=fedora; stub netbird; mkdir -p "$(dirname "$AUTO")"; echo mine > "$AUTO"
+run_mod add >/dev/null 2>&1; run_mod remove >/dev/null 2>&1
+assert_eq "$(cat "$AUTO")" "mine" "netbird: your own login entry is never removed"
+# Debian: NetBird's apt repo and key
+reset_nb; export DECAL_PLATFORM=debian; stub netbird; run_mod add >/dev/null 2>&1
+assert_eq "$(cat "$DECAL_ROOT/etc/apt/sources.list.d/netbird.list")" "deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.asc] https://pkgs.netbird.io/debian stable main" "debian: NetBird's repo"
+run_mod remove >/dev/null 2>&1
+# Arch: only in the AUR: skipped with a word, the rest of the run goes on
+reset_nb; export DECAL_PLATFORM=arch; prof 'install = ["netbird", "wireguard"]'
+out=$(run_mod add 2>&1); assert_eq "$?" "0" "arch: rc"
+assert_contains "$out" "only the AUR" "arch: says why NetBird is skipped"
+assert_contains "$(calls)" "wireguard-tools" "arch: the rest installed"
+assert_eq "$(run_mod status 2>/dev/null)" "installed (netbird: not available on Arch, wireguard)" "arch: status counts the skip as done"
+run_mod remove >/dev/null 2>&1
+stub systemctl 'case "$*" in *is-enabled*) exit 1;; esac; exit 0'
 t_done
