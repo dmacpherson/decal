@@ -1,0 +1,7 @@
+{"keys": {
+  "authorized-keys": {"type": "strings", "default": []},
+  "known-hosts": {"type": "strings", "default": []},
+  "config": {"type": "path", "default": ""},
+  "config-lines": {"type": "strings", "default": []},
+  "hosts.*": {"type": "string"}
+}}

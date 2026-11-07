@@ -104,6 +104,9 @@ opens. Run `decal usb` again to update the stick.
 | claude | Claude Code (CLI) and the Claude desktop app (Linux beta: Debian/Ubuntu only) |
 | tools | Command-line tools from their official installers (uv), updated on every apply |
 | ollama | Ollama (local AI models) from Homebrew, GPU build (integrated GPUs too, on machines without a discrete one), running as your user, plus your models |
+| vpn | VPN tools, any of: Tailscale (service on, you control it without sudo, tray icon at login; Bazzite's own too), NetBird and Proton VPN with their tray apps, WireGuard, OpenVPN, OpenConnect. You sign in on each machine |
+| git | Git user identity, default branch, signing keys, and core workflow preferences |
+| ssh | SSH client configuration, public authorized keys, known host keys, and host blocks |
 
 ## In depth
 
@@ -113,6 +116,7 @@ The menu runs these same commands and shows them before it does anything.
 
 ```bash
 decal use ~/my-profile            # make it the active profile, without applying anything
+decal review ~/my-profile         # inspect what a profile will install, download, or change (trust signals)
 decal apply ~/my-profile          # a folder, a .tar.gz/.zip, owner/repo or a GitHub link, an archive link, a git URL: becomes the active profile, then applied (never removes anything)
 decal profiles                    # the profiles decal can see: yours on GitHub, stamps here, USB sticks, recently used
 decal new decal-work --from empty # a new profile: from this machine (default), a copy, or a starter; --to github|file|stick[:NAME]

@@ -131,3 +131,81 @@ pkg_restore() {
 # _pkg_rm removes exactly the named packages (unlike _pkg_del, no autoremove/purge): it's what _pkg_del_check simulated.
 _pkg_uninstall_names() { _pkg_rm "$@" >&2 || return 1; printf '%s\n' "$@"; }
 _pkg_restore_names() { _pkg_add "$@"; }
+
+# --- vendor package repositories (apt, dnf, rpm-ostree): keys pinned by fingerprint, recorded so remove takes exactly them
+# _key_fpr FILE : the fingerprint of FILE's one primary key; fails on none or several (a second key would be trusted too)
+_key_fpr() {
+  gpg --batch --show-keys --with-colons "$1" 2>/dev/null \
+    | awk -F: '/^pub:/ {n++; want=1; next} want && /^fpr:/ {fpr=$10; want=0} END {if (n != 1) exit 1; print fpr}'
+}
+_ARMOR='-----BEGIN PGP PUBLIC KEY BLOCK-----'
+# repo_add NAME --key URL FPR [--key URL FPR]... [--apt LINE] [--dnf BASEURL] [--repo-gpgcheck]
+#   apt: the (first) key to /usr/share/keyrings/NAME-archive-keyring.asc|.gpg (armored|binary: apt goes by the
+#   extension), LINE to /etc/apt/sources.list.d/NAME.list (KEYRING in LINE stands for the key's path).
+#   dnf, rpm-ostree: each key to /etc/pki/rpm-gpg/decal-NAME-FPR.asc, /etc/yum.repos.d/NAME.repo using only those
+#   (gpgkey=file://: never fetched again from the internet). A changed key list rewrites a repo decal added.
+# Each key must have its pinned fingerprint, or nothing is written. A NAME repository decal didn't add (by hand, or
+# the vendor's own package) is used as is. Arch: nothing to do.
+repo_add() {
+  local name=$1 apt="" dnf="" rgc=0 urls=() fprs=(); shift
+  while (( $# )); do
+    case $1 in
+      --key) urls+=("$2"); fprs+=("$3"); shift 3 ;;
+      --apt) apt=$2; shift 2 ;;
+      --dnf) dnf=$2; shift 2 ;;
+      --repo-gpgcheck) rgc=1; shift ;;
+      *) die "repo_add: unknown option $1" ;;
+    esac
+  done
+  local rec="$LS_STATE/repos/$name" src kps=() body="" i
+  case $PLATFORM in
+    debian) [[ -n $apt ]] || return 0; src=/etc/apt/sources.list.d/$name.list ;;
+    fedora|fedora-atomic) [[ -n $dnf ]] || return 0; src=/etc/yum.repos.d/$name.repo ;;
+    *) return 0 ;;
+  esac
+  if [[ ! -e $rec ]] && [[ -e $(sys_path "$src") || -e $(sys_path "/etc/apt/sources.list.d/$name.sources") ]]; then
+    info "using the $name package repository already set up on this system"; return 0
+  fi
+  if [[ $PLATFORM == debian ]]; then
+    [[ ! -e $rec ]] || return 0
+  else
+    for i in "${!fprs[@]}"; do kps+=("/etc/pki/rpm-gpg/decal-$name-${fprs[$i]}.asc"); done
+    body=$(printf '[%s]\nname=%s (added by decal)\nbaseurl=%s\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=%s\ngpgkey=%s' \
+      "$name" "$name" "$dnf" "$rgc" "$(printf 'file://%s\n' "${kps[@]}" | paste -sd' ')")
+    if [[ -e $rec && $(cat "$(sys_path "$src")" 2>/dev/null) == "$body" ]]; then return 0; fi
+  fi
+  step "adding the $name package repository"
+  local dl=() k
+  for i in "${!urls[@]}"; do
+    k=$(ls_fetch "${urls[$i]}") || die "could not download the $name signing key from ${urls[$i]}: nothing added"
+    if [[ $LS_DRY_RUN != 1 ]]; then
+      if ! have gpg; then pkg_install "repo-$name" gnupg; fi
+      [[ $(_key_fpr "$k") == "${fprs[$i]}" ]] \
+        || die "the signing key from ${urls[$i]} isn't the one with $name's fingerprint ${fprs[$i]}: nothing added"
+      if [[ $PLATFORM != debian ]] && ! grep -qF -- "$_ARMOR" "$k"; then
+        die "the signing key from ${urls[$i]} isn't an armored key: nothing added"
+      fi
+    fi
+    dl+=("$k")
+  done
+  if [[ -e $rec ]]; then _repo_files_rm "$name"; fi   # a changed key list: the old files go first
+  if [[ $PLATFORM == debian ]]; then
+    local ext=gpg; if [[ $LS_DRY_RUN == 1 ]] || grep -qF -- "$_ARMOR" "${dl[0]}"; then ext=asc; fi
+    kps=("/usr/share/keyrings/$name-archive-keyring.$ext"); body=${apt//KEYRING/${kps[0]}}
+  fi
+  printf '%s\n' "${kps[@]}" "$src" | swrite "$rec"   # the record first: an interrupted add can still be undone
+  for i in "${!kps[@]}"; do
+    if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] write $(sys_path "${kps[$i]}") ($name's signing key)"
+    else swrite "$(sys_path "${kps[$i]}")" < "${dl[$i]}"; fi
+  done
+  printf '%s\n' "$body" | swrite "$(sys_path "$src")"
+  if [[ $PLATFORM == debian ]]; then rm -f "${LS_RUNTMP:-/nonexistent}/apt-updated"; fi   # the backend refreshes its lists before the next install
+}
+_repo_files_rm() {   # NAME : the files repo_add recorded for NAME, and the record
+  local rec="$LS_STATE/repos/$1" p
+  [[ -r $rec ]] || return 0
+  while IFS= read -r p; do if [[ -n $p ]]; then srun rm -f "$(sys_path "$p")"; fi; done < "$rec"
+  srun rm -f "$rec"
+}
+# repo_remove NAME : everything repo_add put in place for NAME (the gnupg it installed too)
+repo_remove() { _repo_files_rm "$1"; pkg_remove "repo-$1"; }

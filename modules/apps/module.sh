@@ -6,15 +6,45 @@ DEF_PREV="$LS_USER_STATE/apps-defaults.prev"
 MANAGED="$LS_STATE/apps/managed"
 REMOTE_REC="$LS_STATE/apps/remote"   # the Flatpak remote decal added (none when it was already there)
 REMOVED_FP="$LS_STATE/apps/removed-flatpaks"
+PREFER_REC="$LS_STATE/apps/prefer-sources"
+BREW_REC="$LS_USER_STATE/apps.brew"
 SHOW_MARK="# decal: shown by [apps] show (decal removes this copy when the app leaves the list)"
+
+_resolve_app() {
+  local app=$1 src
+  for src in "${P_prefer[@]}"; do
+    case $src in
+      flatpak)
+        if _fp_present "$app" || flatpak remote-info --system -- "$P_remote" "$app" >/dev/null 2>&1; then
+          echo "flatpak"; return 0
+        fi ;;
+      distro)
+        if _pkg_present "$app" || pkg_known "$app"; then
+          echo "distro"; return 0
+        fi ;;
+      brew)
+        if have brew && brew info "$app" >/dev/null 2>&1; then
+          echo "brew"; return 0
+        fi ;;
+    esac
+  done
+  return 1
+}
+
+_recorded_source() {
+  local app=$1
+  [[ -r $PREFER_REC ]] || return 1
+  awk -v a="$app" '$1==a {print $2; exit}' "$PREFER_REC"
+}
+
 _contradictions() {
   local id
   for id in "${P_remove_flatpaks[@]}"; do
-    if printf '%s\n' "${P_flatpaks[@]}" | grep -qxF "$id"; then die "$id is both in flatpaks and remove-flatpaks"; fi
+    if printf '%s\n' "${P_flatpaks[@]}" "${P_install[@]}" | grep -qxF "$id"; then die "$id is both in flatpaks and remove-flatpaks"; fi
     if (( ${#P_defaults[@]} )) && printf '%s\n' "${P_defaults[@]}" | grep -qxF "$id"; then die "$id is a default app and in remove-flatpaks"; fi
   done
   for id in "${P_remove_packages[@]}"; do
-    if printf '%s\n' "${P_packages[@]}" | grep -qxF "$id"; then die "$id is both in packages and remove-packages"; fi
+    if printf '%s\n' "${P_packages[@]}" "${P_install[@]}" | grep -qxF "$id"; then die "$id is both in packages and remove-packages"; fi
   done
 }
 _unwanted_add() {
@@ -132,15 +162,43 @@ module_add() {
     echo "$P_remote" | swrite "$REMOTE_REC"   # recorded first: an interrupted add still gets undone
   fi
   srun flatpak remote-add --system --if-not-exists -- "$P_remote" "$P_remote_url"
+
+  local prefer_fp=() prefer_distro=() prefer_brew=() app src
+  for app in "${P_install[@]}"; do
+    src=$(_recorded_source "$app") || src=""
+    if [[ -z $src ]]; then
+      src=$(_resolve_app "$app") || { warn "$app: not found in any preferred source (${P_prefer[*]}); skipped"; continue; }
+      state_append "$PREFER_REC" "$app $src"
+    fi
+    case $src in
+      flatpak) prefer_fp+=("$app") ;;
+      distro) prefer_distro+=("$app") ;;
+      brew) prefer_brew+=("$app") ;;
+    esac
+  done
+
   local missing=() id
-  for id in "${P_flatpaks[@]}"; do _fp_present "$id" || missing+=("$id"); done
+  local all_fp=("${P_flatpaks[@]}" "${prefer_fp[@]}")
+  for id in "${all_fp[@]}"; do _fp_present "$id" || missing+=("$id"); done
   if (( ${#missing[@]} )); then
     # only what decal installs is decal's (an app you already had is never uninstalled by remove); recorded first,
     # so an install stopped halfway is still undone (remove skips the ones that never got in)
     for id in "${missing[@]}"; do state_append "$MANAGED" "$id"; done
     step "installing ${missing[*]} from Flathub"; srun flatpak install --system --noninteractive -y -- "$P_remote" "${missing[@]}"
   fi
-  if (( ${#P_packages[@]} )); then pkg_install apps "${P_packages[@]}"; fi
+
+  local all_pkg=("${P_packages[@]}" "${prefer_distro[@]}")
+  if (( ${#all_pkg[@]} )); then pkg_install apps "${all_pkg[@]}"; fi
+
+  for app in "${prefer_brew[@]}"; do
+    if have brew && ! brew list "$app" >/dev/null 2>&1; then
+      if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] brew install $app"; continue; fi
+      step "installing $app from Homebrew"
+      run brew install "$app" || warn "could not install $app from Homebrew"
+      mkdir -p "$LS_USER_STATE"; rec_add "$BREW_REC" "$app"
+    fi
+  done
+
   _unwanted_add
   _defaults_add
   _show_add
@@ -166,6 +224,15 @@ module_remove() {
     srun flatpak remote-delete --system -- "$(cat "$REMOTE_REC")" 2>/dev/null || info "$(cat "$REMOTE_REC") is still in use: kept"
     srun rm -f "$REMOTE_REC"
   fi
+  if [[ -r $BREW_REC ]]; then
+    while IFS= read -r app; do
+      [[ -n $app ]] || continue
+      step "uninstalling $app from Homebrew"
+      run brew uninstall "$app" || true
+    done < "$BREW_REC"
+    rm -f "$BREW_REC"
+  fi
+  if [[ -e $PREFER_REC ]]; then srun rm -f "$PREFER_REC"; fi
   _unwanted_restore
   pkg_remove apps
 }
@@ -187,8 +254,19 @@ module_drop() {
   for id in "${P_show[@]}"; do f="$(_show_dir)/$id.desktop"; if _show_ours "$f"; then run rm -f "$f"; fi; done
 }
 module_status() {
-  local id have_n=0 total=0 missing=() hidden=() base notes=()
-  for id in "${P_flatpaks[@]}"; do total=$((total+1)); if _fp_present "$id"; then have_n=$((have_n+1)); else missing+=("$id"); fi; done
+  local id have_n=0 total=0 missing=() hidden=() base notes=() src
+  local all_fp=("${P_flatpaks[@]}")
+  for id in "${P_install[@]}"; do
+    total=$((total+1))
+    src=$(_recorded_source "$id") || src=$(_resolve_app "$id") || src=""
+    case $src in
+      flatpak) if _fp_present "$id"; then have_n=$((have_n+1)); else missing+=("$id"); fi ;;
+      distro) if _pkg_present "$id"; then have_n=$((have_n+1)); else missing+=("$id"); fi ;;
+      brew) if have brew && brew list "$id" >/dev/null 2>&1; then have_n=$((have_n+1)); else missing+=("$id"); fi ;;
+      *) missing+=("$id") ;;
+    esac
+  done
+  for id in "${all_fp[@]}"; do total=$((total+1)); if _fp_present "$id"; then have_n=$((have_n+1)); else missing+=("$id"); fi; done
   for id in "${P_show[@]}"; do _shown "$id" || hidden+=("$id"); done
   if (( total == have_n )); then base=installed; elif (( have_n == 0 )); then base=not-installed; else base=partial; notes+=("missing: ${missing[*]}"); fi
   if (( ${#hidden[@]} )); then [[ $base != installed ]] || base=partial; notes+=("not shown: ${hidden[*]}"); fi

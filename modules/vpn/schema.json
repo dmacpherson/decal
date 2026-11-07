@@ -1,0 +1,3 @@
+{"keys": {
+  "install": {"type": "names", "values": ["tailscale", "netbird", "protonvpn", "wireguard", "openvpn", "openconnect"], "default": []}
+}}

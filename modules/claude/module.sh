@@ -3,11 +3,12 @@ MODULE_DESC="Claude Code (CLI) and the Claude desktop app (Linux beta: Debian/Ub
 MODULE_NEEDS_ROOT=1   # the desktop app's apt repository and package
 # CLI: Anthropic's installer, then claude updates itself. Desktop: Anthropic's apt repository, updated with the system.
 CLI_REC="$LS_USER_STATE/claude.cli"
-KEY=/usr/share/keyrings/claude-desktop-archive-keyring.asc
-LIST=/etc/apt/sources.list.d/claude-desktop.list
 KEY_URL=https://downloads.claude.ai/claude-desktop/key.asc
 KEY_FPR=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE   # Anthropic's signing key, as published in the install docs
-REPO="deb [arch=amd64,arm64 signed-by=$KEY] https://downloads.claude.ai/claude-desktop/apt/stable stable main"
+REPO="deb [arch=amd64,arm64 signed-by=KEYRING] https://downloads.claude.ai/claude-desktop/apt/stable stable main"
+# where decal before the shared repo helper put them (state: $ST/repo), still removed for those installs
+OLD_KEY=/usr/share/keyrings/claude-desktop-archive-keyring.asc
+OLD_LIST=/etc/apt/sources.list.d/claude-desktop.list
 ST="$LS_STATE/claude"
 
 _cli_add() {   # an existing claude (installed any way) is used as is
@@ -28,27 +29,15 @@ _desktop_add() {
     warn "Claude Desktop for Linux is a beta for Debian and Ubuntu only: skipped on this system (the CLI works everywhere)"
     return 0
   fi
-  if [[ ! -e $(sys_path "$LIST") ]]; then
-    step "adding Anthropic's apt repository"
-    local key; key=$(ls_fetch "$KEY_URL") || die "could not download Anthropic's signing key from $KEY_URL"
-    if [[ $LS_DRY_RUN != 1 ]]; then
-      have gpg || pkg_install claude gnupg
-      gpg --show-keys --with-colons "$key" 2>/dev/null | grep -q "^fpr:*$KEY_FPR:" \
-        || die "the signing key from $KEY_URL doesn't have Anthropic's fingerprint $KEY_FPR: not installed"
-    fi
-    : | swrite "$ST/repo"   # the record first: an interrupted add can still be undone
-    if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] write $(sys_path "$KEY") (Anthropic's signing key)"
-    else swrite "$(sys_path "$KEY")" < "$key"; fi
-    printf '%s\n' "$REPO" | swrite "$(sys_path "$LIST")"
-    rm -f "${LS_RUNTMP:-/nonexistent}/apt-updated"   # the backend refreshes its lists before the next install
-  fi
+  repo_add claude-desktop --key "$KEY_URL" "$KEY_FPR" --apt "$REPO"
   pkg_install claude claude-desktop
   if [[ $P_cowork == true ]]; then _kvm_add; else _kvm_remove; fi
 }
 _desktop_remove() {
   _kvm_remove
   pkg_remove claude
-  if [[ -e $ST/repo ]]; then srun rm -f "$(sys_path "$LIST")" "$(sys_path "$KEY")" "$ST/repo"; fi
+  repo_remove claude-desktop
+  if [[ -e $ST/repo ]]; then srun rm -f "$(sys_path "$OLD_LIST")" "$(sys_path "$OLD_KEY")" "$ST/repo"; fi
 }
 # Cowork runs its tasks in a VM: it needs /dev/kvm and /dev/vhost-vsock, which the kvm group opens
 _kvm_add() {

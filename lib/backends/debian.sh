@@ -25,3 +25,5 @@ _pkg_del_check() {
   echo "${extra% }"
 }
 PKG_MAP[docker-engine]=docker.io
+PKG_MAP[nm-openvpn]=network-manager-openvpn-gnome
+PKG_MAP[nm-openconnect]=network-manager-openconnect-gnome
