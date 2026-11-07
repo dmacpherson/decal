@@ -21,6 +21,13 @@ assert_contains "$(calls)" "brew install --cask ollama-binary" "GPU build (Homeb
 assert_contains "$(cat "$UNIT")" "ExecStart=$B/bin/ollama serve" "service runs Homebrew's stable ollama link (survives upgrades)"
 assert_contains "$(calls)" "systemctl --user enable --now decal-ollama.service" "service enabled for the user"
 assert_not_contains "$(cat "$UNIT")" "OLLAMA_IGPU_ENABLE" "a discrete GPU: integrated GPU left out"
+# Homebrew upgrades Ollama in the background (uupd or decal's timer) and deletes the old version's files; a path
+# unit watches the Caskroom and restarts the server once the upgrade is done (a running 0.35 could not start models)
+UP="$XDG_CONFIG_HOME/systemd/user/decal-ollama-upgrade"; H="$XDG_DATA_HOME/decal/ollama-restart-after-upgrade"
+assert_contains "$(cat "$UP.path" 2>/dev/null)" "PathChanged=$B/Caskroom/ollama-binary" "path unit watches the cask's Caskroom folder"
+assert_contains "$(cat "$UP.service" 2>/dev/null)" "ExecStart=$H $B/bin/ollama $B/Caskroom/ollama-binary decal-ollama.service" "...and runs the restart helper"
+assert_file "$H" "helper copied outside decal's app folder (stays put when decal updates or runs from a checkout)"
+assert_contains "$(calls)" "systemctl --user enable --now decal-ollama-upgrade.path" "path unit enabled"
 # a laptop with only an integrated GPU: Ollama is told to use it, and the running service restarts with it
 echo INTEGRATED > "$STUBS/gpus"
 assert_contains "$(run_mod status 2>/dev/null)" "service settings out of date" "status notices the service needs the iGPU setting"
@@ -67,6 +74,8 @@ assert_contains "$(calls)" "systemctl --user stop decal-ollama-models" "a runnin
 assert_contains "$(calls)" "systemctl --user disable --now decal-ollama.service" "service stopped"
 assert_nofile "$UNIT" "unit removed"
 assert_contains "$(calls)" "brew uninstall --cask ollama-binary" "ollama uninstalled"
+assert_contains "$(calls)" "systemctl --user disable --now decal-ollama-upgrade.path" "upgrade watch stopped"
+assert_nofile "$UP.path" "path unit removed"; assert_nofile "$UP.service" "its service removed"; assert_nofile "$H" "helper removed"
 assert_file "$HOME/.ollama/models/x" "models kept"
 assert_contains "$out" ".ollama" "says where the models are and how to delete them"
 # an ollama that was already there (installed some other way) is used as is and never uninstalled
@@ -74,10 +83,12 @@ printf '#!/bin/sh\necho "ollama $*" >> "%s/calls"\n' "$STUBS" > "$B/bin/ollama";
 : > "$STUBS/calls"; run_mod add >/dev/null 2>&1; run_mod remove >/dev/null 2>&1
 assert_not_contains "$(calls)" "brew install" "existing ollama: not installed again"
 assert_not_contains "$(calls)" "brew uninstall" "existing ollama: never uninstalled"
+assert_nofile "$UP.path" "existing ollama: no upgrade watch (decal didn't install it)"
 # gpu = false: the CPU-only formula
 rm -f "$B/bin/ollama"; export PATH="${PATH#"$B/bin:"}"; sed -i 's/^models = \["llama3.2"\]$/&\ngpu = false/' "$PROFILE_DIR/profile.toml"
 : > "$STUBS/calls"; run_mod add >/dev/null 2>&1
 assert_contains "$(calls)" "brew install ollama" "gpu = false: CPU-only formula"
+assert_contains "$(cat "$UP.path" 2>/dev/null)" "PathChanged=$B/Cellar/ollama" "formula: watches its Cellar folder"
 # the background job itself: waits for the server, downloads one model at a time, keeps going past a failure
 J="$REPO/modules/ollama/pull-models.sh"; F="$T_TMP/fake-ollama"
 printf '#!/bin/sh\necho "ollama $*" >> "%s/calls"\n[ "$1 $2" = "pull bad" ] && { echo "Error: pull model manifest: file does not exist"; exit 1; }\nexit 0\n' "$STUBS" > "$F"; chmod +x "$F"
@@ -88,6 +99,25 @@ assert_contains "$out" "failed: bad: Error: pull model manifest" "says which mod
 assert_eq "$rc" "1" "job fails when a model failed (decal starts it again next run)"
 printf '#!/bin/sh\nexit 1\n' > "$F"; out=$(DECAL_OLLAMA_WAIT=1 bash "$J" "$F" llama3.2 2>&1); rc=$?
 assert_eq "$rc" "1" "server never answers: job fails"; assert_contains "$out" "not answering" "and says so"
+# the restart helper: restarts only when the running server's binary isn't the installed one (deleted/old)
+R="$REPO/modules/ollama/restart-after-upgrade.sh"; RB="$T_TMP/rb"; mkdir -p "$RB/Cask/1.1/bin" "$RB/bin" "$RB/proc/42"
+touch "$RB/Cask/1.1/bin/ollama"; chmod +x "$RB/Cask/1.1/bin/ollama"; ln -sf "$RB/Cask/1.1/bin/ollama" "$RB/bin/ollama"
+stub systemctl 'case "$*" in *show*MainPID*) cat "$STUBS/mainpid";; esac; exit 0'
+rh() { DECAL_PROC="$RB/proc" DECAL_OLLAMA_SETTLE=0 DECAL_OLLAMA_POLL=0 bash "$R" "$RB/bin/ollama" "$RB/Cask" decal-ollama.service 2>&1; }
+echo 42 > "$STUBS/mainpid"; ln -sfn "$RB/Cask/1.0/bin/ollama (deleted)" "$RB/proc/42/exe"; : > "$STUBS/calls"; out=$(rh)
+assert_contains "$(calls)" "systemctl --user restart decal-ollama.service" "server on the deleted old version: restarted"
+assert_contains "$out" "upgraded" "...and says why"
+ln -sfn "$RB/Cask/1.1/bin/ollama" "$RB/proc/42/exe"; : > "$STUBS/calls"; rh >/dev/null
+assert_not_contains "$(calls)" "restart" "already on the installed version: left alone"
+echo 0 > "$STUBS/mainpid"; ln -sfn "$RB/Cask/1.0/bin/ollama" "$RB/proc/42/exe"; : > "$STUBS/calls"; rh >/dev/null
+assert_not_contains "$(calls)" "restart" "server not running: left alone (its next start is the new version)"
+# an upgrade still going (brew's *.upgrading folder): waits for it to finish before restarting
+echo 42 > "$STUBS/mainpid"; mkdir -p "$RB/Cask/1.0.upgrading"; : > "$STUBS/calls"
+( sleep 0.3; rmdir "$RB/Cask/1.0.upgrading"; echo gone > "$STUBS/upgrade-done" ) &
+DECAL_OLLAMA_POLL=0.1 DECAL_PROC="$RB/proc" DECAL_OLLAMA_SETTLE=0 bash "$R" "$RB/bin/ollama" "$RB/Cask" decal-ollama.service >/dev/null 2>&1; wait
+assert_file "$STUBS/upgrade-done" "upgrade finished before the helper returned"
+assert_contains "$(calls)" "systemctl --user restart decal-ollama.service" "...then restarted"
+stub systemctl 'case "$*" in *is-active*decal-ollama*) exit 0;; *is-active*) exit 3;; esac'
 # no Homebrew (and no Ollama): skipped with a word, the run goes on (audit batch 2)
 out=$( ( mod_run_pre() { have() { [[ $1 != brew && $1 != ollama ]] && command -v "$1" >/dev/null 2>&1; }; }; mod_run ollama module_add ) 2>&1); assert_eq "$?" "0" "no Homebrew: not a failure"
 assert_contains "$out" "skipped" "...says it's skipped"
