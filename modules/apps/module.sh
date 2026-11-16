@@ -1,6 +1,7 @@
 # shellcheck shell=bash disable=SC2034,SC2154  # sourced: vars read by the runner; helpers/vars from lib/ and the profile
 MODULE_DESC="Software (Flathub + native) and default apps, from your profile's [apps]"
 MODULE_NEEDS_ROOT=1
+export HOMEBREW_NO_SUDO=1
 BRAVE_STATE="$HOME/.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser/Local State"
 DEF_PREV="$LS_USER_STATE/apps-defaults.prev"
 MANAGED="$LS_STATE/apps/managed"
@@ -194,8 +195,11 @@ module_add() {
     if have brew && ! brew list "$app" >/dev/null 2>&1; then
       if [[ $LS_DRY_RUN == 1 ]]; then log "[dry-run] brew install $app"; continue; fi
       step "installing $app from Homebrew"
-      run brew install "$app" || warn "could not install $app from Homebrew"
-      mkdir -p "$LS_USER_STATE"; rec_add "$BREW_REC" "$app"
+      if run brew install "$app"; then
+        mkdir -p "$LS_USER_STATE"; rec_add "$BREW_REC" "$app"
+      else
+        warn "could not install $app from Homebrew"
+      fi
     fi
   done
 
@@ -230,17 +234,34 @@ module_remove() {
       step "uninstalling $app from Homebrew"
       run brew uninstall "$app" || true
     done < "$BREW_REC"
-    rm -f "$BREW_REC"
+    run rm -f "$BREW_REC"
   fi
   if [[ -e $PREFER_REC ]]; then srun rm -f "$PREFER_REC"; fi
   _unwanted_restore
   pkg_remove apps
 }
-# remove --only TAG: P_flatpaks / P_show hold only what the tag added; the rest of the module stays
+# remove --only TAG: P_* hold only what the tag added; the rest of the module stays
 MODULE_CAN_DROP=1
 module_drop() {
-  local id f present=()
-  for id in "${P_flatpaks[@]}"; do
+  local id f src present=() drop_fp=("${P_flatpaks[@]}") drop_pkgs=("${P_packages[@]}")
+  for id in "${P_install[@]}"; do
+    src=$(_recorded_source "$id") || continue
+    case $src in
+      flatpak) drop_fp+=("$id") ;;
+      distro) drop_pkgs+=("$id") ;;
+      brew)
+        if [[ -r $BREW_REC ]] && rec_has "$BREW_REC" "$id"; then
+          step "uninstalling $id from Homebrew"
+          run brew uninstall "$id" || true
+          if [[ $LS_DRY_RUN != 1 ]]; then
+            grep -vxF "$id" "$BREW_REC" > "$BREW_REC.t" 2>/dev/null || true
+            if [[ -s $BREW_REC.t ]]; then mv -f "$BREW_REC.t" "$BREW_REC"; else rm -f "$BREW_REC" "$BREW_REC.t"; fi
+          fi
+        fi ;;
+    esac
+    if [[ $LS_DRY_RUN != 1 ]]; then state_drop "$PREFER_REC" "$id $src"; fi
+  done
+  for id in "${drop_fp[@]}"; do
     grep -qxF "$id" "$MANAGED" 2>/dev/null || { info "$id: not installed by decal; left alone"; continue; }
     if _fp_present "$id"; then present+=("$id"); fi
     if [[ $LS_DRY_RUN != 1 ]]; then state_drop "$MANAGED" "$id"; fi
@@ -251,10 +272,11 @@ module_drop() {
     else srun flatpak uninstall --system --noninteractive -y -- "${present[@]}"; fi
     srun flatpak uninstall --system --unused --noninteractive -y
   fi
+  if (( ${#drop_pkgs[@]} )); then pkg_drop_items apps "${drop_pkgs[@]}"; fi
   for id in "${P_show[@]}"; do f="$(_show_dir)/$id.desktop"; if _show_ours "$f"; then run rm -f "$f"; fi; done
 }
 module_status() {
-  local id have_n=0 total=0 missing=() hidden=() base notes=() src
+  local id n have_n=0 total=0 missing=() hidden=() base notes=() src
   local all_fp=("${P_flatpaks[@]}")
   for id in "${P_install[@]}"; do
     total=$((total+1))
@@ -267,6 +289,15 @@ module_status() {
     esac
   done
   for id in "${all_fp[@]}"; do total=$((total+1)); if _fp_present "$id"; then have_n=$((have_n+1)); else missing+=("$id"); fi; done
+  for id in "${P_packages[@]}"; do
+    n=$(_pkg_name "$id"); [[ -n $n ]] || continue
+    total=$((total+1)); if _pkg_present "$n"; then have_n=$((have_n+1)); else missing+=("$id"); fi
+  done
+  for id in "${P_remove_flatpaks[@]}"; do total=$((total+1)); if ! _fp_present "$id"; then have_n=$((have_n+1)); else missing+=("remove:$id"); fi; done
+  for id in "${P_remove_packages[@]}"; do
+    n=$(_pkg_name "$id"); [[ -n $n ]] || continue
+    total=$((total+1)); if ! _pkg_present "$n"; then have_n=$((have_n+1)); else missing+=("remove:$id"); fi
+  done
   for id in "${P_show[@]}"; do _shown "$id" || hidden+=("$id"); done
   if (( total == have_n )); then base=installed; elif (( have_n == 0 )); then base=not-installed; else base=partial; notes+=("missing: ${missing[*]}"); fi
   if (( ${#hidden[@]} )); then [[ $base != installed ]] || base=partial; notes+=("not shown: ${hidden[*]}"); fi

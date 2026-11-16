@@ -108,4 +108,9 @@ assert_eq "$(sort "$DECAL_STATE/pkgs/tst.removed" | tr '\n' ' ')" "base:firefox 
 : > "$STUBS/calls"; pkg_restore tst
 assert_contains "$(calls)" "rpm-ostree override reset firefox" "base package back"
 assert_contains "$(calls)" "rpm-ostree install --allow-inactive htop" "layered package back"
+
+# pkg_known uses dnf -q -C info (cache-only, no unprivileged repo download hang)
+stub dnf 'exit 0'; : > "$STUBS/calls"
+pkg_known ripgrep
+assert_contains "$(calls)" "dnf -q -C info -- ripgrep" "atomic pkg_known uses dnf cache-only (-C)"
 t_done

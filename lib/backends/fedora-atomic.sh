@@ -2,6 +2,7 @@
 # Fedora Atomic (rpm-ostree). /usr is read-only: files are wrapped in a local RPM and layered.
 # shellcheck source=/dev/null
 source "$LS_REPO/lib/backends/fedora.sh"   # PKG_MAP
+_pkg_known() { dnf -q -C info -- "$1" >/dev/null 2>&1; }   # cache-only so unprivileged checks never stall downloading metadata
 txn_hooks_add() { return 0; }   # rpm-ostree writes a new tree; the running /usr is never modified
 
 _ostree_json() { rpm-ostree status --json; }

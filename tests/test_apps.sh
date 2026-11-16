@@ -157,4 +157,59 @@ EOF
 python3 "$REPO/lib/profile.py" check --profile "$PROFILE_DIR" --modules "$REPO/modules" >/dev/null 2>&1
 assert_eq "$?" "2" "invalid prefer source refused"
 
+# brew: sets HOMEBREW_NO_SUDO=1 and failed brew install is not recorded in apps.brew
+rm -rf "$DECAL_STATE" "$DECAL_USER_STATE"; : > "$STUBS/calls"
+cat > "$PROFILE_DIR/profile.toml" <<'EOF'
+[apps]
+prefer = ["brew"]
+install = ["goodbrew", "badbrew"]
+EOF
+stub flatpak 'case "$*" in "remote-add "*) exit 0;; esac; exit 1'; stub rpm 'case "$*" in *"-q --quiet -- flatpak"*) exit 0;; esac; exit 1'; stub dnf 'exit 1'
+stub brew 'case "$*" in
+  "info goodbrew"|"info badbrew") exit 0 ;;
+  "list goodbrew"|"list badbrew") exit 1 ;;
+  "install goodbrew") echo "NO_SUDO=${HOMEBREW_NO_SUDO:-0}" >> "$STUBS/calls"; exit 0 ;;
+  "install badbrew") exit 1 ;;
+esac; exit 1'
+run_mod add >/dev/null 2>&1
+assert_contains "$(calls)" "NO_SUDO=1" "brew install runs with HOMEBREW_NO_SUDO=1"
+assert_contains "$(cat "$DECAL_USER_STATE/apps.brew" 2>/dev/null)" "goodbrew" "successful brew install recorded"
+assert_not_contains "$(cat "$DECAL_USER_STATE/apps.brew" 2>/dev/null)" "badbrew" "failed brew install NOT recorded"
+
+# status checks P_packages
+rm -rf "$DECAL_STATE" "$DECAL_USER_STATE"; : > "$STUBS/calls"
+cat > "$PROFILE_DIR/profile.toml" <<'EOF'
+[apps]
+packages = ["ripgrep"]
+EOF
+stub rpm 'case "$*" in *"-q --quiet -- flatpak"*) exit 0;; *"-q --quiet -- ripgrep"*) exit 1;; esac; exit 1'
+assert_contains "$(run_mod status)" "not-installed" "status reports missing P_packages"
+stub rpm 'exit 0'
+assert_contains "$(run_mod status)" "installed" "status reports installed P_packages"
+
+# drop removes tag P_packages and P_install across flatpak/distro/brew
+rm -rf "$DECAL_STATE" "$DECAL_USER_STATE"; : > "$STUBS/calls"
+cat > "$PROFILE_DIR/profile.toml" <<'EOF'
+[apps]
+prefer = ["flatpak", "distro", "brew"]
+packages = ["keeppkg"]
+
+[apps.dev]
+packages = ["droppkg"]
+install = ["com.dev.App", "devtool", "devbrew"]
+EOF
+stub flatpak 'case "$*" in "remotes --system --show-disabled --columns=name") echo flathub;; "remote-info --system -- flathub com.dev.App") exit 0;; "remote-info "*) exit 1;; "info --system -- "*) exit 1;; esac; exit 0'
+stub rpm 'case "$*" in *"-q --quiet -- flatpak"*) exit 0;; *"-q --quiet -- keeppkg"*) exit 0;; *) exit 1;; esac'
+stub dnf 'case "$*" in "-q info -- devtool") exit 0;; "-q info -- "*) exit 1;; esac; exit 0'
+stub brew 'case "$*" in "info devbrew") exit 0;; "list devbrew") exit 1;; "install devbrew") exit 0;; esac; exit 1'
+DECAL_TAGS=dev run_mod add >/dev/null 2>&1
+stub flatpak 'case "$*" in "info --system -- com.dev.App") exit 0;; "info --system -- "*) exit 1;; esac; exit 0'
+stub rpm 'exit 0'
+stub brew 'case "$*" in "list devbrew") exit 0;; esac; exit 0'
+: > "$STUBS/calls"; DECAL_DROP=dev run_mod drop >/dev/null 2>&1
+assert_contains "$(calls)" "flatpak uninstall --system --noninteractive -y -- com.dev.App" "drop: tag install flatpak uninstalled"
+assert_contains "$(calls)" "dnf remove -y -- droppkg devtool" "drop: tag P_packages and install distro uninstalled"
+assert_contains "$(calls)" "brew uninstall devbrew" "drop: tag install brew uninstalled"
+assert_not_contains "$(calls)" "keeppkg" "drop: base P_packages kept"
+
 t_done

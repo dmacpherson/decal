@@ -51,6 +51,21 @@ pkg_remove() {
   fi
 }
 
+pkg_drop_items() {
+  local owner=$1 f="$LS_STATE/pkgs/$1" p n others="" del=(); shift
+  [[ -r $f ]] || return 0
+  local o; for o in "$LS_STATE"/pkgs/*; do [[ $o == "$f" || ! -r $o ]] || others+=$'\n'"$(cat "$o")"; done
+  for p; do
+    n=$(_pkg_name "$p"); [[ -n $n ]] || continue
+    grep -qxF "$n" "$f" 2>/dev/null || continue
+    grep -qxF "$n" <<<"$others" && continue
+    _pkg_present "$n" && del+=("$n")
+    if [[ $LS_DRY_RUN != 1 ]]; then state_drop "$f" "$n"; fi
+  done
+  (( ${#del[@]} )) && _pkg_del "${del[@]}"
+  return 0
+}
+
 files_install() {
   local owner=$1 src=$2 dest=$3 list=() rel
   # a new destination (e.g. another theme): take the previous files away first
