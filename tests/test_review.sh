@@ -78,6 +78,15 @@ def fake_urlopen(req, timeout=2.0):
     if "extensions.gnome.org" in url and "missing@example.com" in url:
         raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
 
+    if "addons.mozilla.org/api/v5/addons/addon/uBlock0@raymondhill.net" in url:
+        m = mock.MagicMock()
+        m.status = 200
+        m.read.return_value = b'{"name": {"en-US": "uBlock Origin"}, "average_daily_users": 8000000}'
+        m.__enter__.return_value = m
+        return m
+    if "addons.mozilla.org/api/v5/addons/addon/sketchy@example.com" in url:
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
     raise urllib.error.URLError("Network unreachable")
 
 with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
@@ -253,6 +262,17 @@ cli = true
 [icons]
 source = "git+https://untrusted-git.example.com/icons.git"
 theme = "X"
+
+[firefox]
+extensions = ["uBlock0@raymondhill.net"]
+search = "firefox/search.json"
+
+[firefox.dev]
+extensions = ["sketchy@example.com"]
+EOF
+mkdir -p "$P_TAG/firefox"
+cat > "$P_TAG/firefox/search.json" <<'EOF'
+{"add": [{"Name": "Custom", "URLTemplate": "https://sketchy-search.xyz/?q={searchTerms}"}]}
 EOF
 tag_json=$(python3 "$T_TMP/mock_review.py" "$P_TAG" --json --shell-version 46)
 python3 - "$tag_json" <<'PY'
@@ -271,12 +291,16 @@ brews = [x["formula"] for x in r["homebrew"]]
 assert "bat" in brews, brews
 exts = [x["uuid"] for x in r["gnome_extensions"]]
 assert "good@example.com" in exts, exts
+fx_exts = {x["id"]: x for x in r.get("firefox_extensions", [])}
+assert "uBlock0@raymondhill.net" in fx_exts and not fx_exts["uBlock0@raymondhill.net"]["flags"], fx_exts
+assert "sketchy@example.com" in fx_exts and "not on addons.mozilla.org" in fx_exts["sketchy@example.com"]["flags"], fx_exts
 urls = {x["url"]: x["flags"] for x in r["remote_urls"]}
 assert "https://untrusted-git.example.com/icons.git" in urls, urls
 assert any("unrecognized host" in fl for fl in urls["https://untrusted-git.example.com/icons.git"]), urls
 assert "https://astral.sh/uv/install.sh" in urls, urls
 assert "https://claude.ai/install.sh" in urls, urls
+assert "https://sketchy-search.xyz/?q={searchTerms}" in urls, urls
 PY
-assert_eq "$?" "0" "review covers tags, bare install names, git+https URLs, defaults, tools, and claude"
+assert_eq "$?" "0" "review covers tags, bare install names, git+https URLs, defaults, tools, claude, and firefox"
 
 t_done

@@ -169,6 +169,63 @@ assert_eq "$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.ar
   '{"brave": {"new_tab_page": {"show_clock": true}}, "session": {"restore_on_startup": 5}}' "brave: known settings only, no counters or state"
 assert_eq "$(cat "$T_TMP/bs/brave/local-state.json" | tr -d ' \n')" '{"brave":{"origin":{"free_tier_accepted":true}}}' "brave: Origin"
 
+# Firefox: curated non-synced prefs, search.json.mozlz4, containers, chrome/, AMO extensions
+FX="$T_TMP/fxprof"; mkdir -p "$FX/chrome"
+cat > "$FX/prefs.js" <<'EOF'
+user_pref("browser.uiCustomization.state", "{\"placements\":{}}");
+user_pref("sidebar.verticalTabs", true);
+user_pref("doh-rollout.mode", 2);
+user_pref("doh-rollout.doneFirstRun", true);
+user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
+user_pref("app.normandy.user_id", "secret-machine-id");
+user_pref("browser.laterrun.bookkeeping.sessionCount", 99);
+EOF
+python3 - "$FX/search.json.mozlz4" <<'PY'
+import json, struct, sys
+doc = {
+    "version": 12,
+    "metaData": {"defaultEngineId": "ddg", "privateDefaultEngineId": "ddg"},
+    "engines": [
+        {"id": "google", "_name": "Google", "_metaData": {"hidden": True}},
+        {"id": "ddg", "_name": "DuckDuckGo", "_metaData": {}},
+        {"id": "kagi", "_name": "Kagi", "_loadPath": "[https]kagi.com", "_definedAliases": ["@k"],
+         "_urls": [{"type": "text/html", "method": "GET", "template": "https://kagi.com/search?q={searchTerms}"}]},
+    ],
+}
+raw = json.dumps(doc).encode("utf-8")
+n = len(raw)
+hdr = bytes([(min(15, n) << 4)])
+if n >= 15:
+    rem = n - 15
+    hdr += b"\xff" * (rem // 255) + bytes([rem % 255])
+with open(sys.argv[1], "wb") as f:
+    f.write(b"mozLz40\0" + struct.pack("<I", n) + hdr + raw)
+PY
+printf '{"version":4,"identities":[{"name":"Work"}]}\n' > "$FX/containers.json"
+printf '/* css */\n' > "$FX/chrome/userChrome.css"
+cat > "$FX/extensions.json" <<'EOF'
+{"addons":[
+  {"id":"uBlock0@raymondhill.net","location":"app-profile","type":"extension","active":true,"sourceURI":"https://addons.mozilla.org/firefox/downloads/file/1/ublock.xpi"},
+  {"id":"newtab@mozilla.org","location":"app-profile","type":"extension","active":true,"sourceURI":"https://addons.mozilla.org/"},
+  {"id":"{687b884c-72aa-4e7c-8078-2355261de985}","location":"app-profile","type":"theme","active":true}
+]}
+EOF
+fx_out=$(python3 "$REPO/lib/stamp.py" firefox --profile-dir "$FX" --to "$T_TMP/fxs" 2>/dev/null)
+assert_contains "$fx_out" 'prefs = "firefox/prefs.json"' "firefox: prefs stamped"
+assert_contains "$fx_out" 'search = "firefox/search.json"' "firefox: search stamped"
+assert_contains "$fx_out" 'containers = "firefox/containers.json"' "firefox: containers stamped"
+assert_contains "$fx_out" 'chrome = "firefox/chrome"' "firefox: chrome/ stamped"
+assert_contains "$fx_out" 'extensions = ["uBlock0@raymondhill.net"]' "firefox: user AMO extensions only (no themes/built-ins)"
+fx_prefs=$(cat "$T_TMP/fxs/firefox/prefs.json")
+assert_contains "$fx_prefs" "sidebar.verticalTabs" "firefox: non-synced sidebar pref captured"
+assert_not_contains "$fx_prefs" "app.normandy" "firefox: machine id excluded"
+assert_not_contains "$fx_prefs" "doneFirstRun" "firefox: first-run flag excluded"
+fx_search=$(cat "$T_TMP/fxs/firefox/search.json")
+assert_contains "$fx_search" '"default": "DuckDuckGo"' "firefox: search default captured"
+assert_contains "$fx_search" '"Google"' "firefox: hidden engine in remove"
+assert_contains "$fx_search" '"Name": "Kagi"' "firefox: custom engine captured"
+assert_file "$T_TMP/fxs/firefox/chrome/userChrome.css" "firefox: chrome CSS copied"
+
 # apps: flatpak history (installed since, still here; the distro's you removed), layered packages, default apps
 export DECAL_MODULES_DIR="$REPO/modules"
 stub flatpak 'case "$*" in

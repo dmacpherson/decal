@@ -1,0 +1,10 @@
+{"keys": {
+  "profile": {"type": "theme", "default": "default-release"},
+  "prefs": {"type": "path", "default": ""},
+  "search": {"type": "path", "default": ""},
+  "containers": {"type": "path", "default": ""},
+  "handlers": {"type": "path", "default": ""},
+  "chrome": {"type": "path", "default": ""},
+  "policies": {"type": "path", "default": ""},
+  "extensions": {"type": "strings", "default": []}
+}}

@@ -102,6 +102,7 @@ def inspect_profile(profile_dir, shell_version=None, offline=False):
     results = {
         "flatpaks": [],
         "gnome_extensions": [],
+        "firefox_extensions": [],
         "homebrew": [],
         "native_packages": {
             "install": [],
@@ -213,6 +214,30 @@ def inspect_profile(profile_dir, shell_version=None, offline=False):
                 item["note"] = "check unavailable"
         results["gnome_extensions"].append(item)
 
+    # 2b. Firefox add-ons & search/policy URLs
+    fx_sec = _merged_section("firefox")
+    for eid in _str_list(fx_sec, "extensions"):
+        item = {"id": eid, "name": eid, "users": None, "flags": []}
+        if not offline:
+            enc = urllib.parse.quote(eid, safe="@")
+            info = fetch_json(f"https://addons.mozilla.org/api/v5/addons/addon/{enc}/")
+            if info == 404:
+                item["flags"].append("not on addons.mozilla.org")
+            elif isinstance(info, dict):
+                nm = info.get("name")
+                if isinstance(nm, dict) and nm:
+                    item["name"] = nm.get("en-US") or next(iter(nm.values()))
+                elif isinstance(nm, str):
+                    item["name"] = nm
+                users = info.get("average_daily_users")
+                if isinstance(users, int):
+                    item["users"] = users
+                    if users < 100:
+                        item["flags"].append(f"few users ({users})")
+            else:
+                item["note"] = "check unavailable"
+        results["firefox_extensions"].append(item)
+
     # 3. Homebrew formulas
     term_sec = _merged_section("terminal")
     for b in _str_list(term_sec, "brew"):
@@ -266,6 +291,16 @@ def inspect_profile(profile_dir, shell_version=None, offline=False):
         return urls
 
     found_urls = scan_for_urls(data) + extra_urls
+    prof_real = os.path.realpath(profile_dir)
+    for key in ("search", "policies"):
+        rel = fx_sec.get(key)
+        if isinstance(rel, str) and rel and not os.path.isabs(rel):
+            cand = os.path.join(profile_dir, rel)
+            if os.path.isfile(cand) and os.path.realpath(cand).startswith(prof_real + os.sep):
+                try:
+                    found_urls.extend(scan_for_urls(json.load(open(cand, encoding="utf-8"))))
+                except Exception:
+                    pass
     for u in sorted(set(found_urls)):
         item = {"url": u, "flags": []}
         parsed = urllib.parse.urlparse(u)
@@ -335,6 +370,7 @@ def inspect_profile(profile_dir, shell_version=None, offline=False):
     total_items = (
         len(results["flatpaks"])
         + len(results["gnome_extensions"])
+        + len(results["firefox_extensions"])
         + len(results["homebrew"])
         + len(results["native_packages"]["install"])
         + len(results["native_packages"]["remove"])
@@ -342,7 +378,7 @@ def inspect_profile(profile_dir, shell_version=None, offline=False):
         + len(results["files"])
     )
     total_flags = 0
-    for category in ("flatpaks", "gnome_extensions", "homebrew", "remote_urls", "files"):
+    for category in ("flatpaks", "gnome_extensions", "firefox_extensions", "homebrew", "remote_urls", "files"):
         for it in results[category]:
             total_flags += len(it.get("flags", []))
 
@@ -412,6 +448,22 @@ def print_review(results, profile_name="Profile"):
                 print(f"  ! {it['uuid']:<32} {it['name']}{det_str} [{' · '.join(flags)}]")
             else:
                 print(f"  ✓ {it['uuid']:<32} {it['name']}{det_str}")
+
+    # Firefox add-ons
+    if results["firefox_extensions"]:
+        print("\nFirefox add-ons (AMO):")
+        for it in results["firefox_extensions"]:
+            flags = it.get("flags", [])
+            details = []
+            if it.get("users") is not None:
+                details.append(f"{format_count(it['users'])} users")
+            if it.get("note"):
+                details.append(it["note"])
+            det_str = f" ({' · '.join(details)})" if details else ""
+            if flags:
+                print(f"  ! {it['id']:<32} {it['name']}{det_str} [{' · '.join(flags)}]")
+            else:
+                print(f"  ✓ {it['id']:<32} {it['name']}{det_str}")
 
     # Homebrew
     if results["homebrew"]:

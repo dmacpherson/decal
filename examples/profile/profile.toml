@@ -58,6 +58,16 @@ login-logo = ""                   # "" hides the login-screen logo, or a path to
 # local-state = "brave/local-state.json"   # same for the browser-wide Local State, e.g. Brave Origin (free on Linux)
 # extensions = ["nngceckbapebfimnlniiiahkandclblb"]   # Chrome Web Store ids (from the extension's store URL); Brave installs them on its next start
 
+# [firefox]                       # Firefox settings Firefox Sync doesn't carry (applied while Firefox is closed)
+# profile = "default-release"     # profile Name from profiles.ini (Flatpak and native Linux paths supported)
+# prefs = "firefox/prefs.json"    # about:config overrides merged into prefs.js; remove restores prior values
+# search = "firefox/search.json"  # default search engine, hidden built-ins, and custom search engines (via SearchEngines policy)
+# containers = "firefox/containers.json"   # Multi-Account Containers definitions
+# handlers = "firefox/handlers.json"       # file and protocol handlers
+# chrome = "firefox/chrome"       # folder copied into <profile>/chrome/ (userChrome.css / userContent.css)
+# policies = "firefox/policies.json"       # extra policies.json keys
+# extensions = ["uBlock0@raymondhill.net", "{446900e4-71c2-419f-a6a7-df9c091e268b}"]   # AMO add-on IDs installed via ExtensionSettings policy
+
 [terminal]
 app = "ptyxis"                    # ptyxis kitty alacritty foot wezterm ghostty
 layout = "tokyo-sharp"

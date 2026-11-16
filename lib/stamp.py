@@ -10,7 +10,7 @@
   brave --prefs FILE [--local-state FILE] --to DIR
                                              Brave settings decal knows (per device) + Web Store extensions -> TOML
 """
-import argparse, configparser, io, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, configparser, importlib.util, io, json, os, re, shutil, subprocess, sys, tempfile
 
 LIB = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, LIB)
@@ -354,6 +354,156 @@ def cmd_brave(a):
     print(f"# {len(keep)} setting groups, {len(exts)} extensions", file=sys.stderr)
 
 
+# --- Firefox --------------------------------------------------------------------------------------------------
+FIREFOX_EXACT_PREFS = {
+    "browser.uiCustomization.state",
+    "toolkit.legacyUserProfileCustomizations.stylesheets",
+    "browser.compactmode.show",
+    "browser.uidensity",
+    "browser.tabs.inTitlebar",
+    "browser.toolbars.bookmarks.visibility",
+    "browser.theme.toolbar-theme",
+    "extensions.activeThemeID",
+    "dom.security.https_only_mode",
+    "browser.contentblocking.category",
+    "browser.download.useDownloadDir",
+    "browser.download.alwaysOpenPanel",
+    "browser.download.always_ask_before_handling_new_types",
+    "browser.tabs.loadInBackground",
+    "browser.tabs.closeWindowWithLastTab",
+    "browser.ctrlTab.sortByRecentlyUsed",
+    "media.videocontrols.picture-in-picture.video-toggle.enabled",
+    "general.autoScroll",
+    "middlemouse.paste",
+    "ui.key.menuAccessKeyFocuses",
+    "browser.urlbar.trimURLs",
+    "browser.search.suggest.enabled",
+}
+FIREFOX_PREF_PREFIXES = (
+    "sidebar.",
+    "doh-rollout.",
+    "network.trr.",
+    "network.dns.",
+    "privacy.",
+    "browser.newtabpage.activity-stream.",
+    "browser.urlbar.suggest.",
+)
+FIREFOX_STATE_RE = re.compile(
+    r"(timestamp|Count$|Time$|Date$|ResetDate|cache$|\.hasMigrated|\.hasUserInteracted|doneFirstRun|home-region|pending$|backupState|storageVersion$)",
+    re.I,
+)
+
+
+def _fx_helper():
+    path = os.path.join(os.path.dirname(LIB), "modules", "firefox", "prefs.py")
+    spec = importlib.util.spec_from_file_location("decal_firefox_prefs", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _keep_firefox_pref(k):
+    if FIREFOX_STATE_RE.search(k):
+        return False
+    return k in FIREFOX_EXACT_PREFS or k.startswith(FIREFOX_PREF_PREFIXES)
+
+
+def _extract_search(fx_prefs, mozlz4_path):
+    raw = fx_prefs.decompress_mozlz4(open(mozlz4_path, "rb").read())
+    doc = json.loads(raw.decode("utf-8"))
+    engines = doc.get("engines", [])
+    by_id = {e.get("id"): e.get("_name") for e in engines if e.get("id") and e.get("_name")}
+    meta = doc.get("metaData", {})
+    out = {}
+    if meta.get("defaultEngineId") in by_id:
+        out["default"] = by_id[meta["defaultEngineId"]]
+    if meta.get("privateDefaultEngineId") in by_id:
+        out["default-private"] = by_id[meta["privateDefaultEngineId"]]
+    removed = sorted(e["_name"] for e in engines if (e.get("_metaData") or {}).get("hidden") and e.get("_name"))
+    if removed:
+        out["remove"] = removed
+    added = []
+    for e in engines:
+        lp = str(e.get("_loadPath") or "")
+        if not lp.startswith(("[http", "[other]", "[addon")):
+            continue
+        html = next((u for u in e.get("_urls", []) if (u.get("type") or "text/html") == "text/html" and u.get("template")), None)
+        if not (html and e.get("_name")):
+            continue
+        item = {"Name": e["_name"], "URLTemplate": html["template"], "Method": html.get("method", "GET")}
+        aliases = e.get("_definedAliases") or []
+        alias = (e.get("_metaData") or {}).get("alias") or (aliases[0] if aliases else "")
+        if alias:
+            item["Alias"] = alias
+        if str(e.get("_iconURL") or "").startswith("https://"):
+            item["IconURL"] = e["_iconURL"]
+        added.append(item)
+    if added:
+        out["add"] = added
+    return out
+
+
+def cmd_firefox(a):
+    fx_prefs = _fx_helper()
+    lines = ["[firefox]"]
+    fx_dir = os.path.join(a.to, "firefox")
+    os.makedirs(fx_dir, exist_ok=True)
+
+    n_prefs = 0
+    prefs_js = os.path.join(a.profile_dir, "prefs.js")
+    if os.path.isfile(prefs_js):
+        _, parsed = fx_prefs.parse_prefs_js(prefs_js)
+        keep = {k: v for k, (_, v) in sorted(parsed.items()) if _keep_firefox_pref(k)}
+        if keep:
+            n_prefs = len(keep)
+            with open(os.path.join(fx_dir, "prefs.json"), "w", encoding="utf-8") as f:
+                json.dump(keep, f, indent=2, sort_keys=True)
+            lines.append('prefs = "firefox/prefs.json"')
+
+    search_moz = os.path.join(a.profile_dir, "search.json.mozlz4")
+    if os.path.isfile(search_moz):
+        try:
+            search = _extract_search(fx_prefs, search_moz)
+        except Exception:
+            search = {}
+        if search:
+            with open(os.path.join(fx_dir, "search.json"), "w", encoding="utf-8") as f:
+                json.dump(search, f, indent=2, sort_keys=True)
+            lines.append('search = "firefox/search.json"')
+
+    containers = os.path.join(a.profile_dir, "containers.json")
+    if os.path.isfile(containers):
+        shutil.copy2(containers, os.path.join(fx_dir, "containers.json"))
+        lines.append('containers = "firefox/containers.json"')
+
+    chrome_src = os.path.join(a.profile_dir, "chrome")
+    if os.path.isdir(chrome_src) and os.listdir(chrome_src):
+        shutil.copytree(chrome_src, os.path.join(fx_dir, "chrome"), dirs_exist_ok=True)
+        lines.append('chrome = "firefox/chrome"')
+
+    exts = []
+    exts_json = os.path.join(a.profile_dir, "extensions.json")
+    if os.path.isfile(exts_json):
+        data = json.load(open(exts_json, encoding="utf-8"))
+        exts = sorted(
+            e["id"]
+            for e in data.get("addons", [])
+            if isinstance(e, dict)
+            and e.get("location") == "app-profile"
+            and e.get("type") == "extension"
+            and e.get("active") is True
+            and e.get("id") not in ("newtab@mozilla.org",)
+            and not str(e.get("id", "")).endswith("@search.mozilla.org")
+            and fx_prefs.valid_amo_id(e.get("id", ""))
+        )
+        if exts:
+            lines.append("extensions = " + tval(exts))
+
+    if len(lines) > 1:
+        print("\n".join(lines))
+    print(f"# {n_prefs} prefs, {len(exts)} extensions", file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -364,8 +514,9 @@ def main():
     p.add_argument("--modules", required=True); p.add_argument("--to", required=True)
     p = sub.add_parser("brave"); p.add_argument("--prefs", required=True); p.add_argument("--local-state")
     p.add_argument("--to", required=True)
+    p = sub.add_parser("firefox"); p.add_argument("--profile-dir", required=True); p.add_argument("--to", required=True)
     a = ap.parse_args()
-    {"dconf": cmd_dconf, "extensions": cmd_extensions, "section": cmd_section, "brave": cmd_brave}[a.cmd](a)
+    {"dconf": cmd_dconf, "extensions": cmd_extensions, "section": cmd_section, "brave": cmd_brave, "firefox": cmd_firefox}[a.cmd](a)
 
 
 if __name__ == "__main__":
