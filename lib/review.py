@@ -14,6 +14,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+try:
+    from . import profile as _prof
+except ImportError:
+    import profile as _prof
+
+_MODULES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modules")
+
+_TOOL_INSTALLER_URLS = {
+    "uv": "https://astral.sh/uv/install.sh",
+}
+
 KNOWN_HOSTS = {
     "github.com",
     "raw.githubusercontent.com",
@@ -27,6 +38,8 @@ KNOWN_HOSTS = {
     "flathub.org",
     "extensions.gnome.org",
     "astral.sh",
+    "claude.ai",
+    "downloads.claude.ai",
     "launchpad.net",
     "archive.ubuntu.com",
     "deb.debian.org",
@@ -100,129 +113,150 @@ def inspect_profile(profile_dir, shell_version=None, offline=False):
         "total_flags": 0,
     }
 
-    # 1. Flatpaks
-    apps_sec = data.get("apps", {})
-    prefer = apps_sec.get("prefer", ["flatpak", "distro", "brew"])
-    flatpaks = list(apps_sec.get("flatpaks", []))
-    install_apps = apps_sec.get("install", [])
-    if isinstance(install_apps, list):
-        for app in install_apps:
-            if not isinstance(app, str):
-                continue
-            if "." in app or (prefer and prefer[0] == "flatpak"):
-                flatpaks.append(app)
-            elif prefer and prefer[0] == "brew":
-                results["homebrew"].append({"formula": app, "flags": []})
-            else:
-                results["native_packages"]["install"].append(app)
+    def _merged_section(sec):
+        raw = data.get(sec)
+        if not isinstance(raw, dict):
+            return {}
+        try:
+            schema = _prof.load_schema(_MODULES_DIR, sec)
+            return _prof.resolve(sec, raw, schema, ["all"])[0]
+        except _prof.ProfileError:
+            return raw
 
-    if isinstance(flatpaks, list):
-        for fp in flatpaks:
-            if not isinstance(fp, str):
-                continue
-            item = {
-                "id": fp,
-                "name": fp,
-                "verified": None,
-                "installs": None,
-                "flags": [],
-            }
-            if not offline:
-                summary = fetch_json(f"https://flathub.org/api/v2/summary/{fp}")
-                if summary == 404:
-                    item["flags"].append("unlisted on Flathub")
-                elif isinstance(summary, dict):
-                    item["name"] = summary.get("name", fp)
-                    ver = fetch_json(f"https://flathub.org/api/v2/verification/{fp}/status")
-                    if isinstance(ver, dict):
-                        item["verified"] = ver.get("verified", False)
-                        if not item["verified"]:
-                            item["flags"].append("unverified publisher")
-                    stats = fetch_json(f"https://flathub.org/api/v2/stats/{fp}")
-                    if isinstance(stats, dict):
-                        item["installs"] = stats.get("installs_total", 0)
-                        if item["installs"] < 100:
-                            item["flags"].append(f"few installs ({item['installs']})")
-                else:
-                    item["note"] = "check unavailable"
-            results["flatpaks"].append(item)
+    def _str_list(sec_dict, key):
+        v = sec_dict.get(key, [])
+        if isinstance(v, str):
+            return [v]
+        return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
+    extra_urls = []
+
+    # 1. Flatpaks
+    apps_sec = _merged_section("apps")
+    prefer = _str_list(apps_sec, "prefer") or ["flatpak", "distro", "brew"]
+    flatpaks = _str_list(apps_sec, "flatpaks")
+    pkg_inst = _str_list(apps_sec, "packages")
+
+    for app in _str_list(apps_sec, "install"):
+        if "." in app and "flatpak" in prefer:
+            if app not in flatpaks:
+                flatpaks.append(app)
+        else:
+            fallback = next((s for s in prefer if s != "flatpak"), "distro")
+            if fallback == "brew":
+                results["homebrew"].append({"formula": app, "flags": []})
+            elif app not in pkg_inst:
+                pkg_inst.append(app)
+
+    defaults_sec = apps_sec.get("defaults", {})
+    if isinstance(defaults_sec, dict):
+        for val in defaults_sec.values():
+            if isinstance(val, str) and "." in val and val not in flatpaks:
+                flatpaks.append(val)
+
+    for fp in flatpaks:
+        item = {
+            "id": fp,
+            "name": fp,
+            "verified": None,
+            "installs": None,
+            "flags": [],
+        }
+        if not offline:
+            summary = fetch_json(f"https://flathub.org/api/v2/summary/{fp}")
+            if summary == 404:
+                item["flags"].append("unlisted on Flathub")
+            elif isinstance(summary, dict):
+                item["name"] = summary.get("name", fp)
+                ver = fetch_json(f"https://flathub.org/api/v2/verification/{fp}/status")
+                if isinstance(ver, dict):
+                    item["verified"] = ver.get("verified", False)
+                    if not item["verified"]:
+                        item["flags"].append("unverified publisher")
+                stats = fetch_json(f"https://flathub.org/api/v2/stats/{fp}")
+                if isinstance(stats, dict):
+                    item["installs"] = stats.get("installs_total", 0)
+                    if item["installs"] < 100:
+                        item["flags"].append(f"few installs ({item['installs']})")
+            else:
+                item["note"] = "check unavailable"
+        results["flatpaks"].append(item)
 
     # 2. GNOME Extensions
-    ge_sec = data.get("gnome-extensions", {})
-    ge_enable = ge_sec.get("enable", [])
-    if isinstance(ge_enable, list):
-        for ext in ge_enable:
-            if not isinstance(ext, str):
-                continue
-            item = {
-                "uuid": ext,
-                "name": ext,
-                "downloads": None,
-                "compatible": None,
-                "flags": [],
-            }
-            if not offline:
-                encoded = urllib.parse.quote(ext, safe="@")
-                info = fetch_json(f"https://extensions.gnome.org/extension-info/?uuid={encoded}")
-                if info == 404:
-                    item["flags"].append("not on extensions.gnome.org")
-                elif isinstance(info, dict):
-                    item["name"] = info.get("name", ext)
-                    item["downloads"] = info.get("downloads", 0)
-                    if item["downloads"] < 100:
-                        item["flags"].append(f"few downloads ({item['downloads']})")
-                    ver_map = info.get("shell_version_map", {})
-                    if shell_version:
-                        if str(shell_version) in ver_map:
-                            item["compatible"] = True
-                        else:
-                            item["compatible"] = False
-                            item["flags"].append(f"not updated for GNOME {shell_version}")
-                else:
-                    item["note"] = "check unavailable"
-            results["gnome_extensions"].append(item)
+    ge_sec = _merged_section("gnome-extensions")
+    for ext in _str_list(ge_sec, "enable"):
+        item = {
+            "uuid": ext,
+            "name": ext,
+            "downloads": None,
+            "compatible": None,
+            "flags": [],
+        }
+        if not offline:
+            encoded = urllib.parse.quote(ext, safe="@")
+            info = fetch_json(f"https://extensions.gnome.org/extension-info/?uuid={encoded}")
+            if info == 404:
+                item["flags"].append("not on extensions.gnome.org")
+            elif isinstance(info, dict):
+                item["name"] = info.get("name", ext)
+                item["downloads"] = info.get("downloads", 0)
+                if item["downloads"] < 100:
+                    item["flags"].append(f"few downloads ({item['downloads']})")
+                ver_map = info.get("shell_version_map", {})
+                if shell_version:
+                    if str(shell_version) in ver_map:
+                        item["compatible"] = True
+                    else:
+                        item["compatible"] = False
+                        item["flags"].append(f"not updated for GNOME {shell_version}")
+            else:
+                item["note"] = "check unavailable"
+        results["gnome_extensions"].append(item)
 
     # 3. Homebrew formulas
-    term_sec = data.get("terminal", {})
-    brew = term_sec.get("brew", [])
-    if isinstance(brew, list):
-        for b in brew:
-            if not isinstance(b, str):
-                continue
-            item = {"formula": b, "flags": []}
-            if "/" in b:
-                tap = b.rsplit("/", 1)[0]
-                item["flags"].append(f"third-party tap ({tap})")
-            results["homebrew"].append(item)
+    term_sec = _merged_section("terminal")
+    for b in _str_list(term_sec, "brew"):
+        item = {"formula": b, "flags": []}
+        if "/" in b:
+            tap = b.rsplit("/", 1)[0]
+            item["flags"].append(f"third-party tap ({tap})")
+        results["homebrew"].append(item)
 
-    # 4. Native packages
-    # Installs: apps.packages, tools.install, vpn.install
-    pkg_inst = []
-    if isinstance(apps_sec.get("packages"), list):
-        pkg_inst.extend(apps_sec["packages"])
-    tools_sec = data.get("tools", {})
-    if isinstance(tools_sec.get("install"), list):
-        pkg_inst.extend(tools_sec["install"])
-    vpn_sec = data.get("vpn", {})
-    if isinstance(vpn_sec.get("install"), list):
-        pkg_inst.extend(vpn_sec["install"])
+    # 4. Native packages & official tool/app installers
+    tools_sec = _merged_section("tools")
+    for t in _str_list(tools_sec, "install"):
+        if t in _TOOL_INSTALLER_URLS:
+            extra_urls.append(_TOOL_INSTALLER_URLS[t])
+        else:
+            pkg_inst.append(t)
+
+    if "claude" in data and isinstance(data["claude"], dict):
+        claude_sec = _merged_section("claude")
+        if claude_sec.get("cli", True):
+            extra_urls.append("https://claude.ai/install.sh")
+        if claude_sec.get("desktop", False):
+            extra_urls.extend([
+                "https://downloads.claude.ai/claude-desktop/apt/stable",
+                "https://downloads.claude.ai/claude-desktop/key.asc",
+            ])
+            pkg_inst.append("claude-desktop")
+
+    vpn_sec = _merged_section("vpn")
+    pkg_inst.extend(_str_list(vpn_sec, "install"))
     for p in pkg_inst:
-        if isinstance(p, str):
-            results["native_packages"]["install"].append(p)
+        results["native_packages"]["install"].append(p)
 
     # Removals: apps.remove-packages
-    pkg_rem = apps_sec.get("remove-packages", [])
-    if isinstance(pkg_rem, list):
-        for p in pkg_rem:
-            if isinstance(p, str):
-                results["native_packages"]["remove"].append(p)
+    for p in _str_list(apps_sec, "remove-packages"):
+        results["native_packages"]["remove"].append(p)
 
     # 5. Remote URLs
     def scan_for_urls(val):
         urls = []
         if isinstance(val, str):
-            if val.startswith("http://") or val.startswith("https://"):
-                urls.append(val)
+            check_val = val[4:] if val.startswith(("git+https://", "git+http://")) else val
+            if check_val.startswith("http://") or check_val.startswith("https://"):
+                urls.append(check_val)
         elif isinstance(val, list):
             for x in val:
                 urls.extend(scan_for_urls(x))
@@ -231,7 +265,7 @@ def inspect_profile(profile_dir, shell_version=None, offline=False):
                 urls.extend(scan_for_urls(x))
         return urls
 
-    found_urls = scan_for_urls(data)
+    found_urls = scan_for_urls(data) + extra_urls
     for u in sorted(set(found_urls)):
         item = {"url": u, "flags": []}
         parsed = urllib.parse.urlparse(u)

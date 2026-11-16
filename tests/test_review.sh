@@ -192,9 +192,11 @@ cli_out=$("$REPO/decal" review "$P" --offline)
 assert_contains "$cli_out" "Profile review: profile" "decal review prints review"
 assert_contains "$cli_out" "ripgrep" "decal review lists profile items"
 
-# decal review --json
+# decal review --json (both after and before PROFILE)
 cli_json=$("$REPO/decal" review "$P" --json --offline)
 assert_contains "$cli_json" '"formula": "ripgrep"' "decal review --json works"
+cli_json_pre=$("$REPO/decal" review --json --offline "$P")
+assert_contains "$cli_json_pre" '"formula": "ripgrep"' "decal review --json before PROFILE works"
 
 # 4. Review active profile when no profile argument provided
 cli_active=$(DECAL_PROFILE="$P" "$REPO/decal" review --offline)
@@ -218,5 +220,63 @@ sub_out=$(
 prompt_out=$(cat "$DECAL_TTY_OUT")
 assert_contains "$prompt_out" "r review what it installs · p preview commands" "prompt offers review option"
 assert_contains "$sub_out" "third-party tap (baduser/badtap)" "review displayed upon entering r"
+
+# 6. Tagged sections, bare install names, git+https URLs, [tools]/[claude]/[apps.defaults]
+P_TAG="$T_TMP/tag_profile"
+mkdir -p "$P_TAG"
+cat > "$P_TAG/profile.toml" <<'EOF'
+[apps]
+install = ["fd-find", "org.good.App"]
+
+[apps.defaults]
+browser = "org.sketchy.App"
+
+[apps.dev]
+flatpaks = ["org.missing.App"]
+packages = ["gcc"]
+
+[gnome-extensions.dev]
+enable = ["good@example.com"]
+
+[terminal.dev]
+brew = ["bat"]
+
+[vpn.dev]
+install = ["tailscale"]
+
+[tools]
+install = ["uv"]
+
+[claude]
+cli = true
+
+[icons]
+source = "git+https://untrusted-git.example.com/icons.git"
+theme = "X"
+EOF
+tag_json=$(python3 "$T_TMP/mock_review.py" "$P_TAG" --json --shell-version 46)
+python3 - "$tag_json" <<'PY'
+import json, sys
+r = json.loads(sys.argv[1])
+fps = {x["id"]: x for x in r["flatpaks"]}
+assert "org.good.App" in fps, fps
+assert "org.missing.App" in fps, fps
+assert "org.sketchy.App" in fps, fps
+assert "fd-find" not in fps, fps
+assert "fd-find" in r["native_packages"]["install"], r["native_packages"]
+assert "gcc" in r["native_packages"]["install"], r["native_packages"]
+assert "tailscale" in r["native_packages"]["install"], r["native_packages"]
+assert "uv" not in r["native_packages"]["install"], r["native_packages"]
+brews = [x["formula"] for x in r["homebrew"]]
+assert "bat" in brews, brews
+exts = [x["uuid"] for x in r["gnome_extensions"]]
+assert "good@example.com" in exts, exts
+urls = {x["url"]: x["flags"] for x in r["remote_urls"]}
+assert "https://untrusted-git.example.com/icons.git" in urls, urls
+assert any("unrecognized host" in fl for fl in urls["https://untrusted-git.example.com/icons.git"]), urls
+assert "https://astral.sh/uv/install.sh" in urls, urls
+assert "https://claude.ai/install.sh" in urls, urls
+PY
+assert_eq "$?" "0" "review covers tags, bare install names, git+https URLs, defaults, tools, and claude"
 
 t_done

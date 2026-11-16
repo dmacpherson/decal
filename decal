@@ -113,7 +113,7 @@ PROFILE_HOME="${DECAL_PROFILE_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/decal/prof
 PROFILE_DIR="${OPT_PROFILE:-${DECAL_PROFILE:-$PROFILE_HOME}}"; export PROFILE_DIR
 
 # add/remove/apply: show the output and keep a plain-text copy (a GNOME Shell crash can take the terminal with it)
-if [[ $cmd == @(add|remove|apply) && -z ${DECAL_LOGGING:-} ]]; then
+if [[ $cmd == @(add|remove|apply) && -z ${DECAL_LOGGING:-} && ${LS_DRY_RUN:-0} != 1 ]]; then
   logdir="$LS_USER_STATE/logs"; mkdir -p "$logdir"
   logf="$logdir/decal-$(date +%Y%m%d-%H%M%S)-$$.log"
   ln -sfn "$(basename "$logf")" "$logdir/last.log"
@@ -403,12 +403,21 @@ case $cmd in
     activate_staged
     info "active profile: $PROFILE_DIR (nothing applied yet: decal add all, or the menu)" ;;
   review)
-    if [[ $# -ge 1 && $1 != --* ]]; then
-      stage_profile "$1"; shift
-      python3 "$LS_REPO/lib/review.py" "$STAGE_DIR" "$@"
+    rev_prof="" rev_opts=()
+    while (( $# )); do
+      case $1 in
+        --shell-version) val "$1" "${2:-}" "a GNOME Shell version"; rev_opts+=("$1" "$2"); shift ;;
+        --json|--offline) rev_opts+=("$1") ;;
+        --*) die "unknown option for review: $1" ;;
+        *) [[ -z $rev_prof ]] || die "review takes at most one profile"; rev_prof=$1 ;;
+      esac; shift
+    done
+    if [[ -n $rev_prof ]]; then
+      stage_profile "$rev_prof"
+      python3 "$LS_REPO/lib/review.py" "$STAGE_DIR" ${rev_opts[@]+"${rev_opts[@]}"}
     else
       [[ -d $PROFILE_DIR ]] || die "no active profile: provide a profile to review (decal review PROFILE)"
-      python3 "$LS_REPO/lib/review.py" "$PROFILE_DIR" "$@"
+      python3 "$LS_REPO/lib/review.py" "$PROFILE_DIR" ${rev_opts[@]+"${rev_opts[@]}"}
     fi ;;
   ui)
     [[ -t 0 && -t 1 ]] || die "the menu needs a terminal"
