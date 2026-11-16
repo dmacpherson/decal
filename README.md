@@ -95,6 +95,7 @@ opens. Run `decal usb` again to update the stick.
 | branding | Login-screen logo |
 | account | Your account picture (login screen, lock screen, user menu), no sudo |
 | brave | Brave settings its Sync keeps per device (look, toolbar, new tab page, search engines) and Brave Origin, applied while Brave is closed; extensions from the Web Store |
+| firefox | Firefox settings Firefox Sync doesn't carry (`about:config` prefs, search engines, containers, `chrome/` CSS, handlers) applied while Firefox is closed; AMO add-ons via policy (Flatpak + native) |
 | terminal | Terminal app, Starship prompt, Nerd Font and CLI tools, each feature switchable; Bazzite's welcome message off if you like |
 | cursor | Cursor pack (Material Bibata by default), also on the login screen |
 | icons | Icon theme from any source, optionally another theme's folders on top |
@@ -165,6 +166,7 @@ Only what's yours goes in, compared with the distro's own defaults:
 | Default apps | your `mimeapps.list` |
 | Wallpaper, account picture, themes | only if changed; a theme you installed into your home is bundled, the system's aren't |
 | Brave | the per-device settings decal knows (no counters or history), Brave Origin, extensions you added from the Web Store |
+| Firefox | non-synced `about:config` prefs (`sidebar.*`, toolbar layout, DoH, privacy, new tab), search engine defaults/hidden/custom engines, containers, `chrome/` CSS, AMO add-ons |
 | Docker, Ollama (with models), Claude Code, uv | installed: under the `dev` tag |
 
 A module decal set up from your profile that is still in place goes in as your profile has it (tags and
