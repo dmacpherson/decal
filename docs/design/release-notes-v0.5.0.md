@@ -1,4 +1,4 @@
-# decal v0.5.0 (draft release notes)
+# decal v0.5.0 release notes
 
 ## New
 

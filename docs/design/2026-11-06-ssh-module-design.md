@@ -6,11 +6,11 @@ A new `ssh` module: manages developer SSH client configuration, public authorize
 
 - Manage SSH public authorized keys (`authorized-keys`) in `~/.ssh/authorized_keys`.
 - Manage trusted host keys (`known-hosts`) in `~/.ssh/known_hosts` (e.g. for GitHub, GitLab, internal servers).
-- Manage SSH client config via a profile config file (`config = "ssh/config"`) and/or `[ssh.hosts.<name>]` host blocks in `~/.ssh/config`.
+- Manage SSH client config via a profile config file (`config = "ssh/config"`), global directives (`config-lines = [...]`), and/or `[ssh.hosts]` host entries (`name = "..."`) in `~/.ssh/config`.
 - Strict file permissions: `~/.ssh` (0700), `~/.ssh/authorized_keys` (0600), `~/.ssh/config` (0600), `~/.ssh/known_hosts` (0644).
 - Least privilege: User-level only (`MODULE_NEEDS_ROOT=0`).
 - Clean removal: Only lines and blocks decal inserted are removed on `decal remove ssh`; user-added keys and host blocks are never touched.
-- `decal stamp` stamps public keys and host definitions if present.
+- `decal stamp` stamps public keys, known hosts, and host blocks if present.
 
 ## Profile Configuration
 
@@ -23,14 +23,11 @@ known-hosts = [
   "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 ]
 # config = "ssh/config" # optional path to extra config file
+config-lines = [
+  "ServerAliveInterval 60"
+]
 
-[ssh.hosts.github]
-hostname = "github.com"
-user = "git"
-identity-file = "~/.ssh/id_ed25519"
-
-[ssh.hosts.server]
-hostname = "192.168.1.100"
-user = "admin"
-port = 2222
+[ssh.hosts]
+github = "HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_ed25519"
+server = "HostName 192.168.1.100\n  User admin\n  Port 2222"
 ```

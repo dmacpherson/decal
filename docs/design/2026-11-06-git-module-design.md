@@ -4,8 +4,8 @@ A new `git` module: configures developer identity, default branch, signing keys,
 
 ## Goal
 
-- Manage git identity and core config from `profile.toml` without clobbering unmanaged git settings.
-- Record prior state in `$LS_USER_STATE/git-config.prev` so `decal remove git` restores exact prior values (or unsets keys decal added).
+- Manage git identity and core config from `profile.toml` without clobbering unmanaged git settings (only keys explicitly present in `[git]` are written; omitted optional keys are left alone).
+- Record prior state in `$LS_USER_STATE/git.prev` so `decal remove git` restores exact prior values (or unsets keys decal added).
 - Global ignores in `~/.config/git/ignore` managed cleanly with decal header/footer comment blocks.
 - `decal stamp` reads the host's git configuration into a clean `[git]` section.
 - Does not need root (`MODULE_NEEDS_ROOT=0`).
@@ -32,7 +32,7 @@ br = "branch"
 
 ## State & Rollback
 
-- Previous values recorded in `$LS_USER_STATE/git-config.prev`:
+- Previous values recorded in `$LS_USER_STATE/git.prev`:
   Format: `key=value` or `key=__UNSET__`.
 - `module_remove` restores previous values or unsets newly added keys, then clears the state file.
 - Any ignores added to `~/.config/git/ignore` are stripped between `# decal git: begin` and `# decal git: end`.

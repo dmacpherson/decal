@@ -6,6 +6,7 @@
 theme = "angular"                 # a folder in the source below
 # source = "git+https://github.com/adi1090x/plymouth-themes"
 # path = "pack_1"
+# ref = ""                        # branch, tag or commit (default: repo HEAD)
 
 # [wallpaper]                     # put an image next to this file (or use an https:// URL)
 # image = "wallpaper.jpg"
@@ -17,10 +18,16 @@ theme = "angular"                 # a folder in the source below
 # brightness = 100
 
 [apps]
+prefer = ["flatpak", "distro", "brew"]   # source priority for `install`
+install = []                      # apps resolved via `prefer`, e.g. ["org.mozilla.firefox", "ripgrep"]
 flatpaks = []                     # extra Flathub apps, e.g. ["com.discordapp.Discord"]
-remove-flatpaks = []              # flatpaks you don't want, e.g. ["org.mozilla.firefox"] (app data kept)
+packages = []                     # native distro packages, e.g. ["ripgrep"]
+remove-flatpaks = []              # flatpaks you don't want, e.g. ["org.mozilla.firefox"] (app data kept unless purge-data = true)
 remove-packages = []              # native packages you don't want (refused if others depend on them)
+purge-data = false                # true: delete app data when remove uninstalls managed flatpaks
 show = []                         # launchers your distro hides from the app grid, e.g. ["btop"]
+# remote = "flathub"
+# remote-url = "https://dl.flathub.org/repo/flathub.flatpakrepo"
 [apps.defaults]                   # role = app id; installed from Flathub if missing
 browser = "com.brave.Browser"
 # roles: browser text-editor pdf images video music files mail
@@ -56,9 +63,13 @@ app = "ptyxis"                    # ptyxis kitty alacritty foot wezterm ghostty
 layout = "tokyo-sharp"
 theme = "cyberpunk"
 font = "FiraCode Nerd Font 10"
+nerd-font = "FiraCode"
+# nerd-font-source = "github-release:ryanoasis/nerd-fonts"
+# autosuggest-source = "github-release:akinomyoga/ble.sh"
 cursor = "underline"              # block ibeam underline
 opacity = 1                       # background opacity, 0-1 (1 = solid)
 brew = ["btop"]                   # extra Homebrew formulae
+remove-brew = false               # true: remove decal-installed brew formulae on `remove` / `remove --only`
 motd = true                       # false: no welcome message in new terminals (Bazzite and other Universal Blue images)
 [terminal.features]
 prompt = true                     # Starship
@@ -75,19 +86,26 @@ auto-update = true
 
 [cursor]                          # default source: Material Bibata (all colours)
 theme = "Bibata-Material-Lilac"
+version = "latest"
 size = 24
 login = true
 
 [icons]
 source = "git+https://github.com/L4ki/Slot-Plasma-Themes"
 path = "Slot Icons Themes"
+# ref = ""
 theme = "Slot-Dark-Icons"
 folders = "Slot-Gradient-Dark-Icons"
+symbolic = "adwaita"              # adwaita | theme (monochrome panel/system icons)
+install = "all"                   # "all" or list of theme folders to install
 
 [gtk-theme]                       # GTK3 apps look like the GNOME (libadwaita) ones
 source = "github-release:lassekongo83/adw-gtk3"
 asset = "adw-gtk3*.tar.xz"
+version = "latest"
+# ref = ""
 theme = "adw-gtk3-dark"
+install = "all"                   # "all" or list of theme folders to install
 libadwaita = false
 flatpak = true                    # also for Flatpak apps (e.g. Brave), via the theme's Flathub package
 
@@ -110,7 +128,7 @@ flatpak = true                    # also for Flatpak apps (e.g. Brave), via the 
 # [vpn]                           # VPN tools; you sign in on each machine (nothing secret goes in a profile)
 # install = ["tailscale"]         # any of: tailscale, netbird, protonvpn, wireguard, openvpn, openconnect
 
-# [git]                           # Git user identity, default branch, signing keys, and preferences
+# [git]                           # Git user identity, default branch, signing keys, and preferences (omitted keys left untouched)
 # name = "Your Name"
 # email = "you@example.com"
 # default-branch = "main"
@@ -127,5 +145,7 @@ flatpak = true                    # also for Flatpak apps (e.g. Brave), via the 
 # [ssh]                           # SSH client config, public authorized keys, and known hosts
 # authorized-keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... personal-laptop"]
 # known-hosts = ["github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"]
+# config = "ssh/config"           # optional extra SSH config file inside the profile
+# config-lines = ["ServerAliveInterval 60"]
 # [ssh.hosts]
 # devserver = "HostName dev.internal\n  User dev"

@@ -199,7 +199,7 @@ already done, or decided against (the reasons are there). Still open:
   real GitHub).
 - A git checkout profile's links are checked after `git pull`, so a bad link is refused once it's already there.
 - In a real terminal, Esc followed within 50 ms by another key loses that key during the sign-in wait.
-- Release notes for v0.4.0: `release-notes-v0.4.0.md` (draft).
+- Release notes for v0.4.0: `release-notes-v0.4.0.md`.
 - The install address is written twice: `lib/cmd_stamp.sh` (its "on another machine" line) and `profiles.py readme`.
 - `usb.py write` moves any case variant of a `Decal` folder aside (with a note), not only `Decal` itself: needed on
   FAT/exFAT, where the launcher can't sit next to it (the plan said "exact case"; this is the ruling).
@@ -214,15 +214,6 @@ in memory only); the stick's read key, GITHUB_TOKEN, GH_TOKEN and the PC's gh lo
 
 ## Ideas (not planned yet)
 
-- **A preferred source order for software.** `prefer = ["flatpak", "brew", "distro"]` in the profile. Wherever a
-  module installs software, decal tries each source in that order and uses the first one that has it. It records
-  which source it used (as it records ownership today), and `remove` takes the software away from that same source.
-  Today each module fixes its own source: apps uses Flatpak, terminal and ollama use Homebrew, the rest use the
-  distro through `pkg_install`. To design:
-  - how names map between sources (a Flathub id, a formula, a package name);
-  - a per-module or per-item override;
-  - the default order, which should match today's behaviour so existing profiles don't change;
-  - how `status` reports where something came from.
 - vpn: Proton signs each Fedora release's repo with a new key; decal pins them (`modules/vpn/protonvpn.sh`). Upgrading
   to a release decal has no key for yet fails on Proton's packages until `decal add vpn` runs with a newer decal: add
   each new key when Proton publishes it (ahead of the release).

@@ -10,8 +10,9 @@ A preferred source order for software defined in `[apps]`. Wherever a profile li
   - `flatpaks = [...]`: Explicitly installs from Flathub.
   - `packages = [...]`: Explicitly installs from the native distro repository.
 - Provenance tracking:
+  - Resolution recorded per item in `$LS_STATE/apps/prefer-sources` (`$app $src`).
   - Flatpaks recorded in `$MANAGED`.
-  - Distro packages recorded under owner `apps-prefer` in `pkg_install`.
+  - Distro packages recorded under owner `apps` in `pkg_install`.
   - Brew formulas recorded in `$LS_USER_STATE/apps.brew`.
 - Clean removal: `decal remove apps` uninstalls every installed application from the exact source that installed it.
 - `decal status` reports the resolved source for each managed app.
@@ -34,8 +35,7 @@ install = [
 For each name `app` in `install`:
 1. Check sources in the order given by `prefer`:
    - `flatpak`:
-     - If reverse-DNS (contains `.`) and present or on Flathub remote (`flatpak remote-info`).
-     - Or matches Flathub search results.
+     - If present (`_fp_present`) or available on the configured Flathub remote (`flatpak remote-info`).
    - `distro`:
      - If present (`_pkg_present`) or available in distro repositories (`pkg_known`).
    - `brew`:
