@@ -1,12 +1,12 @@
 {"keys": {
   "name": {"type": "string", "default": ""},
   "email": {"type": "string", "default": ""},
-  "default-branch": {"type": "string", "default": "main"},
+  "default-branch": {"type": "string", "default": ""},
   "editor": {"type": "string", "default": ""},
   "signing-key": {"type": "string", "default": ""},
-  "sign-commits": {"type": "bool", "default": false},
-  "auto-setup-remote": {"type": "bool", "default": true},
-  "pull-rebase": {"type": "bool", "default": false},
+  "sign-commits": {"type": "bool"},
+  "auto-setup-remote": {"type": "bool"},
+  "pull-rebase": {"type": "bool"},
   "ignores": {"type": "strings", "default": []},
   "aliases.*": {"type": "string"}
 }}

@@ -141,7 +141,95 @@ stamp_theme() {
 # a TOML list of strings
 stamp_note() { printf '%s\n' "$*" >> "$STAMP_NOTES"; }
 stamp_copy() { mkdir -p "$STAMP_DIR/$(dirname "$2")"; cp -aL "$1" "$STAMP_DIR/$2"; printf '%s' "$2"; }
-toml_list() { local x items=() IFS=,; for x; do x=${x//\\/\\\\}; items+=("\"${x//\"/\\\"}\""); done; printf '[%s]' "${items[*]}" | sed 's/","/", "/g'; }
+toml_str() {
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\t'/\\t}; s=${s//$'\r'/\\r}; s=${s//$'\n'/\\n}
+  printf '"%s"' "$s"
+}
+toml_list() {
+  local x out="" sep=""
+  for x; do out+="${sep}$(toml_str "$x")"; sep=", "; done
+  printf '[%s]' "$out"
+}
+
+# user_block_set FILE MARKER [MODE] [append|prepend] : write stdin as '# decal MARKER: begin/end' in FILE (empty clears), keeping symlinks atomic
+user_block_set() {
+  local path=$1 marker=$2 mode=${3:-} pos=${4:-append}
+  if [[ $LS_DRY_RUN == 1 ]]; then
+    local body verb="clear"; body=$(cat); [[ -n $body ]] && verb="update"
+    log "[dry-run] $verb $marker block in $path"
+    return 0
+  fi
+  python3 -c '
+import os, shutil, sys
+path, marker, mode, pos = sys.argv[1:5]
+body = sys.stdin.read()
+begin = f"# decal {marker}: begin\n"
+end = f"# decal {marker}: end\n"
+is_link = os.path.islink(path)
+real = os.path.realpath(path)
+lines = []
+if os.path.exists(real):
+    with open(real, "r", encoding="utf-8", errors="surrogateescape") as f:
+        lines = f.readlines()
+kept, in_block = [], False
+for line in lines:
+    if not in_block and line == begin:
+        in_block = True
+    elif in_block:
+        if line == end:
+            in_block = False
+    else:
+        kept.append(line)
+if body:
+    if not body.endswith("\n"):
+        body += "\n"
+    if pos == "prepend":
+        kept = [begin, body, end] + kept
+    else:
+        if kept and not kept[-1].endswith("\n"):
+            kept[-1] += "\n"
+        kept.extend([begin, body, end])
+if not kept and not is_link:
+    if os.path.lexists(path):
+        os.unlink(path)
+    sys.exit(0)
+os.makedirs(os.path.dirname(real) or ".", exist_ok=True)
+tmp = os.path.join(os.path.dirname(real), f".{os.path.basename(real)}.decal-new")
+with open(tmp, "w", encoding="utf-8", errors="surrogateescape") as f:
+    f.writelines(kept)
+if mode:
+    os.chmod(tmp, int(mode, 8))
+elif os.path.exists(real):
+    shutil.copymode(real, tmp)
+os.replace(tmp, real)
+' "$path" "$marker" "$mode" "$pos"
+}
+
+# user_block_get FILE MARKER : print lines inside '# decal MARKER: begin/end' (returns 1 if absent)
+user_block_get() {
+  local path=$1 marker=$2
+  [[ -r $path ]] || return 1
+  python3 -c '
+import sys
+path, marker = sys.argv[1:3]
+begin = f"# decal {marker}: begin\n"
+end = f"# decal {marker}: end\n"
+out, state = [], 0
+with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+    for line in f:
+        if state == 0 and line == begin:
+            state = 1
+        elif state == 1:
+            if line == end:
+                state = 2
+                break
+            out.append(line)
+if state != 2:
+    sys.exit(1)
+sys.stdout.write("".join(out))
+' "$path" "$marker"
+}
 
 # state_drop FILE LINE : take LINE out of a (root-owned) state file
 state_drop() { [[ -r $1 ]] || return 0; local cur; cur=$(grep -vxF "$2" "$1" || true); { [[ -z $cur ]] || printf '%s\n' "$cur"; } | swrite "$1"; }
