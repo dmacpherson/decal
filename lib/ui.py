@@ -8,7 +8,7 @@ import curses, glob, json, os, re, subprocess, sys, tempfile, threading
 import profiles, usb  # noqa: E402  (lib/, next to this file)
 from profiles import tilde  # noqa: E402
 from menu_logic import (MENU, STICK_ITEMS, apply_cmds, browser_rows, clean_env, drive_label, label,  # noqa: E402,F401
-                        latest, parse_status, parse_tags, pick_row, toggle, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header,
+                        latest, needs_use, parse_status, parse_tags, pick_row, toggle, remove_cmds, row_key, save_targets, stamp_cmd, stamp_dest, stick_header,
                         usb_cmd)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -610,7 +610,7 @@ class UI:
             src = os.path.expanduser(src)
         else:
             src = v["source"]
-        if not v.get("active"):   # decal use asks first when it's someone else's profile
+        if needs_use(v):   # re-fetch GitHub/archive/remote profiles even when active; ask first when someone else's
             if self.run([["use", src]], "that's the active profile now", "couldn't use it (see above)") != 0:
                 return
         self.apply_picked()

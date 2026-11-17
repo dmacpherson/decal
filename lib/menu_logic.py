@@ -26,6 +26,14 @@ def apply_cmds(tags, mods, avail):
     return [t + ["add", "all"]] if set(mods) == set(avail) else [t + ["add", *mods]]
 
 
+def needs_use(entry):
+    """Whether picking ENTRY in Apply must run `decal use` first (only active local folders are already live)."""
+    src = (entry or {}).get("source", "")
+    if not entry or not entry.get("active") or not src:
+        return True
+    return not os.path.isdir(os.path.expanduser(src))
+
+
 def stamp_cmd(mods, everything, dest="", gh=None, public=False):
     c = ["stamp"] + ([] if everything else list(mods))
     if dest:

@@ -175,4 +175,21 @@ T='ui.toggle("tag", "dev", set(), {"base"}, "apply", ["base", "onlydev"], {"base
 assert_eq "$(py "list(map(sorted, $T))")" "[['dev'], ['base', 'onlydev']]" "toggle: a tag on brings its module"
 assert_eq "$(py 'sorted(map(sorted, ui.toggle("tag", "dev", {"dev"}, {"base", "onlydev"}, "apply", ["base", "onlydev"], {"base"}, {"onlydev": ["dev"]})))')" "[[], ['base']]" "toggle: off again takes it away"
 assert_eq "$(py 'sorted(map(sorted, ui.toggle("mod", "base", set(), {"base"}, "apply", ["base"], {"base"}, {})))')" "[[], []]" "toggle: a module on its own"
+
+# needs_use: active local folder stays as-is; active github/archive/remote entries re-fetch on Apply
+assert_eq "$(py2 "ui.needs_use({'kind': 'active', 'source': '$T_TMP/jk-other', 'active': True})")" "False" "needs_use: active local folder skipped"
+assert_eq "$(py2 "ui.needs_use({'kind': 'github', 'source': 'github:me/p', 'active': True})")" "True" "needs_use: active GitHub repo re-fetched"
+assert_eq "$(py2 "ui.needs_use({'kind': 'file', 'source': '/x/decal-me.tar.gz', 'active': True})")" "True" "needs_use: active archive re-fetched"
+assert_eq "$(py2 "ui.needs_use({'kind': 'active', 'source': '$T_TMP/jk-other', 'active': False})")" "True" "needs_use: inactive profile used"
+
+# End-to-end: re-picking an already-active archive in Apply refreshes the unpacked profile and shows newly added modules
+RF_SRC="$T_TMP/rf_src"; RF_PROF="$T_TMP/rf_home"; mkdir -p "$RF_SRC"
+printf '[base]\non = true\n' > "$RF_SRC/profile.toml"
+tar -czf "$HOME/decal-refresh.tar.gz" -C "$RF_SRC" .
+DECAL_PROFILE_HOME="$RF_PROF" env -u DECAL_PROFILE "$REPO/decal" use "$HOME/decal-refresh.tar.gz" >/dev/null 2>&1
+printf '[base]\non = true\n[onlydev]\non = true\n' > "$RF_SRC/profile.toml"
+tar -czf "$HOME/decal-refresh.tar.gz" -C "$RF_SRC" .
+D env -u DECAL_PROFILE DECAL_PROFILE_HOME="$RF_PROF" "$REPO/decal" ui -- \
+  1 "UNTIL:← active" ENTER "UNTIL:go back to the menu" ENTER "UNTIL:enter next" q
+assert_contains "$(cat "$T_TMP/screen")" "onlydev" "apply: re-picking active archive refreshes profile and shows newly stamped module"
 t_done
